@@ -116,6 +116,51 @@ class TvRemote(private val context: Context) {
         }
     }
 
+    /** TV'deki başlatılabilir uygulamaları listeler. Kilit tutmaz, tuş gönderimini bekletmez. */
+    fun listApps(): List<TvApp> {
+        val d = dadb ?: return emptyList()
+        fun run(cmd: String) = runCatching { d.shell(cmd).output }.getOrDefault("")
+        val found = LinkedHashMap<String, String>()
+
+        val brief = run("cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER")
+        Regex("""([A-Za-z][\w.]*)/([\w.${'$'}]+)""").findAll(brief).forEach { m ->
+            val pkg = m.groupValues[1]
+            var act = m.groupValues[2]
+            if (act.startsWith(".")) act = pkg + act
+            found.putIfAbsent(pkg, act)
+        }
+        if (found.isEmpty()) {
+            val full = run("cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER")
+            Regex("""packageName=([\w.]+)""").findAll(full).forEach { found.putIfAbsent(it.groupValues[1], "") }
+        }
+        if (found.isEmpty()) {
+            run("pm list packages -3").lines()
+                .map { it.removePrefix("package:").trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { found.putIfAbsent(it, "") }
+        }
+        return found
+            .filterKeys { it != context.packageName }
+            .map { (pkg, act) -> TvApp(pkg, act, appName(pkg)) }
+            .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
+    }
+
+    fun launchCommand(app: TvApp): String =
+        if (app.activity.isNotEmpty()) "am start -n ${app.pkg}/${app.activity}"
+        else "monkey -p ${app.pkg} -c android.intent.category.LEANBACK_LAUNCHER 1"
+
+    /** Medya ses seviyesi (değer, en yüksek). Kilit tutmaz. */
+    fun volume(): Pair<Int, Int>? {
+        val d = dadb ?: return null
+        val re = Regex("""volume is (\d+) in range \[(\d+)\.\.(\d+)]""")
+        for (cmd in listOf("cmd media_session volume --stream 3 --get", "media volume --stream 3 --get")) {
+            val out = runCatching { d.shell(cmd).output }.getOrDefault("")
+            val m = re.find(out) ?: continue
+            return m.groupValues[1].toInt() to m.groupValues[3].toInt()
+        }
+        return null
+    }
+
     private fun reconnect() {
         runCatching { fast?.close() }
         fast = null
@@ -154,4 +199,34 @@ fun buildTextCommand(text: String): String {
         }
     }
     return "input text '$sb'"
+}
+
+data class TvApp(val pkg: String, val activity: String, val name: String)
+
+private val knownApps = linkedMapOf(
+    "com.netflix.ninja" to "Netflix",
+    "com.google.android.youtube.tv" to "YouTube",
+    "com.amazon.amazonvideo.livingroom" to "Prime Video",
+    "com.disney.disneyplus" to "Disney+",
+    "com.spotify.tv.android" to "Spotify",
+    "com.google.android.youtube.tvmusic" to "YT Music",
+    "com.google.android.youtube.tvkids" to "YT Kids",
+    "com.google.android.play.games" to "Play Games",
+    "com.android.vending" to "Play Store",
+    "com.android.tv.settings" to "Ayarlar",
+    "com.google.android.tv" to "Canlı TV",
+    "com.android.chrome" to "Chrome"
+)
+
+private fun knownRank(pkg: String): Int {
+    val i = knownApps.keys.indexOf(pkg)
+    return if (i >= 0) i else 1000
+}
+
+/** Bilinen paketlere güzel isim, diğerlerine paket adından türetilmiş isim. */
+fun appName(pkg: String): String {
+    knownApps[pkg]?.let { return it }
+    val skip = setOf("com", "tv", "android", "app", "apps", "mobile", "atv", "androidtv", "ninja", "tr", "net", "org", "www", "player", "leanback")
+    val part = pkg.split('.').lastOrNull { it.lowercase() !in skip && it.length > 1 } ?: pkg.substringAfterLast('.')
+    return part.replaceFirstChar { it.uppercase() }
 }
