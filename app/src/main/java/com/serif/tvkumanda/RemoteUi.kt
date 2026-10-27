@@ -85,6 +85,7 @@ fun RemoteScreen(
     state: ConnState,
     message: String,
     tvName: String,
+    fastMode: Boolean,
     onConnect: (String) -> Unit,
     onKey: (Int) -> Unit,
     onText: (String) -> Unit,
@@ -117,7 +118,7 @@ fun RemoteScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Header(state, message, tvName) { showSetup = !showSetup }
+            Header(state, message, tvName, fastMode) { showSetup = !showSetup }
 
             AnimatedVisibility(
                 visible = showSetup,
@@ -202,7 +203,7 @@ fun RemoteScreen(
 
 // ---------- Üst bilgi ----------
 @Composable
-fun Header(state: ConnState, message: String, tvName: String, onSettings: () -> Unit) {
+fun Header(state: ConnState, message: String, tvName: String, fastMode: Boolean, onSettings: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(AccentBrush),
@@ -225,7 +226,7 @@ fun Header(state: ConnState, message: String, tvName: String, onSettings: () -> 
                 Spacer(Modifier.width(6.dp))
                 Text(
                     when (state) {
-                        ConnState.CONNECTED -> "Bağlı · $message"
+                        ConnState.CONNECTED -> if (fastMode) "Bağlı · $message · ⚡ Hızlı mod" else "Bağlı · $message"
                         ConnState.CONNECTING -> "Bağlanıyor…"
                         ConnState.ERROR -> "Bağlantı yok"
                         ConnState.IDLE -> "Bağlı değil"
@@ -433,8 +434,8 @@ fun pressScale(inter: MutableInteractionSource): Float {
 }
 
 /**
- * Basma davranışı: kısa dokunuşta bir kez, basılı tutunca (repeat=true) tekrar tekrar gönderir.
- * Kaydırma hareketinde tetiklenmez.
+ * Basma davranışı: dokunulduğu anda gönderir (gecikmesiz),
+ * basılı tutunca (repeat=true) tekrar tekrar gönderir.
  */
 @Composable
 fun Modifier.pressable(
@@ -449,22 +450,19 @@ fun Modifier.pressable(
             detectTapGestures(onPress = { offset ->
                 val press = PressInteraction.Press(offset)
                 inter.emit(press)
-                var fired = false
+                // Gecikme olmasın diye dokunur dokunmaz gönder
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                latest()
                 val job = if (repeat) launch {
                     delay(380)
                     while (isActive) {
-                        fired = true
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         latest()
-                        delay(110)
+                        delay(90)
                     }
                 } else null
                 val released = tryAwaitRelease()
                 job?.cancel()
-                if (released && !fired) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    latest()
-                }
                 inter.emit(if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press))
             })
         }

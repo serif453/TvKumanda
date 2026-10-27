@@ -32,10 +32,11 @@ class MainActivity : ComponentActivity() {
     private var state by mutableStateOf(ConnState.IDLE)
     private var message by mutableStateOf("Bağlı değil")
     private var tvName by mutableStateOf("")
+    private var fastMode by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        remote = TvRemote(filesDir)
+        remote = TvRemote(applicationContext)
         val prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         val savedIp = prefs.getString("ip", "") ?: ""
 
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     message = message,
                     tvName = tvName,
+                    fastMode = fastMode,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
                         connect(ip)
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val model = withContext(io) { remote.connect(ip) }
                 tvName = model
+                fastMode = remote.isFast
                 state = ConnState.CONNECTED
                 message = ip
             } catch (e: Exception) {
@@ -77,23 +80,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun send(command: String) {
+    /** Bağlantı üzerinde arka planda iş çalıştırır. */
+    private fun run(action: TvRemote.() -> Unit) {
         if (state != ConnState.CONNECTED) { message = "Önce TV'ye bağlan"; return }
         scope.launch {
             try {
-                withContext(io) { remote.shell(command) }
+                withContext(io) { remote.action() }
+                fastMode = remote.isFast
             } catch (e: Exception) {
                 state = ConnState.ERROR
+                fastMode = false
                 message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
             }
         }
     }
 
-    private fun key(code: Int) = send("input keyevent $code")
+    private fun send(command: String) {
+        run { this.shell(command) }
+    }
 
-    private fun sendText(text: String) {
-        if (text.isEmpty()) return
-        send(buildTextCommand(text))
+    private fun key(code: Int) {
+        run { this.key(code) }
+    }
+
+    private fun sendText(value: String) {
+        if (value.isEmpty()) return
+        run { this.text(value) }
     }
 
     // Telefonun ses tuşları TV'nin sesini kontrol eder
@@ -115,23 +127,6 @@ class MainActivity : ComponentActivity() {
         scope.cancel()
         Thread { remote.close(); io.close() }.start()
     }
-}
-
-/** "input text" komutu: Türkçe harfleri sadeleştirir, boşluk ve tırnakları kaçırır. */
-fun buildTextCommand(text: String): String {
-    val tr = mapOf(
-        'ı' to 'i', 'İ' to 'I', 'ğ' to 'g', 'Ğ' to 'G', 'ü' to 'u', 'Ü' to 'U',
-        'ş' to 's', 'Ş' to 'S', 'ö' to 'o', 'Ö' to 'O', 'ç' to 'c', 'Ç' to 'C'
-    )
-    val sb = StringBuilder()
-    for (raw in text) {
-        when (val c = tr[raw] ?: raw) {
-            ' ' -> sb.append("%s")
-            '\'' -> sb.append("'\\''")
-            else -> sb.append(c)
-        }
-    }
-    return "input text '$sb'"
 }
 
 fun launchApp(pkg: String) =
