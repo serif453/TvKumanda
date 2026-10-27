@@ -95,6 +95,12 @@ class TvRemote(private val context: Context) {
         }
     }
 
+    /** Fare komutu (yalnızca hızlı modda çalışır). */
+    @Synchronized
+    fun mouse(line: String) {
+        sendFast(line)
+    }
+
     @Synchronized
     fun text(raw: String) {
         val t = normalizeText(raw)

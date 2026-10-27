@@ -6,7 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -56,6 +60,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.sign
 
 // ---------- Renkler ----------
 object Pal {
@@ -101,10 +106,12 @@ fun RemoteScreen(
     onConnect: (String) -> Unit,
     onKey: (Int) -> Unit,
     onText: (String) -> Unit,
+    onMouse: (String) -> Unit,
     onLaunch: (TvApp) -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
-    var page by remember { mutableIntStateOf(0) }
+    val pager = rememberPagerState(pageCount = { 3 })
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
         if (ui.state == ConnState.ERROR) sheet = Sheet.CONNECT
@@ -129,12 +136,19 @@ fun RemoteScreen(
             contentAlignment = Alignment.Center
         ) {
             val padSize = minOf(maxWidth * 0.88f, maxHeight)
-            Crossfade(targetState = page, label = "page") { p ->
-                if (p == 0) DPad(padSize, onKey) else TouchPad(padSize, onKey)
+            // Sağa-sola kaydırarak modlar arasında geçilir
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { p ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (p) {
+                        0 -> DPad(padSize, onKey)
+                        1 -> TouchPad(padSize, onKey)
+                        else -> TrackPad(padSize, ui.fastMode, onMouse)
+                    }
+                }
             }
         }
 
-        PageDots(page) { page = it }
+        PageDots(pager.currentPage) { i -> scope.launch { pager.animateScrollToPage(i) } }
         Spacer(Modifier.height(10.dp))
 
         BottomControls(ui, onKey,
@@ -343,7 +357,7 @@ private fun DirKey(dir: Dir, modifier: Modifier, onClick: () -> Unit) {
     val pressed by inter.collectIsPressedAsState()
     val p by animateFloatAsState(if (pressed) 1f else 0f, tween(90), label = "dir")
     Box(
-        modifier.pressable(inter, repeat = true, onClick = onClick),
+        modifier.pressable(inter, repeat = true, deferMs = 70, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Box(
@@ -393,77 +407,190 @@ private fun OkButton(modifier: Modifier, onClick: () -> Unit) {
                 )
             )
             .border(3.dp, RingBrush, CircleShape)
-            .pressable(inter, onClick = onClick)
+            .pressable(inter, deferMs = 70, onClick = onClick)
     )
 }
 
-// ---------- Dokunmatik yüzey ----------
+// ---------- Dokunmatik yüzeyler ----------
+private val EdgeZone = 30.dp
+
+/** Kenar şeritlerinden başlayan hareketler bırakılır; böylece kenardan kaydırınca mod değişir. */
+private fun inEdge(x: Float, width: Int, edgePx: Float) = x < edgePx || x > width - edgePx
+
 @Composable
-fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
-    val haptic = LocalHapticFeedback.current
-    val step = with(LocalDensity.current) { 48.dp.toPx() }
-    val latest by rememberUpdatedState(onKey)
+private fun PadSurface(size: Dp, hint: List<String>, gesture: Modifier) {
+    val shape = RoundedCornerShape(36.dp)
     Box(
         Modifier
             .size(size)
-            .clip(RoundedCornerShape(36.dp))
+            .clip(shape)
             .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
-            .border(2.dp, RingBrush, RoundedCornerShape(36.dp))
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    latest(Keys.OK)
-                })
-            }
-            .pointerInput(Unit) {
-                var acc = Offset.Zero
-                detectDragGestures(
-                    onDragStart = { acc = Offset.Zero },
-                    onDrag = { change, drag ->
-                        change.consume()
-                        acc += drag
-                        while (abs(acc.x) >= step || abs(acc.y) >= step) {
-                            if (abs(acc.x) > abs(acc.y)) {
-                                latest(if (acc.x > 0) Keys.RIGHT else Keys.LEFT)
-                                acc = acc.copy(x = acc.x - step * kotlin.math.sign(acc.x), y = 0f)
-                            } else {
-                                latest(if (acc.y > 0) Keys.DOWN else Keys.UP)
-                                acc = acc.copy(y = acc.y - step * kotlin.math.sign(acc.y), x = 0f)
-                            }
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        }
-                    }
-                )
-            },
+            .border(2.dp, RingBrush, shape)
+            .then(gesture),
         contentAlignment = Alignment.Center
     ) {
+        // Kenar şeridi ipucu
+        Box(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Kaydır: yön", color = Pal.Sub, fontSize = 15.sp)
-            Spacer(Modifier.height(4.dp))
-            Text("Dokun: OK", color = Pal.Sub, fontSize = 15.sp)
+            hint.forEach {
+                Text(it, color = Pal.Sub, fontSize = 14.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(4.dp))
+            }
         }
     }
 }
 
+/** Kaydırma modu: parmak hareketi yön tuşu, dokunma OK. */
+@Composable
+fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val step = with(density) { 48.dp.toPx() }
+    val edge = with(density) { EdgeZone.toPx() }
+    val slop = with(density) { 8.dp.toPx() }
+    val latest by rememberUpdatedState(onKey)
+
+    PadSurface(
+        size,
+        listOf("Kaydır: yön", "Dokun: OK", "Mod değiştirmek için kenardan kaydır"),
+        Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (inEdge(down.position.x, this.size.width, edge)) return@awaitEachGesture
+                down.consume()
+                var acc = Offset.Zero
+                var travelled = 0f
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!ch.pressed) {
+                        if (travelled < slop) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            latest(Keys.OK)
+                        }
+                        break
+                    }
+                    val d = ch.positionChange()
+                    ch.consume()
+                    travelled += d.getDistance()
+                    acc += d
+                    while (abs(acc.x) >= step || abs(acc.y) >= step) {
+                        if (abs(acc.x) > abs(acc.y)) {
+                            latest(if (acc.x > 0) Keys.RIGHT else Keys.LEFT)
+                            acc = Offset(acc.x - step * sign(acc.x), 0f)
+                        } else {
+                            latest(if (acc.y > 0) Keys.DOWN else Keys.UP)
+                            acc = Offset(0f, acc.y - step * sign(acc.y))
+                        }
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                }
+            }
+        }
+    )
+}
+
+/** Fare modu: TV'de imleç. Tek parmak imleç, dokunma tık, iki parmak sayfa kaydırma. */
+@Composable
+fun TrackPad(size: Dp, fastMode: Boolean, onMouse: (String) -> Unit) {
+    if (!fastMode) {
+        PadSurface(size, listOf("Fare modu için", "⚡ Hızlı mod gerekli", "Bağlantıyı yenilemeyi dene"), Modifier)
+        return
+    }
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val edge = with(density) { EdgeZone.toPx() }
+    val slop = with(density) { 8.dp.toPx() }
+    val wheelStep = with(density) { 28.dp.toPx() }
+    val latest by rememberUpdatedState(onMouse)
+
+    PadSurface(
+        size,
+        listOf("Kaydır: imleç", "Dokun: tıkla", "İki parmak: sayfa kaydır"),
+        Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (inEdge(down.position.x, this.size.width, edge)) return@awaitEachGesture
+                down.consume()
+                var travelled = 0f
+                var multi = false
+                var rx = 0f
+                var ry = 0f
+                var wheelAcc = 0f
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val pressed = ev.changes.filter { it.pressed }
+                    if (pressed.isEmpty()) {
+                        if (!multi && travelled < slop) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            latest("c")
+                        }
+                        break
+                    }
+                    if (pressed.size >= 2) multi = true
+
+                    // Ortalama hareket
+                    var dx = 0f
+                    var dy = 0f
+                    pressed.forEach { val d = it.positionChange(); dx += d.x; dy += d.y }
+                    dx /= pressed.size
+                    dy /= pressed.size
+                    ev.changes.forEach { it.consume() }
+                    travelled += kotlin.math.sqrt(dx * dx + dy * dy)
+
+                    if (multi) {
+                        wheelAcc += dy
+                        val notches = (wheelAcc / wheelStep).toInt()
+                        if (notches != 0) {
+                            latest("w $notches")
+                            wheelAcc -= notches * wheelStep
+                        }
+                    } else {
+                        // Hafif hızlanma: hızlı hareket daha uzağa gider
+                        val speed = kotlin.math.sqrt(dx * dx + dy * dy)
+                        val gain = 0.9f + (speed / 40f).coerceAtMost(1.6f)
+                        rx += dx * gain
+                        ry += dy * gain
+                        val ix = rx.toInt()
+                        val iy = ry.toInt()
+                        if (ix != 0 || iy != 0) {
+                            latest("m $ix $iy")
+                            rx -= ix
+                            ry -= iy
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+private val modeNames = listOf("Yön tuşları", "Kaydırma", "Fare")
+
 @Composable
 private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        for (i in 0..1) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        for (i in modeNames.indices) {
+            val selected = i == page
+            val w by animateDpAsState(if (selected) 22.dp else 8.dp, tween(200), label = "dot")
             Box(
                 Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
+                    .size(width = 34.dp, height = 26.dp)
+                    .clip(RoundedCornerShape(13.dp))
                     .clickable { onSelect(i) },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     Modifier
-                        .size(if (i == page) 11.dp else 9.dp)
+                        .size(width = w, height = 8.dp)
                         .clip(CircleShape)
-                        .background(if (i == page) Color(0xFFDDDDE2) else Color(0xFF55555C))
+                        .background(if (selected) Color(0xFFDDDDE2) else Color(0xFF55555C))
                 )
             }
         }
+        Spacer(Modifier.width(6.dp))
+        Text(modeNames.getOrElse(page) { "" }, color = Pal.Sub, fontSize = 12.sp)
     }
 }
 
@@ -794,32 +921,44 @@ fun pressScale(inter: MutableInteractionSource): Float {
 /**
  * Basma davranışı: dokunulduğu anda gönderir (gecikmesiz),
  * basılı tutunca (repeat=true) tekrar tekrar gönderir.
+ * deferMs > 0 ise gönderim o kadar ertelenir; bu sürede parmak kaydırılırsa
+ * (ör. mod değiştirmek için) tuş gönderilmez. Hızlı dokunuşta bırakınca hemen gönderilir.
  */
 @Composable
 fun Modifier.pressable(
     inter: MutableInteractionSource,
     repeat: Boolean = false,
+    deferMs: Long = 0,
     onClick: () -> Unit
 ): Modifier {
     val haptic = LocalHapticFeedback.current
     val latest by rememberUpdatedState(onClick)
-    return this.pointerInput(repeat) {
+    return this.pointerInput(repeat, deferMs) {
         coroutineScope {
             detectTapGestures(onPress = { offset ->
                 val press = PressInteraction.Press(offset)
                 inter.emit(press)
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                latest()
-                val job = if (repeat) launch {
-                    delay(380)
-                    while (isActive) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        latest()
-                        delay(90)
+                var fired = false
+                val fire = {
+                    fired = true
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    latest()
+                }
+                if (deferMs == 0L) fire()
+                val job = launch {
+                    if (deferMs > 0) { delay(deferMs); fire() }
+                    if (repeat) {
+                        delay(380 - deferMs)
+                        while (isActive) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            latest()
+                            delay(90)
+                        }
                     }
-                } else null
+                }
                 val released = tryAwaitRelease()
-                job?.cancel()
+                job.cancel()
+                if (released && !fired) fire()
                 inter.emit(if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press))
             })
         }

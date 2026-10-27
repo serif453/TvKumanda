@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onKey = ::key,
                     onText = ::sendText,
+                    onMouse = ::mouse,
                     onLaunch = { app -> send(remote.launchCommand(app)) }
                 )
             }
@@ -135,6 +136,11 @@ class MainActivity : ComponentActivity() {
             volumeTick++
             refreshVolume()
         }
+    }
+
+    private fun mouse(line: String) {
+        if (state != ConnState.CONNECTED) return
+        scope.launch(io) { runCatching { remote.mouse(line) } }
     }
 
     private fun sendText(value: String) {
