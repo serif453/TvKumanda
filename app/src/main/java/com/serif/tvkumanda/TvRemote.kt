@@ -149,14 +149,34 @@ class TvRemote(private val context: Context) {
         if (app.activity.isNotEmpty()) "am start -n ${app.pkg}/${app.activity}"
         else "monkey -p ${app.pkg} -c android.intent.category.LEANBACK_LAUNCHER 1"
 
-    /** Medya ses seviyesi (değer, en yüksek). Kilit tutmaz. */
+    /** Medya ses seviyesi (değer, en yüksek). Kilit tutmaz; birkaç yöntemi sırayla dener. */
     fun volume(): Pair<Int, Int>? {
         val d = dadb ?: return null
+        fun run(cmd: String) = runCatching {
+            val r = d.shell(cmd)
+            r.output + "\n" + r.errorOutput
+        }.getOrDefault("")
+
+        // 1) cmd media_session (hızlı)
         val re = Regex("""volume is (\d+) in range \[(\d+)\.\.(\d+)]""")
-        for (cmd in listOf("cmd media_session volume --stream 3 --get", "media volume --stream 3 --get")) {
-            val out = runCatching { d.shell(cmd).output }.getOrDefault("")
-            val m = re.find(out) ?: continue
-            return m.groupValues[1].toInt() to m.groupValues[3].toInt()
+        re.find(run("cmd media_session volume --stream 3 --get"))?.let {
+            return it.groupValues[1].toInt() to it.groupValues[3].toInt()
+        }
+
+        // 2) dumpsys audio içindeki STREAM_MUSIC bölümü
+        val dump = run("dumpsys audio")
+        val start = dump.indexOf("STREAM_MUSIC:")
+        if (start >= 0) {
+            val sec = dump.substring(start, minOf(dump.length, start + 1500))
+            val max = Regex("""Max:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+            val cur = Regex("""streamVolume:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("""Current:[^\n]*?\):\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+            if (max != null && cur != null) return cur to max
+        }
+
+        // 3) eski "media" komutu (yavaş)
+        re.find(run("media volume --stream 3 --get"))?.let {
+            return it.groupValues[1].toInt() to it.groupValues[3].toInt()
         }
         return null
     }

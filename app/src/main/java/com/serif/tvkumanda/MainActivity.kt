@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     private var volume by mutableStateOf<Int?>(null)
     private var volumeMax by mutableStateOf(100)
     private var volumeJob: Job? = null
+    private var volumeTick by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +50,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -122,7 +123,18 @@ class MainActivity : ComponentActivity() {
 
     private fun key(code: Int) {
         run { this.key(code) }
-        if (code == Keys.VOL_UP || code == Keys.VOL_DOWN || code == Keys.MUTE) refreshVolume()
+        if (code == Keys.VOL_UP || code == Keys.VOL_DOWN || code == Keys.MUTE) {
+            // Anında göster (tahmini), ardından TV'den gerçek değeri oku
+            volume?.let { v ->
+                volume = when (code) {
+                    Keys.VOL_UP -> (v + 1).coerceAtMost(volumeMax)
+                    Keys.VOL_DOWN -> (v - 1).coerceAtLeast(0)
+                    else -> v
+                }
+            }
+            volumeTick++
+            refreshVolume()
+        }
     }
 
     private fun sendText(value: String) {
@@ -158,5 +170,6 @@ data class UiState(
     val fastMode: Boolean,
     val apps: List<TvApp>,
     val volume: Int?,
-    val volumeMax: Int
+    val volumeMax: Int,
+    val volumeTick: Int
 )

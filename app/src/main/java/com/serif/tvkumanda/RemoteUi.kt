@@ -472,9 +472,18 @@ private fun BottomControls(
     onKeyboard: () -> Unit,
     onNumpad: () -> Unit
 ) {
+    // Ses tuşuna basılınca orta alanda ses göstergesi belirir, 2 sn sonra kaybolur
+    var showVolume by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.volumeTick) {
+        if (ui.volumeTick > 0) {
+            showVolume = true
+            delay(2000)
+            showVolume = false
+        }
+    }
+
     Row(
-        Modifier.fillMaxWidth().height(230.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        Modifier.fillMaxWidth().height(232.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Rocker(
@@ -485,21 +494,17 @@ private fun BottomControls(
             onUp = { onKey(Keys.VOL_UP) },
             onDown = { onKey(Keys.VOL_DOWN) }
         )
-        Column(
-            Modifier.weight(1f).padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+
+        Box(
+            Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                CircleBtn({ Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(32.dp)) }, onClick = onKeyboard)
-                CircleBtn({ Icon(AppIcons.HomeOutline, null, tint = Pal.Text, modifier = Modifier.size(32.dp)) }) { onKey(Keys.HOME) }
-                CircleBtn({ DotsIcon() }, onClick = onNumpad)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                CircleBtn({ Icon(AppIcons.VolumeOutline, null, tint = Pal.Text, modifier = Modifier.size(30.dp)) }) { onKey(Keys.MUTE) }
-                CircleBtn({ Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(30.dp)) }) { onKey(Keys.ASSIST) }
-                CircleBtn({ Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(30.dp)) }) { onKey(Keys.BACK) }
+            Crossfade(targetState = showVolume, animationSpec = tween(180), label = "mid") { vol ->
+                if (vol) VolumeHud(ui.volume, ui.volumeMax)
+                else ButtonGrid(onKey, onKeyboard, onNumpad)
             }
         }
+
         Rocker(
             label = "CH",
             value = null,
@@ -511,14 +516,86 @@ private fun BottomControls(
     }
 }
 
+/** 2x3 yuvarlak düğmeler; boyut ekran genişliğine göre otomatik ayarlanır. */
 @Composable
-private fun CircleBtn(content: @Composable () -> Unit, onClick: () -> Unit) {
+private fun ButtonGrid(onKey: (Int) -> Unit, onKeyboard: () -> Unit, onNumpad: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val gap = 12.dp
+        val btn = minOf(66.dp, (maxWidth - gap * 2) / 3, (maxHeight - gap) / 2)
+        val icon = btn * 0.46f
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                CircleBtn(btn, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
+                CircleBtn(btn, { Icon(AppIcons.HomeOutline, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.HOME) }
+                CircleBtn(btn, { DotsIcon(icon * 0.92f) }, onNumpad)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                CircleBtn(btn, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
+                CircleBtn(btn, { Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.ASSIST) }
+                CircleBtn(btn, { Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.BACK) }
+            }
+        }
+    }
+}
+
+/** Orta alanda gösterilen ses seviyesi. */
+@Composable
+private fun VolumeHud(volume: Int?, max: Int) {
+    val frac by animateFloatAsState(
+        ((volume ?: 0).toFloat() / max.coerceAtLeast(1)).coerceIn(0f, 1f),
+        tween(150),
+        label = "hud"
+    )
+    Column(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(28.dp))
+            .background(Pal.Btn)
+            .padding(horizontal = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            if (volume == 0) AppIcons.VolumeOff else AppIcons.VolumeUp,
+            null,
+            tint = Pal.Sub,
+            modifier = Modifier.size(28.dp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            volume?.toString() ?: "—",
+            color = Pal.Text,
+            fontSize = 48.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text("Ses seviyesi", color = Pal.Sub, fontSize = 13.sp)
+        Spacer(Modifier.height(14.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF3A3A3D))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(frac)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(RingBrush)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val pressed by inter.collectIsPressedAsState()
     Box(
         Modifier
-            .size(64.dp)
+            .size(size)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CircleShape)
             .background(if (pressed) Pal.BtnPressed else Pal.Btn)
@@ -529,12 +606,12 @@ private fun CircleBtn(content: @Composable () -> Unit, onClick: () -> Unit) {
 
 /** Sayı tuş takımı simgesi (3x3 + 1 nokta). */
 @Composable
-private fun DotsIcon() {
-    Canvas(Modifier.size(30.dp)) {
-        val r = size.width * 0.085f
+private fun DotsIcon(iconSize: Dp) {
+    Canvas(Modifier.size(iconSize)) {
+        val r = size.width * 0.09f
         val gap = size.width * 0.3f
         val x0 = size.width * 0.2f
-        val y0 = size.height * 0.12f
+        val y0 = size.height * 0.14f
         for (row in 0..2) for (col in 0..2) {
             drawCircle(Pal.Text, r, Offset(x0 + col * gap, y0 + row * gap * 0.8f))
         }
@@ -556,7 +633,7 @@ private fun Rocker(
     val animLevel by animateFloatAsState((level ?: 0f).coerceIn(0f, 1f), tween(250), label = "lvl")
     Box(
         Modifier
-            .width(76.dp)
+            .width(72.dp)
             .fillMaxHeight()
             .clip(shape)
             .background(Pal.Btn)
