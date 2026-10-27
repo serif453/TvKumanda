@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Yön tuşu halkası -->
+    <path
+        android:pathData="M54,44a18,18 0,1 1,0 36a18,18 0,1 1,0 -36z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="5"
+        android:fillColor="#00000000" />
+    <!-- OK düğmesi -->
+    <path
+        android:pathData="M54,55a7,7 0,1 1,0 14a7,7 0,1 1,0 -14z"
+        android:fillColor="#FFFFFFFF" />
+    <!-- Sinyal dalgaları -->
+    <path
+        android:pathData="M35.62,43.62A26,26 0,0 1,72.38 43.62"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.85"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M30.67,38.67A33,33 0,0 1,77.33 38.67"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.5"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>
