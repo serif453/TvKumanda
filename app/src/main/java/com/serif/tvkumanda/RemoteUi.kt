@@ -882,7 +882,7 @@ private fun SheetKey(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(18.dp))
             .background(if (pressed) Pal.BtnPressed else Pal.Btn)
-            .pressable(inter, repeat, onClick),
+            .pressable(inter, repeat = repeat, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(label, color = Pal.Text, fontSize = if (big) 24.sp else 16.sp, fontWeight = FontWeight.Medium)
