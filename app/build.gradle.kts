@@ -12,8 +12,10 @@ android {
         applicationId = "com.serif.tvkumanda"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // Sürüm GitHub'daki derleme numarasından otomatik gelir: 6. derleme -> 0.6
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.$build"
     }
 
     // Sabit imza anahtarı: her derlemede aynı imza, böylece yeni sürüm eskisinin üstüne kurulur

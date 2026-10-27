@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -744,6 +745,14 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
             },
             fontSize = 14.sp
         )
+    }
+    val context = LocalContext.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+    }
+    if (version != null) {
+        Spacer(Modifier.height(18.dp))
+        Text("TV Kumanda · Sürüm $version", color = Pal.Sub, fontSize = 12.sp)
     }
 }
 
