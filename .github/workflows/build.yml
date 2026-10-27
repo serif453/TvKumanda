@@ -23,7 +23,12 @@ jobs:
           gradle-version: "8.7"
 
       - name: APK derle
-        run: gradle assembleDebug --no-daemon
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon 2>&1 | tee build.log || {
+            grep -E "^e: |error:" build.log | head -20 | while read -r l; do echo "::error::$l"; done
+            exit 1
+          }
 
       - name: APK'yı yeniden adlandır
         run: cp app/build/outputs/apk/debug/app-debug.apk TvKumanda.apk
