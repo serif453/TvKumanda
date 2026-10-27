@@ -115,29 +115,33 @@ fun RemoteScreen(
         Modifier
             .fillMaxSize()
             .background(Pal.Bg)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TopBar(ui, onSettings = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(12.dp))
         AppsRow(ui.apps, ui.state, onLaunch)
-        Spacer(Modifier.height(22.dp))
 
-        Crossfade(targetState = page, label = "page") { p ->
-            if (p == 0) DPad(onKey) else TouchPad(onKey)
+        // Yön tuşu kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val padSize = minOf(maxWidth * 0.88f, maxHeight)
+            Crossfade(targetState = page, label = "page") { p ->
+                if (p == 0) DPad(padSize, onKey) else TouchPad(padSize, onKey)
+            }
         }
 
-        Spacer(Modifier.height(10.dp))
         PageDots(page) { page = it }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp))
 
         BottomControls(ui, onKey,
             onKeyboard = { sheet = Sheet.KEYBOARD },
             onNumpad = { sheet = Sheet.NUMPAD }
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
     }
 
     if (sheet != Sheet.NONE) {
@@ -253,7 +257,7 @@ private fun AppsRow(apps: List<TvApp>, state: ConnState, onLaunch: (TvApp) -> Un
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(110.dp)
+                .height(96.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Pal.Btn.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
@@ -282,13 +286,13 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
     val scale = pressScale(inter)
     val base = tileColors[abs(app.pkg.hashCode()) % tileColors.size]
     Column(
-        Modifier.width(84.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+        Modifier.width(76.dp).graphicsLayer { scaleX = scale; scaleY = scale },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             Modifier
-                .size(84.dp)
-                .clip(RoundedCornerShape(20.dp))
+                .size(72.dp)
+                .clip(RoundedCornerShape(18.dp))
                 .background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.65f))))
                 .pressable(inter, onClick = onClick),
             contentAlignment = Alignment.Center
@@ -296,15 +300,15 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
             Text(
                 app.name.take(1).uppercase(),
                 color = Color.White,
-                fontSize = 36.sp,
+                fontSize = 30.sp,
                 fontWeight = FontWeight.Bold
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             app.name,
             color = Pal.Text,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -317,11 +321,10 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
 private enum class Dir { UP, DOWN, LEFT, RIGHT }
 
 @Composable
-fun DPad(onKey: (Int) -> Unit) {
+fun DPad(size: Dp, onKey: (Int) -> Unit) {
     Box(
         Modifier
-            .fillMaxWidth(0.86f)
-            .aspectRatio(1f)
+            .size(size)
             .clip(CircleShape)
             .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
             .border(2.dp, RingBrush, CircleShape)
@@ -396,14 +399,13 @@ private fun OkButton(modifier: Modifier, onClick: () -> Unit) {
 
 // ---------- Dokunmatik yüzey ----------
 @Composable
-fun TouchPad(onKey: (Int) -> Unit) {
+fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
     val haptic = LocalHapticFeedback.current
     val step = with(LocalDensity.current) { 48.dp.toPx() }
     val latest by rememberUpdatedState(onKey)
     Box(
         Modifier
-            .fillMaxWidth(0.86f)
-            .aspectRatio(1f)
+            .size(size)
             .clip(RoundedCornerShape(36.dp))
             .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
             .border(2.dp, RingBrush, RoundedCornerShape(36.dp))
@@ -466,6 +468,10 @@ private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
 }
 
 // ---------- Alt kontroller ----------
+/**
+ * Alt kontroller. Tüm ölçüler tek bir "b" (düğme çapı) değerinden türetilir:
+ * VOL/CH sürgüsü düğme genişliğinde ve 3 düğme yüksekliğinde, aralarda eşit boşluk.
+ */
 @Composable
 private fun BottomControls(
     ui: UiState,
@@ -473,117 +479,44 @@ private fun BottomControls(
     onKeyboard: () -> Unit,
     onNumpad: () -> Unit
 ) {
-    // Ses tuşuna basılınca orta alanda ses göstergesi belirir, 2 sn sonra kaybolur
-    var showVolume by remember { mutableStateOf(false) }
-    LaunchedEffect(ui.volumeTick) {
-        if (ui.volumeTick > 0) {
-            showVolume = true
-            delay(2000)
-            showVolume = false
-        }
-    }
-
-    Row(
-        Modifier.fillMaxWidth().height(232.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Rocker(
-            label = "VOL",
-            value = ui.volume?.toString(),
-            level = ui.volume?.let { it.toFloat() / ui.volumeMax.coerceAtLeast(1) },
-            topIsPlus = true,
-            onUp = { onKey(Keys.VOL_UP) },
-            onDown = { onKey(Keys.VOL_DOWN) }
-        )
-
-        Box(
-            Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val b = minOf(76.dp, maxWidth / 5.8f)   // 5 sütun + 4 boşluk
+        val gap = b * 0.2f
+        val icon = b * 0.42f
+        Row(
+            Modifier.fillMaxWidth().height(b * 3f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Crossfade(targetState = showVolume, animationSpec = tween(180), label = "mid") { vol ->
-                if (vol) VolumeHud(ui.volume, ui.volumeMax)
-                else ButtonGrid(onKey, onKeyboard, onNumpad)
+            Rocker(
+                width = b,
+                label = "VOL",
+                value = ui.volume?.toString(),
+                level = ui.volume?.let { it.toFloat() / ui.volumeMax.coerceAtLeast(1) },
+                topIsPlus = true,
+                onUp = { onKey(Keys.VOL_UP) },
+                onDown = { onKey(Keys.VOL_DOWN) }
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(b * 0.38f)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    CircleBtn(b, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
+                    CircleBtn(b, { Icon(AppIcons.HomeOutline, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.HOME) }
+                    CircleBtn(b, { DotsIcon(icon * 0.92f) }, onNumpad)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    CircleBtn(b, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
+                    CircleBtn(b, { Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.ASSIST) }
+                    CircleBtn(b, { Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.BACK) }
+                }
             }
-        }
-
-        Rocker(
-            label = "CH",
-            value = null,
-            level = null,
-            topIsPlus = false,
-            onUp = { onKey(Keys.CH_UP) },
-            onDown = { onKey(Keys.CH_DOWN) }
-        )
-    }
-}
-
-/** 2x3 yuvarlak düğmeler; boyut ekran genişliğine göre otomatik ayarlanır. */
-@Composable
-private fun ButtonGrid(onKey: (Int) -> Unit, onKeyboard: () -> Unit, onNumpad: () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val gap = 12.dp
-        val btn = minOf(66.dp, (maxWidth - gap * 2) / 3, (maxHeight - gap) / 2)
-        val icon = btn * 0.46f
-        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                CircleBtn(btn, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
-                CircleBtn(btn, { Icon(AppIcons.HomeOutline, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.HOME) }
-                CircleBtn(btn, { DotsIcon(icon * 0.92f) }, onNumpad)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                CircleBtn(btn, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
-                CircleBtn(btn, { Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.ASSIST) }
-                CircleBtn(btn, { Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.BACK) }
-            }
-        }
-    }
-}
-
-/** Orta alanda gösterilen ses seviyesi. */
-@Composable
-private fun VolumeHud(volume: Int?, max: Int) {
-    val frac by animateFloatAsState(
-        ((volume ?: 0).toFloat() / max.coerceAtLeast(1)).coerceIn(0f, 1f),
-        tween(150),
-        label = "hud"
-    )
-    Column(
-        Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(28.dp))
-            .background(Pal.Btn)
-            .padding(horizontal = 18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            if (volume == 0) AppIcons.VolumeOff else AppIcons.VolumeUp,
-            null,
-            tint = Pal.Sub,
-            modifier = Modifier.size(28.dp)
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            volume?.toString() ?: "—",
-            color = Pal.Text,
-            fontSize = 48.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text("Ses seviyesi", color = Pal.Sub, fontSize = 13.sp)
-        Spacer(Modifier.height(14.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFF3A3A3D))
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth(frac)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(RingBrush)
+            Rocker(
+                width = b,
+                label = "CH",
+                value = null,
+                level = null,
+                topIsPlus = false,
+                onUp = { onKey(Keys.CH_UP) },
+                onDown = { onKey(Keys.CH_DOWN) }
             )
         }
     }
@@ -623,6 +556,7 @@ private fun DotsIcon(iconSize: Dp) {
 /** VOL / CH dikey sürgüsü: üst yarı artı, alt yarı eksi. */
 @Composable
 private fun Rocker(
+    width: Dp,
     label: String,
     value: String?,
     level: Float?,
@@ -630,11 +564,11 @@ private fun Rocker(
     onUp: () -> Unit,
     onDown: () -> Unit
 ) {
-    val shape = RoundedCornerShape(40.dp)
+    val shape = RoundedCornerShape(width / 2)
     val animLevel by animateFloatAsState((level ?: 0f).coerceIn(0f, 1f), tween(250), label = "lvl")
     Box(
         Modifier
-            .width(72.dp)
+            .width(width)
             .fillMaxHeight()
             .clip(shape)
             .background(Pal.Btn)
@@ -656,8 +590,8 @@ private fun Rocker(
             Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(label, color = Pal.Text, fontSize = 18.sp, letterSpacing = 1.sp)
-            if (value != null) Text(value, color = Pal.Text, fontSize = 18.sp)
+            Text(label, color = Pal.Text, fontSize = 15.sp, letterSpacing = 1.sp)
+            if (value != null) Text(value, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -673,11 +607,11 @@ private fun RockerHalf(modifier: Modifier, up: Boolean, plus: Boolean, onClick: 
             .pressable(inter, repeat = true, onClick = onClick),
         contentAlignment = if (up) Alignment.TopCenter else Alignment.BottomCenter
     ) {
-        Box(Modifier.padding(vertical = 22.dp)) {
+        Box(Modifier.padding(vertical = 14.dp)) {
             if (plus) {
-                Text(if (up) "+" else "−", color = Pal.Text, fontSize = 34.sp, fontWeight = FontWeight.Light)
+                Text(if (up) "+" else "−", color = Pal.Text, fontSize = 28.sp, fontWeight = FontWeight.Light)
             } else {
-                Chevron(if (up) Dir.UP else Dir.DOWN, Pal.Text, Modifier.size(22.dp))
+                Chevron(if (up) Dir.UP else Dir.DOWN, Pal.Text, Modifier.size(20.dp))
             }
         }
     }
