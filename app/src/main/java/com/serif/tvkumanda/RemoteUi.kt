@@ -971,14 +971,23 @@ private fun ConnectSheet(
     onForgetSaved: (SavedTv) -> Unit
 ) {
     var ip by remember { mutableStateOf(initialIp) }
-    // Ağ taraması panel açıkken çalışır; sonuç hem kayıtlı hem bulunan listelerinde kullanılır
+    // Ağ taraması: kayıtlı TV yoksa panel açılınca kendiliğinden, varsa yalnızca
+    // "Yeni TV ara" ile başlar ve 15 sn sonra durur.
     val context = LocalContext.current
     val discovery = remember { TvDiscovery(context) }
     var found by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
-    DisposableEffect(Unit) {
-        discovery.start { found = it }
-        onDispose { discovery.stop() }
+    var scanning by remember { mutableStateOf(ui.savedTvs.isEmpty()) }
+    var scannedOnce by remember { mutableStateOf(false) }
+    LaunchedEffect(scanning) {
+        if (scanning) {
+            discovery.start { found = it }
+            delay(15_000)
+            discovery.stop()
+            scanning = false
+            scannedOnce = true
+        }
     }
+    DisposableEffect(Unit) { onDispose { discovery.stop() } }
     SheetTitle("TV'ye bağlan", "TV ve telefon aynı Wi-Fi ağında olmalı.")
     MethodSelector(ui.method, onMethod)
     Spacer(Modifier.height(12.dp))
@@ -1001,7 +1010,10 @@ private fun ConnectSheet(
         ) { onConnect(ip.trim()) }
     }
     SavedTvList(ui, found.map { it.ip }.toSet(), onPick = { tv -> ip = tv.ip; onPickSaved(tv) }, onForget = onForgetSaved)
-    FoundTvList(found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }, ui.state, anySaved = ui.savedTvs.isNotEmpty()) { tv ->
+    FoundTvList(
+        found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }, ui.state,
+        scanning = scanning, scannedOnce = scannedOnce, onScan = { scanning = true }
+    ) { tv ->
         ip = tv.ip
         onConnect(tv.ip)
     }
@@ -1086,7 +1098,14 @@ private fun SavedTvList(ui: UiState, online: Set<String>, onPick: (SavedTv) -> U
 
 /** Ağda otomatik bulunan (henüz kayıtlı olmayan) TV'ler. */
 @Composable
-private fun FoundTvList(tvs: List<FoundTv>, state: ConnState, anySaved: Boolean, onPick: (FoundTv) -> Unit) {
+private fun FoundTvList(
+    tvs: List<FoundTv>,
+    state: ConnState,
+    scanning: Boolean,
+    scannedOnce: Boolean,
+    onScan: () -> Unit,
+    onPick: (FoundTv) -> Unit
+) {
 
     Spacer(Modifier.height(16.dp))
     Text(
@@ -1097,17 +1116,6 @@ private fun FoundTvList(tvs: List<FoundTv>, state: ConnState, anySaved: Boolean,
         fontWeight = FontWeight.Medium
     )
     Spacer(Modifier.height(8.dp))
-    if (tvs.isEmpty()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-            CircularProgressIndicator(Modifier.size(16.dp), color = Pal.Sub, strokeWidth = 2.dp)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                if (anySaved) "Yeni TV aranıyor…" else "Aranıyor… Bulunamazsa IP'yi elle gir.",
-                color = Pal.Sub, fontSize = 13.sp
-            )
-        }
-        return
-    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (tv in tvs) {
             Row(
@@ -1127,6 +1135,31 @@ private fun FoundTvList(tvs: List<FoundTv>, state: ConnState, anySaved: Boolean,
                 }
                 Text("Bağlan", color = Pal.Blue, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
+        }
+    }
+    Spacer(Modifier.height(if (tvs.isEmpty()) 0.dp else 8.dp))
+    if (scanning) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+            CircularProgressIndicator(Modifier.size(16.dp), color = Pal.Sub, strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text("Aranıyor…", color = Pal.Sub, fontSize = 13.sp)
+        }
+    } else {
+        if (scannedOnce && tvs.isEmpty()) {
+            Text("Yeni TV bulunamadı. IP'yi elle de girebilirsin.", color = Pal.Sub, fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
+        }
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(Pal.Btn)
+                .clickable(onClick = onScan)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("⟳", color = Pal.Blue, fontSize = 16.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("Yeni TV ara", color = Pal.Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
