@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -455,6 +457,8 @@ private fun PlayerCard(
     Column(
         Modifier
             .fillMaxWidth()
+            // Tam ekran oynatıcı bu kartın üst kenarından açılır ve buraya kapanır
+            .onGloballyPositioned { sheet.cardTop = it.positionInRoot().y }
             .clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(Pal.Btn, Pal.Pad)))
             .padding(18.dp)

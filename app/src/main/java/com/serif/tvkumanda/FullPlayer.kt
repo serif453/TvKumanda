@@ -40,26 +40,39 @@ import kotlinx.coroutines.launch
 class PlayerSheet(private val scope: CoroutineScope) {
     val y = Animatable(HIDDEN)
     var height by mutableStateOf(0f)
+    /** Küçük oynatıcı kartının üst kenarı: oynatıcı buradan açılır ve buraya kapanır. */
+    var cardTop by mutableStateOf(0f)
 
-    val visible: Boolean get() = height > 0f && y.value < height - 1f
+    /** Kapalı konum: kart görünüyorsa kartın üst kenarı, değilse ekranın altı. */
+    private val closedPos: Float get() = if (cardTop > 0f) cardTop else height
 
+    val visible: Boolean get() = height > 0f && y.value < closedPos - 1f
+
+    /** Karttan yukarı doğru açılır (dokununca da, kaydırınca da aynı yerden). */
     fun open() = scope.launch {
-        if (y.value > height) y.snapTo(height)
+        if (y.value > closedPos) y.snapTo(closedPos)
         y.animateTo(0f, tween(260))
     }
 
-    fun close() = scope.launch { y.animateTo(if (height > 0f) height else HIDDEN, tween(220)) }
+    /** Kartın olduğu yere inip içinde kaybolur. */
+    fun close() = scope.launch {
+        y.animateTo(closedPos, tween(220))
+        y.snapTo(HIDDEN)
+    }
 
     fun hideNow() = scope.launch { y.snapTo(HIDDEN) }
 
-    /** Sürükleme başlarken (küçük karttan) oynatıcı ekranın hemen altına yerleştirilir. */
-    fun startFromBottom() = scope.launch { if (y.value > height) y.snapTo(height) }
+    /** Karttan sürükleme başlarken oynatıcının üst kenarı kartın üst kenarına yerleşir. */
+    fun startFromCard() = scope.launch { if (y.value > closedPos) y.snapTo(closedPos) }
 
-    fun dragBy(dy: Float) = scope.launch { y.snapTo((y.value + dy).coerceIn(0f, height)) }
+    fun dragBy(dy: Float) = scope.launch { y.snapTo((y.value + dy).coerceIn(0f, closedPos)) }
 
-    /** Parmak kalkınca: [fromMini] ise yukarı çekme, değilse aşağı itme eşiğine bakılır. */
+    /**
+     * Parmak kalkınca: karttan çekiliyorsa yolun üçte biri geçildiyse açılır;
+     * tam ekrandan itiliyorsa biraz aşağı inildiyse kapanır.
+     */
     fun settle(fromMini: Boolean) {
-        val openIt = if (fromMini) y.value < height * 0.78f else y.value < height * 0.22f
+        val openIt = if (fromMini) y.value < closedPos * 0.67f else y.value < closedPos * 0.22f
         if (openIt) open() else close()
     }
 
@@ -75,7 +88,7 @@ fun rememberPlayerSheet(): PlayerSheet {
 /** Küçük karttaki başlık bölgesi: yukarı kaydırınca tam ekran oynatıcı parmağı takip ederek açılır. */
 fun Modifier.swipeUpToOpen(sheet: PlayerSheet): Modifier = pointerInput(sheet) {
     detectVerticalDragGestures(
-        onDragStart = { sheet.startFromBottom() },
+        onDragStart = { sheet.startFromCard() },
         onVerticalDrag = { ch, dy -> ch.consume(); sheet.dragBy(dy) },
         onDragEnd = { sheet.settle(fromMini = true) },
         onDragCancel = { sheet.close() }
