@@ -1,12 +1,14 @@
 package com.serif.tvkumanda
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -621,29 +623,79 @@ private fun TrackpadIcon(modifier: Modifier) {
 
 private val modeNames = listOf("Yön tuşları", "Kaydırma", "Fare")
 
+/**
+ * Mod göstergesi: üç eşit çubuk, seçili olan parlak.
+ * Dokunarak seçilebilir ya da bu alanda parmağı sağa-sola kaydırarak mod değiştirilebilir.
+ */
 @Composable
 private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val haptic = LocalHapticFeedback.current
+    val step = with(LocalDensity.current) { 36.dp.toPx() }
+    val currentPage by rememberUpdatedState(page)
+    val select by rememberUpdatedState(onSelect)
+    Row(
+        Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .pointerInput(Unit) {
+                var acc = 0f
+                var target = 0
+                detectHorizontalDragGestures(
+                    onDragStart = { acc = 0f; target = currentPage },
+                    onHorizontalDrag = { change, drag ->
+                        change.consume()
+                        acc += drag
+                        val moveBy = when {
+                            acc >= step -> 1
+                            acc <= -step -> -1
+                            else -> 0
+                        }
+                        if (moveBy != 0) {
+                            acc -= moveBy * step
+                            val next = (target + moveBy).coerceIn(0, modeNames.lastIndex)
+                            if (next != target) {
+                                target = next
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                select(next)
+                            }
+                        }
+                    }
+                )
+            }
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         for (i in modeNames.indices) {
             val selected = i == page
-            val w by animateDpAsState(if (selected) 22.dp else 8.dp, tween(200), label = "dot")
+            val color by animateColorAsState(
+                if (selected) Color(0xFFE4E4EA) else Color(0xFF4A4A50),
+                tween(200),
+                label = "bar"
+            )
             Box(
                 Modifier
-                    .size(width = 34.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .clickable { onSelect(i) },
+                    .size(width = 38.dp, height = 40.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onSelect(i) },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     Modifier
-                        .size(width = w, height = 8.dp)
+                        .size(width = 26.dp, height = 6.dp)
                         .clip(CircleShape)
-                        .background(if (selected) Color(0xFFDDDDE2) else Color(0xFF55555C))
+                        .background(color)
                 )
             }
         }
-        Spacer(Modifier.width(6.dp))
-        Text(modeNames.getOrElse(page) { "" }, color = Pal.Sub, fontSize = 12.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            modeNames.getOrElse(page) { "" },
+            color = Pal.Sub,
+            fontSize = 12.sp,
+            modifier = Modifier.width(72.dp)
+        )
     }
 }
 
@@ -679,14 +731,14 @@ private fun BottomControls(
             )
             Column(verticalArrangement = Arrangement.spacedBy(b * 0.38f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    CircleBtn(b, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
+                    CircleBtn(b, { Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.BACK) }
                     CircleBtn(b, { Icon(AppIcons.HomeOutline, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.HOME) }
                     CircleBtn(b, { DotsIcon(icon * 0.92f) }, onNumpad)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     CircleBtn(b, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
                     CircleBtn(b, { Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.ASSIST) }
-                    CircleBtn(b, { Icon(AppIcons.Undo, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.BACK) }
+                    CircleBtn(b, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
                 }
             }
             Rocker(
