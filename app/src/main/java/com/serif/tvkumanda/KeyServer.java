@@ -9,6 +9,7 @@ import android.view.KeyEvent;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
@@ -221,13 +222,16 @@ public final class KeyServer {
         return s == null ? "" : s.toString().replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
     }
 
+    /** Drawable'ı PNG'ye çevirir; geniş görseller (afiş) oranı korunarak çizilir. Hata olursa "". */
     private static String iconPng(Drawable d) {
         if (d == null) return "";
         try {
-            int size = 128;
-            Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
+            int w = 128, h = 128;
+            if (iw > 0 && ih > 0 && iw > ih * 1.2f) { w = 192; h = Math.max(1, Math.round(192f * ih / iw)); }
+            Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bmp);
-            d.setBounds(0, 0, size, size);
+            d.setBounds(0, 0, w, h);
             d.draw(c);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
@@ -236,6 +240,35 @@ public final class KeyServer {
         } catch (Throwable t) {
             return "";
         }
+    }
+
+    private interface IconSource { Drawable load() throws Throwable; }
+
+    /**
+     * Simgeyi sırayla birkaç kaynaktan dener: etkinlik simgesi, uygulama simgesi,
+     * TV afişi (banner), logo; en son sistemin varsayılan simgesi. İlk başarıyla
+     * çizilen kullanılır. Bazı TV uygulamalarında kare simge yoktur, yalnızca afiş vardır.
+     */
+    private static String bestIcon(final PackageManager pm, final ResolveInfo ri) {
+        final ActivityInfo ai = ri.activityInfo;
+        final boolean hasOwnIcon = ai.getIconResource() != 0
+                || (ai.applicationInfo != null && ai.applicationInfo.icon != 0);
+        IconSource[] sources = new IconSource[] {
+                () -> hasOwnIcon ? ri.loadIcon(pm) : null,
+                () -> ai.applicationInfo != null && ai.applicationInfo.icon != 0 ? ai.applicationInfo.loadIcon(pm) : null,
+                () -> ai.loadBanner(pm),
+                () -> ai.applicationInfo != null ? ai.applicationInfo.loadBanner(pm) : null,
+                () -> ai.loadLogo(pm),
+                () -> ri.loadIcon(pm)
+        };
+        for (IconSource src : sources) {
+            try {
+                String png = iconPng(src.load());
+                if (!png.isEmpty()) return png;
+            } catch (Throwable ignored) {
+            }
+        }
+        return "";
     }
 
     private static void listApps() {
@@ -249,10 +282,8 @@ public final class KeyServer {
                 String pkg = ri.activityInfo.packageName;
                 String act = ri.activityInfo.name;
                 String label = clean(ri.loadLabel(pm));
-                Drawable icon = null;
-                try { icon = ri.loadIcon(pm); } catch (Throwable ignored) { }
                 sb.append("APP\t").append(pkg).append('\t').append(act).append('\t')
-                  .append(label).append('\t').append(iconPng(icon)).append('\n');
+                  .append(label).append('\t').append(bestIcon(pm, ri)).append('\n');
             }
         } catch (Throwable ignored) {
             // Liste alınamazsa telefon eski yönteme geri döner
