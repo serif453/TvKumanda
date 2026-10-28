@@ -7,7 +7,20 @@ import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import android.util.Base64;
+
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.util.List;
 import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -25,6 +38,8 @@ import java.lang.reflect.Method;
  *   m dx dy   -> fare imlecini göreceli taşı
  *   c         -> sol tık
  *   w n       -> fare tekerleği
+ *   a         -> TV uygulamalarını gerçek adları ve simgeleriyle listele
+ *                (her satır: APP\tpaket\tetkinlik\tad\tbase64png, en sonda END)
  *
  * Bu sınıf telefonda çalışmaz; uygulamanın APK'sı TV'ye kopyalanıp orada çalıştırılır.
  */
@@ -60,6 +75,8 @@ public final class KeyServer {
                     mouseClick();
                 } else if (line.startsWith("w ")) {
                     mouseWheel(Integer.parseInt(line.substring(2).trim()));
+                } else if (line.equals("a")) {
+                    listApps();
                 }
             } catch (Throwable ignored) {
             }
@@ -176,5 +193,72 @@ public final class KeyServer {
 
     private static void mouseWheel(int n) throws Exception {
         mouseReport(0, 0, 0, clamp(n));
+    }
+
+    // ---------------- Uygulama listesi (ad + simge) ----------------
+    // app_process içinde normal bir Context yoktur; sistem bağlamı ActivityThread üzerinden
+    // oluşturulur (scrcpy'nin de kullandığı yöntem). Böylece PackageManager ile TV'nin
+    // kendi gösterdiği uygulama adları ve simgeleri okunabilir.
+
+    private static Context context;
+
+    private static Context context() throws Exception {
+        if (context != null) return context;
+        Class<?> at = Class.forName("android.app.ActivityThread");
+        Constructor<?> ctor = at.getDeclaredConstructor();
+        ctor.setAccessible(true);
+        Object thread = ctor.newInstance();
+        Field current = at.getDeclaredField("sCurrentActivityThread");
+        current.setAccessible(true);
+        current.set(null, thread);
+        Method sys = at.getDeclaredMethod("getSystemContext");
+        sys.setAccessible(true);
+        context = (Context) sys.invoke(thread);
+        return context;
+    }
+
+    private static String clean(CharSequence s) {
+        return s == null ? "" : s.toString().replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static String iconPng(Drawable d) {
+        if (d == null) return "";
+        try {
+            int size = 128;
+            Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(bmp);
+            d.setBounds(0, 0, size, size);
+            d.draw(c);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
+            bmp.recycle();
+            return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static void listApps() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            PackageManager pm = context().getPackageManager();
+            Intent intent = new Intent(Intent.ACTION_MAIN).addCategory("android.intent.category.LEANBACK_LAUNCHER");
+            List<ResolveInfo> list = pm.queryIntentActivities(intent, 0);
+            for (ResolveInfo ri : list) {
+                if (ri.activityInfo == null) continue;
+                String pkg = ri.activityInfo.packageName;
+                String act = ri.activityInfo.name;
+                String label = clean(ri.loadLabel(pm));
+                Drawable icon = null;
+                try { icon = ri.loadIcon(pm); } catch (Throwable ignored) { }
+                sb.append("APP\t").append(pkg).append('\t').append(act).append('\t')
+                  .append(label).append('\t').append(iconPng(icon)).append('\n');
+            }
+        } catch (Throwable ignored) {
+            // Liste alınamazsa telefon eski yönteme geri döner
+        }
+        sb.append("END\n");
+        System.out.print(sb);
+        System.out.flush();
     }
 }

@@ -137,6 +137,38 @@ class TvRemote(private val context: Context) : RemoteLink {
 
     /** TV'deki başlatılabilir uygulamaları listeler. Kilit tutmaz, tuş gönderimini bekletmez. */
     override fun listApps(): List<TvApp> {
+        // Önce TV'deki sunucudan gerçek adlar ve simgeler; olmazsa eski yöntem
+        runCatching { listAppsFromServer() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        return listAppsFromShell()
+    }
+
+    /** Tuş sunucusundan uygulamaları TV'nin gösterdiği ad ve simgeleriyle alır. */
+    private fun listAppsFromServer(): List<TvApp>? {
+        val s = fast ?: return null
+        if (!sendFast("a")) return null
+        val lines = waiter.submit<List<String>> {
+            val out = ArrayList<String>()
+            while (true) {
+                val l = s.source.readUtf8Line() ?: break
+                if (l == "END") break
+                out.add(l)
+            }
+            out
+        }.get(20, TimeUnit.SECONDS)
+        return lines.mapNotNull { l ->
+            val p = l.split('\t')
+            if (p.size < 4 || p[0] != "APP") return@mapNotNull null
+            val pkg = p[1]
+            if (pkg == context.packageName) return@mapNotNull null
+            val icon = p.getOrNull(4)?.takeIf { it.isNotEmpty() }
+                ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
+            TvApp(pkg, p[2], p[3].ifBlank { appName(pkg) }, icon)
+        }
+            .distinctBy { it.pkg }
+            .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
+    }
+
+    private fun listAppsFromShell(): List<TvApp> {
         val d = dadb ?: return emptyList()
         fun run(cmd: String) = runCatching { d.shell(cmd).output }.getOrDefault("")
         val found = LinkedHashMap<String, String>()
@@ -244,7 +276,10 @@ fun buildTextCommand(text: String): String {
     return "input text '$sb'"
 }
 
-data class TvApp(val pkg: String, val activity: String, val name: String)
+data class TvApp(val pkg: String, val activity: String, val name: String, val icon: ByteArray? = null) {
+    override fun equals(other: Any?) = other is TvApp && other.pkg == pkg && other.activity == activity && other.name == name
+    override fun hashCode() = pkg.hashCode()
+}
 
 private val knownApps = linkedMapOf(
     "com.netflix.ninja" to "Netflix",

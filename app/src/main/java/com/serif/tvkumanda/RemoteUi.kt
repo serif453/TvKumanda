@@ -35,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -352,6 +355,10 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val base = tileColors[abs(app.pkg.hashCode()) % tileColors.size]
+    // TV'den gelen gerçek simge (ADB); yoksa renkli baş harf
+    val iconBitmap = remember(app.pkg, app.icon) {
+        app.icon?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
+    }
     Column(
         Modifier.width(76.dp).graphicsLayer { scaleX = scale; scaleY = scale },
         horizontalAlignment = Alignment.CenterHorizontally
@@ -360,26 +367,40 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
             Modifier
                 .size(72.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.65f))))
+                .then(
+                    if (iconBitmap != null) Modifier.background(Color(0xFF2C2C2E))
+                    else Modifier.background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.65f))))
+                )
                 .pressable(inter, deferMs = 500, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                app.name.take(1).uppercase(),
-                color = Color.White,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
+            if (iconBitmap != null) {
+                Image(
+                    iconBitmap,
+                    contentDescription = app.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    app.name.take(1).uppercase(),
+                    color = Color.White,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
         Spacer(Modifier.height(6.dp))
         Text(
             app.name,
             color = Pal.Text,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            maxLines = 2,                       // uzun adlar ("Prime Video") kesilmeden iki satıra sığar
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.height(30.dp)
         )
     }
 }
