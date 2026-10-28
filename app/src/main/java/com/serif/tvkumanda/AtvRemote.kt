@@ -80,8 +80,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
     @Volatile var onImeShow: ((String) -> Unit)? = null
     /** TV klavyesi kapandığında çağrılır (ör. TV'de geri tuşu). */
     @Volatile var onImeHide: (() -> Unit)? = null
+    /** TV'de yazı kutusunun seçili olup olmadığı değiştiğinde çağrılır. */
+    @Volatile var onFieldState: ((Boolean) -> Unit)? = null
 
-        /** Kumanda kanalı beklenmedik şekilde kapandığında çağrılır. */
+    /** Kumanda kanalı beklenmedik şekilde kapandığında çağrılır. */
     @Volatile var onDisconnected: (() -> Unit)? = null
 
     // Eşleştirme kanalı
@@ -311,9 +313,14 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     fun endVoice(sessionId: Int) = send(RemoteMsg.voiceEnd(sessionId))
 
-    private fun updateField(value: String?) = synchronized(fieldLock) {
-        fieldValue = value
-        fieldLock.notifyAll()
+    private fun updateField(value: String?) {
+        val changed = synchronized(fieldLock) {
+            val was = fieldValue != null
+            fieldValue = value
+            fieldLock.notifyAll()
+            was != (value != null)
+        }
+        if (changed) onFieldState?.invoke(value != null)
     }
 
     /** TV kutusu [value] olana (ya da kutu kapanana) kadar en fazla [ms] bekler. */
@@ -335,17 +342,25 @@ class AtvRemote(private val context: Context) : RemoteLink {
     // Canlı yazma kuyruğu: düzenlemeler sırayla, TV'nin cevabı beklenerek uygulanır
     private val typingQueue = java.util.concurrent.LinkedBlockingQueue<Pair<String, Boolean>>()
 
-    init {
-        Thread({
+    private val typingThread = Thread({
+        try {
             while (true) {
                 var job = typingQueue.take()
                 // Beklerken biriken düzenlemelerden yalnızca en sonuncusu önemli
                 var enter = job.second
                 while (true) { val n = typingQueue.poll() ?: break; job = n; enter = enter || n.second }
                 runCatching { applyEdit(job.first) }
-                if (enter) runCatching { send(RemoteMsg.key(66)) }   // KEYCODE_ENTER
+                if (enter) runCatching { send(RemoteMsg.key(Keys.ENTER)) }
             }
-        }, "atv-typing").apply { isDaemon = true }.start()
+        } catch (_: InterruptedException) {
+            // release(): uygulama kapanıyor
+        }
+    }, "atv-typing").apply { isDaemon = true; start() }
+
+    /** Uygulama kapanırken çağrılır: bağlantıyı kapatır ve yazma işçisini durdurur. */
+    fun release() {
+        close()
+        typingThread.interrupt()
     }
 
     /**
@@ -354,7 +369,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
      * TV her adımda kutunun yeni hâlini bildirir; sıradaki adım bu cevap beklenerek atılır.
      */
     private fun applyEdit(target: String) {
-        if (activeFeatures and 4 == 0) return
+        if (activeFeatures and RemoteMsg.IME == 0) return
         val t = target.replace('\n', ' ')
         val current = fieldValue
         if (current == null) {
@@ -366,7 +381,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
             // TV'deki metinle bildiğimiz metin ayrışır ve fazladan "sil" geri tuşu gibi çalışır
             val plain = normalizeText(t)
             val common = blindText.commonPrefixWith(plain).length
-            repeat(blindText.length - common) { send(RemoteMsg.key(67)) }   // KEYCODE_DEL
+            repeat(blindText.length - common) { send(RemoteMsg.key(Keys.DEL)) }
             if (blindText.length > common) Thread.sleep(60)               // silme önce işlensin
             insert(plain.substring(common))
             blindText = plain
@@ -375,7 +390,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
         val common = current.commonPrefixWith(t).length
         val deletes = current.length - common
         val tail = t.substring(common)
-        repeat(deletes) { send(RemoteMsg.key(67)) }   // KEYCODE_DEL
+        repeat(deletes) { send(RemoteMsg.key(Keys.DEL)) }
         if (deletes > 0 && tail.isNotEmpty()) awaitField(t.take(common))
         insert(tail)
         awaitField(t)

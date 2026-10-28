@@ -47,7 +47,6 @@ class Pb {
 
 class PbMsg private constructor(private val fields: Map<Int, List<Any>>) {
     fun has(n: Int) = fields.containsKey(n)
-    val fieldNumbers: Set<Int> get() = fields.keys
     fun long(n: Int): Long = fields[n]?.firstOrNull() as? Long ?: 0L
     fun int(n: Int): Int = long(n).toInt()
     fun bytes(n: Int): ByteArray? = fields[n]?.firstOrNull() as? ByteArray
@@ -182,8 +181,9 @@ object Polo {
 
 object RemoteMsg {
     // Özellik bayrakları: PING=1, KEY=2, IME=4, VOICE=8, POWER=32, VOLUME=64, APP_LINK=512
+    const val IME = 4
     const val VOICE = 8
-    const val FEATURES = 1 or 2 or 4 or VOICE or 32 or 64 or 512
+    const val FEATURES = 1 or 2 or IME or VOICE or 32 or 64 or 512
     const val KEYCODE_SEARCH = 84
     // Ses: 16 bit PCM, 8 kHz, mono. Parça en fazla 20 KB, en az 8 KB (eksik kısım sessizlikle doldurulur)
     const val VOICE_SAMPLE_RATE = 8000

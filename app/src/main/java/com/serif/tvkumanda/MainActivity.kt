@@ -79,7 +79,6 @@ class MainActivity : ComponentActivity() {
     private var typingSeedTick by mutableStateOf(0)
     private var typingHint by mutableStateOf("")
     private var imeReady by mutableStateOf(false)
-    private var imeJob: Job? = null
     @Volatile private var liveText = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,6 +89,7 @@ class MainActivity : ComponentActivity() {
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
         atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
+        atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -330,7 +330,7 @@ class MainActivity : ComponentActivity() {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
         typingHint = atv.imeHint
         // Yalnızca gerçek kutu seçiminde çağrılır (kutu bilgisi içeren mesaj)
-        if (AUTO_OPEN_TYPING && !typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
+        if (!typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
     }
 
     private fun openTyping(seed: String) {
@@ -340,10 +340,10 @@ class MainActivity : ComponentActivity() {
         typingSeedTick++
         liveText = seed
         atv.startTyping(seed)
-        typing = true
         // TV'de yazı kutusu seçili mi: ekrandaki bilgi satırı buna göre gösterilir
-        imeJob?.cancel()
-        imeJob = scope.launch { while (typing) { imeReady = atv.hasTextField; delay(300) } }
+        // (sonraki değişiklikler onFieldState ile gelir)
+        imeReady = atv.hasTextField
+        typing = true
     }
 
     private var typingClosedAt = 0L
@@ -351,7 +351,6 @@ class MainActivity : ComponentActivity() {
     private fun closeTyping() {
         if (typing) typingClosedAt = System.currentTimeMillis()
         typing = false
-        imeReady = false
     }
 
     /** Canlı yazma: her değişiklik TV'ye gider (TV tarafında sırayla, cevap beklenerek uygulanır). */
@@ -414,7 +413,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private val VOICE_BLOCK = 16 * 1024
-    private val AUTO_OPEN_TYPING = true
 
     private fun startVoiceStream() {
         micStop = false
@@ -574,7 +572,7 @@ class MainActivity : ComponentActivity() {
         micStop = true
         recognizer?.destroy()
         scope.cancel()
-        Thread { adb.close(); atv.close(); io.close() }.start()
+        Thread { adb.close(); atv.release(); io.close() }.start()
     }
 }
 
