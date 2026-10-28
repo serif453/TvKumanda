@@ -330,8 +330,9 @@ class MainActivity : ComponentActivity() {
     private fun onTvKeyboard(value: String) {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
         imeReady = true
-        // Ekran zaten açıksa metne dokunulmaz; gecikmeli bir TV bildirimi yazılanı ezmesin
-        if (!typing) openTyping(value)
+        // Ekran zaten açıksa metne dokunulmaz; gecikmeli bir TV bildirimi yazılanı ezmesin.
+        // Kapattıktan hemen sonra gelen bildirimler (ör. Enter'ın yankısı) ekranı yeniden açmaz.
+        if (!typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
     }
 
     private fun openTyping(seed: String) {
@@ -345,7 +346,10 @@ class MainActivity : ComponentActivity() {
         diagJob = scope.launch { while (typing) { typingDiag = atv.diagnostics(); delay(500) } }
     }
 
+    private var typingClosedAt = 0L
+
     private fun closeTyping() {
+        if (typing) typingClosedAt = System.currentTimeMillis()
         typing = false
         imeReady = false
     }

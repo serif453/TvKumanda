@@ -50,6 +50,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
     @Volatile private var activeFeatures = RemoteMsg.FEATURES
     @Volatile private var imeCounter = 0
     @Volatile private var imeField = 0
+    /** Yazı kutusu durumundan gelen kutu numarası (Philips'te batch_edit'teki numaradan farklı). */
+    @Volatile private var textFieldId = 0
+    /** Gönderimde kullanılacak kutu numarası. */
+    private val fieldForSend get() = if (textFieldId != 0) textFieldId else imeField
     @Volatile private var volumeInfo: Pair<Int, Int>? = null
     @Volatile private var deviceName = ""
 
@@ -168,20 +172,20 @@ class AtvRemote(private val context: Context) : RemoteLink {
     // ---- Geçici teşhis (yazma sorunu): TV'nin desteklediği özellikler ve gelen mesaj türleri ----
     @Volatile private var tvFeatures = -1
     private val seen = java.util.concurrent.ConcurrentHashMap<Int, Int>()
-    @Volatile private var lastIme = ""
+    private val lastRaw = java.util.concurrent.ConcurrentHashMap<Int, String>()
     @Volatile private var sentTexts = 0
 
     fun diagnostics(): String {
         val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
         return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
-            "sayaç=$imeCounter/$imeField gönderilen=$sentTexts | gelen: $types | son IME: $lastIme"
+            "sayaç=$imeCounter/$imeField kutu=$textFieldId gönderilen=$sentTexts | gelen: $types | " +
+            lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
 
     private fun handle(m: PbMsg, o: OutputStream) {
         for (f in m.fieldNumbers) if (f != 8) seen.merge(f, 1, Int::plus)
-        if (m.has(20) || m.has(21) || m.has(22)) {
-            lastIme = m.fieldNumbers.joinToString(",") + ":" + (m.bytes(20) ?: m.bytes(21) ?: m.bytes(22))
-                ?.joinToString("") { "%02x".format(it) }?.take(160)
+        for (f in intArrayOf(20, 21, 22, 29)) {
+            if (m.has(f)) lastRaw[f] = (m.bytes(f)?.joinToString("") { "%02x".format(it) } ?: "int:${m.long(f)}").take(120)
         }
         when {
             m.has(1) -> { // remote_configure
@@ -204,10 +208,22 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 b?.msg(3)?.msg(2)?.let { if (it.has(3)) imeText = it.str(3) }
             }
             m.has(22) -> {                                                       // remote_ime_show_request
-                // remote_text_field_status=2 { value=2 }
+                // remote_text_field_status=2 { counter_field=1, value=2 }
                 val st = m.msg(22)?.msg(2)
+                // Philips'te kutunun numarası (ör. 463) burada geliyor; yazılar bu numarayla
+                // gönderilmezse TV görünen kutuya yazmıyor
+                st?.let { if (it.has(1)) textFieldId = it.int(1) }
                 imeText = st?.str(2) ?: ""
                 onImeShow?.invoke(imeText)
+            }
+            m.has(20) -> {                                                       // remote_ime_key_inject
+                // text_field_status=2 varsa TV'de bir yazı kutusu odakta
+                val st = m.msg(20)?.msg(2)
+                if (st != null) {
+                    if (st.has(1)) textFieldId = st.int(1)
+                    imeText = st.str(2)
+                    onImeShow?.invoke(imeText)
+                }
             }
             m.has(30) -> {                                                       // remote_voice_begin
                 val sid = m.msg(30)?.int(1) ?: 0
@@ -299,7 +315,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
      */
     fun setText(value: String) {
         val t = value.replace('\n', ' ')
-        send(RemoteMsg.text(imeCounter, imeField, t))
+        send(RemoteMsg.text(imeCounter, fieldForSend, t))
         sentTexts++
         imeText = t
     }
@@ -307,7 +323,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     /** Standart bağlantının yazı kanalı Türkçe karakterleri destekler; metin sadeleştirilmez. */
     override fun text(raw: String) {
         val t = raw.replace('\n', ' ')
-        if (t.isNotEmpty()) send(RemoteMsg.text(imeCounter, imeField, t))
+        if (t.isNotEmpty()) send(RemoteMsg.text(imeCounter, fieldForSend, t))
     }
 
     /** Fare bu protokolde yok; yalnızca ADB bağlantısında çalışır. */
@@ -328,6 +344,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     private fun closeRemote() {
         imeText = ""
+        textFieldId = 0
         val s = socket
         socket = null
         out = null
