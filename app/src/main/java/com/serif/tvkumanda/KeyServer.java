@@ -291,8 +291,8 @@ public final class KeyServer {
                     .getDeclaredConstructor().newInstance();
             Method add = android.content.res.AssetManager.class.getDeclaredMethod("addAssetPath", String.class);
             add.setAccessible(true);
-            add.invoke(am, app.sourceDir);
-            if (app.splitSourceDirs != null) for (String sp : app.splitSourceDirs) add.invoke(am, sp);
+            lastCookies = "c=" + add.invoke(am, app.sourceDir);
+            if (app.splitSourceDirs != null) for (String sp : app.splitSourceDirs) lastCookies += "," + add.invoke(am, sp);
             android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
             dm.setToDefaults();
             dm.densityDpi = 320; dm.density = 2f; dm.scaledDensity = 2f;
@@ -315,6 +315,34 @@ public final class KeyServer {
         } catch (Throwable e) {
             return r.getDrawable(resId, t);
         }
+    }
+
+    private static String lastCookies = "";
+
+    /** Hata ve nedenlerinin kısa metni. */
+    private static String describe(Throwable t) {
+        StringBuilder b = new StringBuilder();
+        for (int depth = 0; t != null && depth < 3; depth++, t = t.getCause()) {
+            if (depth > 0) b.append(" <- ");
+            String m = t.getMessage();
+            b.append(t.getClass().getSimpleName()).append(": ").append(m == null ? "" : m.length() > 140 ? m.substring(0, 140) : m);
+        }
+        return b.toString();
+    }
+
+    /** APK dosyalarının yeri ve okunabilirliği (teşhis). */
+    private static String fileInfo(android.content.pm.ApplicationInfo app) {
+        if (app == null) return "appInfo yok";
+        StringBuilder b = new StringBuilder();
+        java.util.List<String> files = new java.util.ArrayList<>();
+        files.add(app.sourceDir);
+        if (app.splitSourceDirs != null) java.util.Collections.addAll(files, app.splitSourceDirs);
+        for (String f : files) {
+            java.io.File file = new java.io.File(f == null ? "" : f);
+            b.append(f).append(" okunur=").append(file.canRead()).append(" boyut=").append(file.length()).append("; ");
+        }
+        b.append(lastCookies).append(" flags=").append(Integer.toHexString(app.flags));
+        return b.toString();
     }
 
     private static final java.util.HashMap<String, android.content.res.Resources> apkResources = new java.util.HashMap<>();
@@ -372,8 +400,11 @@ public final class KeyServer {
                    .append(d.getIntrinsicWidth()).append('x').append(d.getIntrinsicHeight()).append(lastErr);
             } catch (Throwable t) {
                 why.append(' ').append(names[i]).append(":").append(t.getClass().getSimpleName());
+                // Ayrıntılı neden yalnızca birkaç temsilci deneme için (metin kısa kalsın)
+                if (i == 0 || names[i].equals("apkIcon")) why.append(" {").append(describe(t)).append('}');
             }
         }
+        why.append(" | ").append(fileInfo(app));
         return new String[]{"", clean(why)};
     }
 
