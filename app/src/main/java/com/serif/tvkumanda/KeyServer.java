@@ -222,17 +222,22 @@ public final class KeyServer {
         return s == null ? "" : s.toString().replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').trim();
     }
 
-    /** Drawable'ı PNG'ye çevirir; geniş görseller (afiş) oranı korunarak çizilir. Hata olursa "". */
+    /**
+     * Drawable'ı PNG'ye çevirir. Geniş görseller (afiş) oranı korunarak, telefonda
+     * kutucuğu doldurmak üzere kırpılabilecek kadar yüksek çözünürlükte çizilir.
+     * Hata olursa ya da görsel tamamen boşsa "" döner (sıradaki kaynak denenir).
+     */
     private static String iconPng(Drawable d) {
         if (d == null) return "";
         try {
             int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
-            int w = 128, h = 128;
-            if (iw > 0 && ih > 0 && iw > ih * 1.2f) { w = 192; h = Math.max(1, Math.round(192f * ih / iw)); }
+            int w = 144, h = 144;
+            if (iw > 0 && ih > 0 && iw > ih * 1.2f) { h = 160; w = Math.min(400, Math.round(160f * iw / ih)); }
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bmp);
             d.setBounds(0, 0, w, h);
             d.draw(c);
+            if (isBlank(bmp)) { bmp.recycle(); return ""; }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
             bmp.recycle();
@@ -240,6 +245,28 @@ public final class KeyServer {
         } catch (Throwable t) {
             return "";
         }
+    }
+
+    /** Tamamen saydam (hiçbir şey çizilmemiş) görseli yakalar. */
+    private static boolean isBlank(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        for (int y = 0; y < h; y += 4)
+            for (int x = 0; x < w; x += 4)
+                if ((b.getPixel(x, y) >>> 24) != 0) return false;
+        return true;
+    }
+
+    /**
+     * Simgeyi uygulamanın kendi teması uygulanmış bağlamından yükler. Bazı uygulamaların
+     * (ör. Stremio) simgesi temadaki renklere başvurur; tema olmadan çizilemez.
+     */
+    private static Drawable themed(ActivityInfo ai, int resId) throws Throwable {
+        if (resId == 0) return null;
+        Context app = context().createPackageContext(ai.packageName, Context.CONTEXT_IGNORE_SECURITY);
+        int theme = ai.getThemeResource();
+        if (theme == 0 && ai.applicationInfo != null) theme = ai.applicationInfo.theme;
+        if (theme != 0) app.setTheme(theme);
+        return app.getResources().getDrawable(resId, app.getTheme());
     }
 
     private interface IconSource { Drawable load() throws Throwable; }
@@ -259,6 +286,10 @@ public final class KeyServer {
                 () -> ai.loadBanner(pm),
                 () -> ai.applicationInfo != null ? ai.applicationInfo.loadBanner(pm) : null,
                 () -> ai.loadLogo(pm),
+                () -> themed(ai, ai.getIconResource()),
+                () -> themed(ai, ai.applicationInfo != null ? ai.applicationInfo.icon : 0),
+                () -> themed(ai, ai.getBannerResource()),
+                () -> themed(ai, ai.applicationInfo != null ? ai.applicationInfo.banner : 0),
                 () -> ri.loadIcon(pm)
         };
         for (IconSource src : sources) {

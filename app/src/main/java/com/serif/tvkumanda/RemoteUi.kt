@@ -378,7 +378,8 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
                 Image(
                     iconBitmap,
                     contentDescription = app.name,
-                    contentScale = ContentScale.Fit,
+                    // Geniş afişler kutucuğu dolduracak şekilde ortadan hafif yakınlaştırılır
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
