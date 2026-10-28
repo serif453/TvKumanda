@@ -240,21 +240,6 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             val link = remote
             apps = withContext(Dispatchers.IO) { runCatching { link.listApps() }.getOrDefault(emptyList()) }
-            // Geçici teşhis: simgesi gelmeyen uygulamaları ve nedenini göster
-            val missing = apps.filter { it.icon == null && it.iconError != null }
-            if (missing.isNotEmpty()) {
-                val txt = missing.take(3).joinToString("\n\n") { "${it.name} (${it.pkg}): ${it.iconError}" }
-                android.app.AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Simgesi alınamayan uygulamalar (teşhis)")
-                    .setMessage(txt)
-                    .setPositiveButton("Kopyala") { _, _ ->
-                        val cm = getSystemService(android.content.ClipboardManager::class.java)
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("teşhis",
-                            missing.joinToString("\n\n") { "${it.name} (${it.pkg}): ${it.iconError}" }))
-                    }
-                    .setNegativeButton("Kapat", null)
-                    .show()
-            }
         }
     }
 
