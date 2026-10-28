@@ -50,10 +50,17 @@ class AtvRemote(private val context: Context) : RemoteLink {
     @Volatile private var activeFeatures = RemoteMsg.FEATURES
     @Volatile private var imeCounter = 0
     @Volatile private var imeField = 0
-    /** Yazı kutusu durumundan gelen kutu numarası (Philips'te batch_edit'teki numaradan farklı). */
-    @Volatile private var textFieldId = 0
-    /** Gönderimde kullanılacak kutu numarası. */
-    private val fieldForSend get() = if (textFieldId != 0) textFieldId else imeField
+    /**
+     * TV'nin her klavye olayında artırdığı sıra sayacı (ime_show_request içindeki counter_field).
+     * Philips'te batch_edit'teki sayaç 1'de takılı kalıyor; yazı bu güncel sayaçla gönderilmezse
+     * TV onu eski sayıp yok sayıyor.
+     */
+    @Volatile private var imeSeq = 0
+    /** Gönderimde kullanılacak sıra numarası. */
+    private val counterForSend get() = if (imeSeq != 0) imeSeq else imeCounter
+    /** TV'deki yazı kutusunun ipucu yazısı (ör. "Arama yapın"). */
+    @Volatile var imeHint = ""
+        private set
     @Volatile private var volumeInfo: Pair<Int, Int>? = null
     @Volatile private var deviceName = ""
 
@@ -178,7 +185,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     fun diagnostics(): String {
         val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
         return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
-            "sayaç=$imeCounter/$imeField kutu=$textFieldId gönderilen=$sentTexts | gelen: $types | " +
+            "sayaç=$imeCounter/$imeField sıra=$imeSeq gönderilen=$sentTexts | gelen: $types | " +
             lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
 
@@ -210,18 +217,15 @@ class AtvRemote(private val context: Context) : RemoteLink {
             m.has(22) -> {                                                       // remote_ime_show_request
                 // remote_text_field_status=2 { counter_field=1, value=2 }
                 val st = m.msg(22)?.msg(2)
-                // Philips'te kutunun numarası (ör. 463) burada geliyor; yazılar bu numarayla
-                // gönderilmezse TV görünen kutuya yazmıyor
-                st?.let { if (it.has(1)) textFieldId = it.int(1) }
+                st?.let { if (it.has(1)) imeSeq = it.int(1) }
                 imeText = st?.str(2) ?: ""
                 onImeShow?.invoke(imeText)
             }
             m.has(20) -> {                                                       // remote_ime_key_inject
-                // text_field_status=2 varsa TV'de bir yazı kutusu odakta
-                val st = m.msg(20)?.msg(2)
-                if (st != null) {
-                    if (st.has(1)) textFieldId = st.int(1)
-                    imeText = st.str(2)
+                // app_info=1 { label=10 }: TV'de bir yazı kutusu seçilip klavye açıldı
+                val app = m.msg(20)?.msg(1)
+                if (app != null) {
+                    imeHint = app.str(10)
                     onImeShow?.invoke(imeText)
                 }
             }
@@ -315,7 +319,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
      */
     fun setText(value: String) {
         val t = value.replace('\n', ' ')
-        send(RemoteMsg.text(imeCounter, fieldForSend, t))
+        send(RemoteMsg.text(counterForSend, imeField, t))
         sentTexts++
         imeText = t
     }
@@ -323,7 +327,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     /** Standart bağlantının yazı kanalı Türkçe karakterleri destekler; metin sadeleştirilmez. */
     override fun text(raw: String) {
         val t = raw.replace('\n', ' ')
-        if (t.isNotEmpty()) send(RemoteMsg.text(imeCounter, fieldForSend, t))
+        if (t.isNotEmpty()) send(RemoteMsg.text(counterForSend, imeField, t))
     }
 
     /** Fare bu protokolde yok; yalnızca ADB bağlantısında çalışır. */
@@ -344,7 +348,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     private fun closeRemote() {
         imeText = ""
-        textFieldId = 0
+        imeSeq = 0
+        imeHint = ""
         val s = socket
         socket = null
         out = null

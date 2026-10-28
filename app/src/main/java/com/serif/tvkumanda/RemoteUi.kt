@@ -190,7 +190,7 @@ fun RemoteScreen(
     }
 
     if (typingOpen) {
-        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
+        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
     }
     }
 
@@ -1318,6 +1318,7 @@ private fun TypingScreen(
     seedTick: Int,
     imeReady: Boolean,
     diag: String,
+    hint: String,
     onText: (String) -> Unit,
     onSubmit: () -> Unit,
     onClose: () -> Unit,
@@ -1390,7 +1391,8 @@ private fun TypingScreen(
                     decorationBox = { inner ->
                         Box {
                             if (value.text.isEmpty()) {
-                                Text("Yazmaya başlayın…", color = Pal.Sub, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+                                // TV'deki kutunun kendi ipucu yazısı (ör. "Arama yapın") varsa o gösterilir
+                                Text(hint.ifBlank { "Yazmaya başlayın…" }, color = Pal.Sub, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
                             }
                             inner()
                         }

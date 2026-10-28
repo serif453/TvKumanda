@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private var typing by mutableStateOf(false)
     private var typingSeed by mutableStateOf("")
     private var typingSeedTick by mutableStateOf(0)
+    private var typingHint by mutableStateOf("")
     private var imeReady by mutableStateOf(false)
     private var typingDiag by mutableStateOf("")   // geçici teşhis
     private var diagJob: Job? = null
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingDiag),
+                        typing, typingSeed, typingSeedTick, imeReady, typingDiag, typingHint),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -330,6 +331,7 @@ class MainActivity : ComponentActivity() {
     private fun onTvKeyboard(value: String) {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
         imeReady = true
+        typingHint = atv.imeHint
         // Ekran zaten açıksa metne dokunulmaz; gecikmeli bir TV bildirimi yazılanı ezmesin.
         // Kapattıktan hemen sonra gelen bildirimler (ör. Enter'ın yankısı) ekranı yeniden açmaz.
         if (!typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
@@ -338,6 +340,7 @@ class MainActivity : ComponentActivity() {
     private fun openTyping(seed: String) {
         if (state != ConnState.CONNECTED) { message = "Önce TV'ye bağlan"; return }
         typingSeed = seed
+        typingHint = atv.imeHint
         typingSeedTick++
         liveText = seed
         liveSent = seed
@@ -626,7 +629,8 @@ data class UiState(
     val typingSeed: String,
     val typingSeedTick: Int,
     val imeReady: Boolean,
-    val typingDiag: String = ""
+    val typingDiag: String = "",
+    val typingHint: String = ""
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */
