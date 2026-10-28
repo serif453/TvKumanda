@@ -136,10 +136,13 @@ fun RemoteScreen(
     onTvSearch: () -> Unit,
     cast: CastUi = CastUi(),
     onCastPick: (MediaKind) -> Unit = {},
-    onCastItem: (MediaItem) -> Unit = {},
+    onCastItem: (MediaItem, List<MediaItem>) -> Unit = { _, _ -> },
     onCastToggle: () -> Unit = {},
     onCastSeek: (Double) -> Unit = {},
-    onCastStop: () -> Unit = {}
+    onCastStop: () -> Unit = {},
+    onCastPrev: () -> Unit = {},
+    onCastNext: () -> Unit = {},
+    onCastSkip: (Double) -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
@@ -168,6 +171,7 @@ fun RemoteScreen(
             CastScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
+                onCastPrev, onCastNext, onCastSkip,
                 Modifier.weight(1f)
             )
         } else {

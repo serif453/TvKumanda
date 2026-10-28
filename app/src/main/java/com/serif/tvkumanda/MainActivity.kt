@@ -88,8 +88,11 @@ class MainActivity : ComponentActivity() {
     private var castPollJob: Job? = null
     private val castIo = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private var pendingKind = MediaKind.VIDEO
+    /** Oynatmanın başlatıldığı klasör/albüm (önceki/sonraki ve otomatik geçiş için). */
+    private var playlist: List<MediaItem> = emptyList()
+    private var playIndex = -1
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) castMedia(uri, pendingKind)
+        if (uri != null) { playlist = emptyList(); playIndex = -1; castMedia(uri, pendingKind) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -144,7 +147,10 @@ class MainActivity : ComponentActivity() {
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
                     cast = cast,
                     onCastPick = ::pickForCast,
-                    onCastItem = { item -> castMedia(item.uri, item.kind, item.title, item.mime) },
+                    onCastItem = { item, list -> playFromList(list, list.indexOf(item)) },
+                    onCastPrev = { castStep(-1) },
+                    onCastNext = { castStep(1) },
+                    onCastSkip = ::castSkip,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -400,7 +406,7 @@ class MainActivity : ComponentActivity() {
         val ip = currentIp
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
         val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
-        cast = CastUi(CastPhase.PREPARING, title, kind)
+        cast = CastUi(CastPhase.PREPARING, title, kind, hasList = playlist.size > 1)
         castPollJob?.cancel()
         scope.launch {
             try {
@@ -415,6 +421,28 @@ class MainActivity : ComponentActivity() {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
             }
         }
+    }
+
+    /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */
+    private fun playFromList(list: List<MediaItem>, index: Int) {
+        if (list.isEmpty() || index !in list.indices) return
+        playlist = list
+        playIndex = index
+        val item = list[index]
+        castMedia(item.uri, item.kind, item.title, item.mime)
+    }
+
+    /** Önceki (-1) / sonraki (+1); liste sonunda başa, başında sona döner. */
+    private fun castStep(dir: Int) {
+        if (playlist.isEmpty()) return
+        val n = playlist.size
+        playFromList(playlist, ((playIndex + dir) % n + n) % n)
+    }
+
+    /** 10 saniye ileri/geri; videonun başı ve sonunda durur. */
+    private fun castSkip(delta: Double) {
+        val max = if (cast.duration > 0) cast.duration else Double.MAX_VALUE
+        castSeek((cast.position + delta).coerceIn(0.0, max))
     }
 
     private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -458,6 +486,13 @@ class MainActivity : ComponentActivity() {
         // Fotoğraf gösterilirken alıcı durumu "duraklatılmış" ya da "boşta" bildirebilir
         if (cast.kind == MediaKind.PHOTO && st.idleReason != "ERROR") {
             cast = cast.copy(phase = CastPhase.PLAYING)
+            return
+        }
+        // Yeni dosya yüklenirken önceki dosyanın "bitti/kesildi" bildirimleri yok sayılır
+        if (cast.phase == CastPhase.PREPARING && st.playerState == "IDLE") return
+        // Bitince sıradaki kendiliğinden başlar (liste sonunda başa döner)
+        if (st.playerState == "IDLE" && st.idleReason == "FINISHED" && playlist.size > 1) {
+            castStep(1)
             return
         }
         val phase = when (st.playerState) {
@@ -507,6 +542,8 @@ class MainActivity : ComponentActivity() {
     private fun castStop() {
         castPollJob?.cancel()
         cast = CastUi()
+        playlist = emptyList()
+        playIndex = -1
         CastService.stop(this)
         scope.launch(castIo) {
             // TV'deki oynatıcı da kapatılır; bekleme ekranı kalmaz

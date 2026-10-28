@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -54,7 +55,9 @@ data class CastUi(
     val kind: MediaKind = MediaKind.VIDEO,
     val position: Double = 0.0,
     val duration: Double = 0.0,
-    val error: String = ""
+    val error: String = "",
+    /** Klasör/albüm sırasıyla oynatılıyor mu (önceki/sonraki tuşları için). */
+    val hasList: Boolean = false
 )
 
 enum class Tab { REMOTE, CAST }
@@ -99,10 +102,13 @@ fun CastScreen(
     cast: CastUi,
     connected: Boolean,
     onPick: (MediaKind) -> Unit,
-    onCastItem: (MediaItem) -> Unit,
+    onCastItem: (MediaItem, List<MediaItem>) -> Unit,
     onToggle: () -> Unit,
     onSeek: (Double) -> Unit,
     onStop: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onSkip: (Double) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -176,15 +182,15 @@ fun CastScreen(
                         list == null -> CenterText("Yükleniyor…")
                         list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
                         open == null -> AlbumGrid(list, library) { album = it }
-                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected, onCastItem)
-                        else -> ItemGrid(open.items, library, connected, onCastItem)
+                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected) { onCastItem(it, open.items) }
+                        else -> ItemGrid(open.items, library, connected) { onCastItem(it, open.items) }
                     }
                 }
             }
         }
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
-            PlayerCard(cast, onToggle, onSeek, onStop)
+            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip)
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -328,7 +334,15 @@ private fun KindButton(icon: ImageVector, label: String, modifier: Modifier, ena
 }
 
 @Composable
-private fun PlayerCard(cast: CastUi, onToggle: () -> Unit, onSeek: (Double) -> Unit, onStop: () -> Unit) {
+private fun PlayerCard(
+    cast: CastUi,
+    onToggle: () -> Unit,
+    onSeek: (Double) -> Unit,
+    onStop: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onSkip: (Double) -> Unit
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -336,25 +350,32 @@ private fun PlayerCard(cast: CastUi, onToggle: () -> Unit, onSeek: (Double) -> U
             .background(Brush.verticalGradient(listOf(Pal.Btn, Pal.Pad)))
             .padding(18.dp)
     ) {
-        Text(
-            cast.title.ifBlank { cast.kind.label },
-            color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            when (cast.phase) {
-                CastPhase.PREPARING -> "TV'ye gönderiliyor…"
-                CastPhase.BUFFERING -> "Yükleniyor…"
-                CastPhase.PLAYING -> if (cast.kind == MediaKind.PHOTO) "TV'de gösteriliyor" else "Oynatılıyor"
-                CastPhase.PAUSED -> "Duraklatıldı"
-                CastPhase.ENDED -> "Bitti"
-                CastPhase.ERROR -> cast.error.ifBlank { "Oynatılamadı" }
-                CastPhase.NONE -> ""
-            },
-            color = if (cast.phase == CastPhase.ERROR) Pal.Red else Pal.Sub,
-            fontSize = 13.sp
-        )
+        // Başlık satırı: dosya adı + durum, sağ üstte küçük durdur tuşu
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    cast.title.ifBlank { cast.kind.label },
+                    color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    when (cast.phase) {
+                        CastPhase.PREPARING -> "TV'ye gönderiliyor…"
+                        CastPhase.BUFFERING -> "Yükleniyor…"
+                        CastPhase.PLAYING -> if (cast.kind == MediaKind.PHOTO) "TV'de gösteriliyor" else "Oynatılıyor"
+                        CastPhase.PAUSED -> "Duraklatıldı"
+                        CastPhase.ENDED -> "Bitti"
+                        CastPhase.ERROR -> cast.error.ifBlank { "Oynatılamadı" }
+                        CastPhase.NONE -> ""
+                    },
+                    color = if (cast.phase == CastPhase.ERROR) Pal.Red else Pal.Sub,
+                    fontSize = 13.sp
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            RoundAction(AppIcons.Stop, "Durdur", size = 40.dp, iconSize = 20.dp, onClick = onStop)
+        }
 
         val seekable = cast.kind != MediaKind.PHOTO && cast.duration > 0
         if (seekable) {
@@ -379,27 +400,43 @@ private fun PlayerCard(cast: CastUi, onToggle: () -> Unit, onSeek: (Double) -> U
 
         Row(
             Modifier.fillMaxWidth().padding(top = 6.dp),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            RoundAction(AppIcons.SkipPrevious, "Önceki", enabled = cast.hasList, onClick = onPrev)
             if (cast.kind != MediaKind.PHOTO) {
+                RoundAction(AppIcons.Replay10, "10 saniye geri", onClick = { onSkip(-10.0) })
                 val playing = cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING
-                RoundAction(if (playing) AppIcons.Pause else AppIcons.PlayArrow, if (playing) "Duraklat" else "Oynat", big = true, onClick = onToggle)
-                Spacer(Modifier.width(24.dp))
+                RoundAction(
+                    if (playing) AppIcons.Pause else AppIcons.PlayArrow, if (playing) "Duraklat" else "Oynat",
+                    size = 64.dp, iconSize = 32.dp, primary = true, onClick = onToggle
+                )
+                RoundAction(AppIcons.Forward10, "10 saniye ileri", onClick = { onSkip(10.0) })
+            } else {
+                Spacer(Modifier.width(40.dp))
             }
-            RoundAction(AppIcons.Stop, "Durdur", big = false, onClick = onStop)
+            RoundAction(AppIcons.SkipNext, "Sonraki", enabled = cast.hasList, onClick = onNext)
         }
     }
 }
 
 @Composable
-private fun RoundAction(icon: ImageVector, desc: String, big: Boolean, onClick: () -> Unit) {
-    val size = if (big) 64.dp else 52.dp
+private fun RoundAction(
+    icon: ImageVector,
+    desc: String,
+    size: Dp = 48.dp,
+    iconSize: Dp = 26.dp,
+    primary: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     Box(
-        Modifier.size(size).clip(CircleShape).background(if (big) Pal.Blue else Pal.BtnPressed).clickable(onClick = onClick),
+        Modifier.size(size).clip(CircleShape)
+            .background(if (primary) Pal.Blue else Pal.BtnPressed)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, desc, tint = Pal.Text, modifier = Modifier.size(if (big) 32.dp else 26.dp))
+        Icon(icon, desc, tint = if (enabled) Pal.Text else Pal.Sub.copy(alpha = 0.4f), modifier = Modifier.size(iconSize))
     }
 }
 
