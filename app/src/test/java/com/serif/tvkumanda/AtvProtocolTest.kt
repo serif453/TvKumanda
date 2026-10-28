@@ -46,7 +46,7 @@ class AtvProtocolTest {
         val payload = ByteArray(300) { 1 }
         val out = ByteArrayOutputStream()
         writeFrame(out, payload)
-        assertArrayEquals(hex("ac0200"), out.toByteArray().copyOfRange(0, 3))
+        assertArrayEquals(hex("ac02"), out.toByteArray().copyOfRange(0, 2)) // 300 = varint ac 02
         assertArrayEquals(payload, readFrame(ByteArrayInputStream(out.toByteArray())))
 
         val m = PbMsg.parse(hex("0a1c08e704121718012201312a0961747672656d6f74653205312e302e30"))
