@@ -11,6 +11,9 @@ import android.provider.MediaStore
 import android.util.LruCache
 import android.util.Size
 
+/** "Tüm …" kutucuğunun kimliği (gerçek klasör kimlikleriyle çakışmaz). */
+private const val ALL_ID = Long.MIN_VALUE
+
 // Sütun adları eski Android sürümlerinde de aynıdır (MediaColumns sabitleri Android 10+)
 private const val COL_BUCKET = "bucket_id"
 private const val COL_BUCKET_NAME = "bucket_display_name"
@@ -88,9 +91,20 @@ class MediaLibrary(private val context: Context) {
 
     fun albums(kind: MediaKind): List<MediaAlbum> = when (kind) {
         MediaKind.PHOTO -> visual(kind, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        // Videolar zaten en yeniden en eskiye sıralı geliyor
         MediaKind.VIDEO -> visual(kind, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            .let { withAll("Tüm videolar", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
         MediaKind.MUSIC -> music()
+            .let { withAll("Tüm müzikler", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
     }
+
+    /** Listenin başına "Tüm …" kutucuğunu ekler (kapak: en son eklenen). */
+    private fun withAll(name: String, all: List<MediaItem>, albums: List<MediaAlbum>): List<MediaAlbum> =
+        if (all.isEmpty()) albums
+        else listOf(MediaAlbum(ALL_ID, name, all.size, all.first(), all)) + albums
+
+    /** Eklenme zamanı (saniye), "Tüm …" sıralaması için. */
+    private val addedAt = HashMap<Long, Long>()
 
     private fun visual(kind: MediaKind, base: Uri): List<MediaAlbum> {
         val cols = mutableListOf(
@@ -101,6 +115,7 @@ class MediaLibrary(private val context: Context) {
             COL_BUCKET_NAME
         )
         if (kind == MediaKind.VIDEO) cols += COL_DURATION
+        cols += MediaStore.MediaColumns.DATE_ADDED
         val items = ArrayList<MediaItem>()
         context.contentResolver.query(base, cols.toTypedArray(), null, null,
             "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
@@ -110,8 +125,10 @@ class MediaLibrary(private val context: Context) {
             val iBucket = c.getColumnIndexOrThrow(COL_BUCKET)
             val iBucketName = c.getColumnIndexOrThrow(COL_BUCKET_NAME)
             val iDur = if (kind == MediaKind.VIDEO) c.getColumnIndex(COL_DURATION) else -1
+            val iAdded = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
             while (c.moveToNext()) {
                 val id = c.getLong(iId)
+                if (iAdded >= 0) addedAt[id] = c.getLong(iAdded)
                 items += MediaItem(
                     id = id,
                     uri = ContentUris.withAppendedId(base, id),
@@ -132,13 +149,14 @@ class MediaLibrary(private val context: Context) {
         val cols = arrayOf(
             MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.MIME_TYPE,
-            MediaStore.Audio.Media.DURATION
+            MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.DATE_ADDED
         )
         val items = ArrayList<MediaItem>()
         context.contentResolver.query(base, cols, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null,
             "${MediaStore.Audio.Media.ALBUM} COLLATE NOCASE, ${MediaStore.Audio.Media.TRACK}")?.use { c ->
             while (c.moveToNext()) {
                 val id = c.getLong(0)
+                addedAt[id] = c.getLong(7)
                 val artist = c.getString(2)?.takeIf { it != "<unknown>" } ?: ""
                 items += MediaItem(
                     id = id,
