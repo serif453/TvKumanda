@@ -55,7 +55,16 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     /** TV ses seviyesini kendiliğinden bildirdiğinde çağrılır (değer, en yüksek). */
     @Volatile var onVolume: ((Int, Int) -> Unit)? = null
-    /** Kumanda kanalı beklenmedik şekilde kapandığında çağrılır. */
+    /**
+     * TV'de bir yazı kutusu açılıp TV klavyesi göründüğünde çağrılır (remote_ime_show_request).
+     * Parametre: kutuda o an yazılı olan metin.
+     */
+    @Volatile var onImeShow: ((String) -> Unit)? = null
+    /** TV'deki yazı kutusunda bilinen son metin. */
+    @Volatile var imeText = ""
+        private set
+
+        /** Kumanda kanalı beklenmedik şekilde kapandığında çağrılır. */
     @Volatile var onDisconnected: (() -> Unit)? = null
 
     // Eşleştirme kanalı
@@ -173,6 +182,14 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 val b = m.msg(21)
                 imeCounter = b?.int(1) ?: 0
                 imeField = b?.int(2) ?: 0
+                // edit_info=3 { text_field_status=2 { value=3 } }: kutudaki güncel metin
+                b?.msg(3)?.msg(2)?.let { if (it.has(3)) imeText = it.str(3) }
+            }
+            m.has(22) -> {                                                       // remote_ime_show_request
+                // remote_text_field_status=2 { value=2 }
+                val st = m.msg(22)?.msg(2)
+                imeText = st?.str(2) ?: ""
+                onImeShow?.invoke(imeText)
             }
             m.has(30) -> {                                                       // remote_voice_begin
                 val sid = m.msg(30)?.int(1) ?: 0
@@ -258,6 +275,16 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     fun endVoice(sessionId: Int) = send(RemoteMsg.voiceEnd(sessionId))
 
+    /**
+     * Canlı yazma: TV'deki kutunun içeriğini verilen metinle değiştirir (boş metin kutuyu temizler).
+     * Türkçe karakterler olduğu gibi gönderilir.
+     */
+    fun setText(value: String) {
+        val t = value.replace('\n', ' ')
+        send(RemoteMsg.text(imeCounter, imeField, t))
+        imeText = t
+    }
+
     /** Standart bağlantının yazı kanalı Türkçe karakterleri destekler; metin sadeleştirilmez. */
     override fun text(raw: String) {
         val t = raw.replace('\n', ' ')
@@ -281,6 +308,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     }
 
     private fun closeRemote() {
+        imeText = ""
         val s = socket
         socket = null
         out = null

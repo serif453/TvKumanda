@@ -73,12 +73,22 @@ class MainActivity : ComponentActivity() {
     private var volumeJob: Job? = null
     private var volumeTick by mutableStateOf(0)
 
+    // Standart moddaki tam ekran yazma ekranı
+    private var typing by mutableStateOf(false)
+    private var typingSeed by mutableStateOf("")
+    private var typingSeedTick by mutableStateOf(0)
+    private var imeReady by mutableStateOf(false)
+    @Volatile private var liveText = ""
+    private var liveSent: String? = null
+    private var liveJob: Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
+        atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -87,7 +97,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
+                        typing, typingSeed, typingSeedTick, imeReady),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -110,7 +121,12 @@ class MainActivity : ComponentActivity() {
                         savedTvs = savedTvs.filterNot { it.ip == tv.ip && it.method == tv.method }
                         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
                     },
-                    onPairCancel = ::cancelPairing
+                    onPairCancel = ::cancelPairing,
+                    onOpenTyping = { openTyping(atv.imeText) },
+                    onCloseTyping = ::closeTyping,
+                    onLiveText = ::onLiveText,
+                    onTypingSubmit = ::submitTyping,
+                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } }
                 )
             }
         }
@@ -167,6 +183,7 @@ class MainActivity : ComponentActivity() {
         val old = remote
         method = m
         pairing = false
+        closeTyping()
         Thread { old.close() }.start()
         state = ConnState.IDLE
         fastMode = false
@@ -305,6 +322,71 @@ class MainActivity : ComponentActivity() {
         run { this.text(value) }
     }
 
+    // ---------- Yazma ekranı (Standart) ----------
+
+    /** TV'de yazı kutusu açıldı: ekran kapalıysa kutudaki metinle açılır. */
+    private fun onTvKeyboard(value: String) {
+        if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
+        imeReady = true
+        // Ekran zaten açıksa metne dokunulmaz; gecikmeli bir TV bildirimi yazılanı ezmesin
+        if (!typing) openTyping(value)
+    }
+
+    private fun openTyping(seed: String) {
+        if (state != ConnState.CONNECTED) { message = "Önce TV'ye bağlan"; return }
+        typingSeed = seed
+        typingSeedTick++
+        liveText = seed
+        liveSent = seed
+        typing = true
+    }
+
+    private fun closeTyping() {
+        typing = false
+        imeReady = false
+    }
+
+    /**
+     * Canlı yazma: değişiklikler kısa aralıklarla toplanıp TV'ye gönderilir; her harf için
+     * ayrı mesaj atılmaz, ama yazarken gecikme hissedilmez. Her zaman en güncel metin gider.
+     */
+    private fun onLiveText(value: String) {
+        liveText = value
+        if (liveJob?.isActive == true) return
+        liveJob = scope.launch {
+            while (true) {
+                delay(LIVE_TEXT_MS)
+                val cur = liveText
+                if (cur == liveSent) break
+                try {
+                    withContext(io) { atv.setText(cur) }
+                    liveSent = cur
+                } catch (e: Exception) {
+                    toast("Yazı gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
+                    break
+                }
+            }
+        }
+    }
+
+    /** Telefon klavyesindeki Ara/Git: son metni gönderir, TV'ye Enter basar, ekranı kapatır. */
+    private fun submitTyping() {
+        val pending = liveJob
+        scope.launch {
+            pending?.join()
+            val cur = liveText
+            try {
+                withContext(io) {
+                    if (cur != liveSent) { atv.setText(cur); liveSent = cur }
+                    atv.key(Keys.ENTER)
+                }
+            } catch (e: Exception) {
+                toast("Gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+        closeTyping()
+    }
+
     // ---------- Sesli komut ----------
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -353,6 +435,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val VOICE_BLOCK = 16 * 1024
+    private val LIVE_TEXT_MS = 120L
 
     private fun startVoiceStream() {
         micStop = false
@@ -530,7 +613,11 @@ data class UiState(
     val pairingError: String,
     val savedTvs: List<SavedTv>,
     val micActive: Boolean,
-    val micLevel: Float
+    val micLevel: Float,
+    val typing: Boolean,
+    val typingSeed: String,
+    val typingSeedTick: Int,
+    val imeReady: Boolean
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */

@@ -33,6 +33,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.text.BasicTextField
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.Image
@@ -119,7 +128,12 @@ fun RemoteScreen(
     onPairCancel: () -> Unit,
     onPickSaved: (SavedTv) -> Unit,
     onForgetSaved: (SavedTv) -> Unit,
-    onMic: () -> Unit
+    onMic: () -> Unit,
+    onOpenTyping: () -> Unit,
+    onCloseTyping: () -> Unit,
+    onLiveText: (String) -> Unit,
+    onTypingSubmit: () -> Unit,
+    onTvSearch: () -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -130,9 +144,13 @@ fun RemoteScreen(
         if (ui.state == ConnState.CONNECTED && sheet == Sheet.CONNECT) sheet = Sheet.NONE
     }
 
+    val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
+    Box(Modifier.fillMaxSize().background(Pal.Bg)) {
     Column(
         Modifier
             .fillMaxSize()
+            // Yazma ekranı açıkken kumanda arkada bulanık görünür (Android 12+; eskilerde perde yeterli)
+            .then(if (typingOpen) Modifier.blur(28.dp) else Modifier)
             .background(Pal.Bg)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -164,10 +182,16 @@ fun RemoteScreen(
         Spacer(Modifier.height(10.dp))
 
         BottomControls(ui, onKey, onMic,
-            onKeyboard = { sheet = Sheet.KEYBOARD },
+            // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
+            onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onNumpad = { sheet = Sheet.NUMPAD }
         )
         Spacer(Modifier.height(4.dp))
+    }
+
+    if (typingOpen) {
+        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
+    }
     }
 
     if (sheet != Sheet.NONE) {
@@ -1279,6 +1303,113 @@ private fun MethodSelector(method: ConnMethod, onMethod: (ConnMethod) -> Unit) {
                     fontSize = 14.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Standart modda tam ekran yazma: arkada bulanık kumanda, büyük yazı alanı, sağ üstte kapatma.
+ * Yazılanlar canlı olarak TV'ye gider. Metnin yanındaki ✕ hepsini siler.
+ */
+@Composable
+private fun TypingScreen(
+    seed: String,
+    seedTick: Int,
+    imeReady: Boolean,
+    onText: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClose: () -> Unit,
+    onTvSearch: () -> Unit
+) {
+    var value by remember { mutableStateOf(TextFieldValue(seed, TextRange(seed.length))) }
+    LaunchedEffect(seedTick) {
+        if (seed != value.text) value = TextFieldValue(seed, TextRange(seed.length))
+    }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(80); runCatching { focus.requestFocus() } }
+    BackHandler(onBack = onClose)
+    // Bulanıklık desteklenmeyen eski Android sürümlerinde perde daha koyu
+    val scrim = if (android.os.Build.VERSION.SDK_INT >= 31) Color(0x99141416) else Color(0xEE141416)
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(scrim)
+            .pointerInput(Unit) { detectTapGestures { } }   // arkadaki kumandaya dokunulmasın
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 12.dp, end = 16.dp)
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(AppIcons.Close, "Kapat", tint = Pal.Text, modifier = Modifier.size(30.dp))
+        }
+
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 20.dp, top = 80.dp)) {
+            if (!imeReady) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(onClick = onTvSearch)
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(AppIcons.Info, null, tint = Pal.Sub, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        "TV'de bir yazı kutusu seçin. Arama ekranını açmak için dokunun.",
+                        color = Pal.Sub,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Icon(AppIcons.Search, "TV'de ara", tint = Pal.Text, modifier = Modifier.size(26.dp))
+                }
+                Spacer(Modifier.height(22.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = {
+                        val changed = it.text != value.text
+                        value = it
+                        if (changed) onText(it.text)
+                    },
+                    textStyle = TextStyle(color = Pal.Text, fontSize = 30.sp, fontWeight = FontWeight.SemiBold),
+                    cursorBrush = SolidColor(Pal.Blue),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSubmit() }, onDone = { onSubmit() }, onGo = { onSubmit() }),
+                    modifier = Modifier.weight(1f).focusRequester(focus),
+                    decorationBox = { inner ->
+                        Box {
+                            if (value.text.isEmpty()) {
+                                Text("Yazmaya başlayın…", color = Pal.Sub, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            inner()
+                        }
+                    }
+                )
+                if (value.text.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                value = TextFieldValue("")
+                                onText("")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(AppIcons.Clear, "Tümünü sil", tint = Pal.Sub, modifier = Modifier.size(26.dp))
+                    }
+                }
             }
         }
     }
