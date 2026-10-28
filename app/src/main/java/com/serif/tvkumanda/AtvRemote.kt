@@ -56,8 +56,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
      * TV onu eski sayıp yok sayıyor.
      */
     @Volatile private var imeSeq = 0
-    /** Gönderimde kullanılacak sıra numarası. */
-    private val counterForSend get() = if (imeSeq != 0) imeSeq else imeCounter
+    /** Gönderimde kullanılacak sıra numarası: referans uygulamadaki gibi TV'nin batch_edit sayacı. */
+    private val counterForSend get() = imeCounter
     /** TV'deki yazı kutusunun ipucu yazısı (ör. "Arama yapın"). */
     @Volatile var imeHint = ""
         private set
@@ -181,11 +181,19 @@ class AtvRemote(private val context: Context) : RemoteLink {
     private val seen = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val lastRaw = java.util.concurrent.ConcurrentHashMap<Int, String>()
     @Volatile private var sentTexts = 0
+    private val history = java.util.ArrayDeque<String>()
+    private val t0 = System.currentTimeMillis()
+
+    private fun remember(entry: String) = synchronized(history) {
+        history.addLast("${(System.currentTimeMillis() - t0) / 100 / 10.0}s $entry")
+        while (history.size > 10) history.removeFirst()
+    }
 
     fun diagnostics(): String {
         val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
         return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
             "sayaç=$imeCounter/$imeField sıra=$imeSeq gönderilen=$sentTexts | gelen: $types | " +
+            "yöntem=${if (syncActive) "kutu" else "tuş"} | geçmiş: " + synchronized(history) { history.joinToString(" ; ") } + " | " +
             lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
 
@@ -208,6 +216,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
             m.has(2) -> write(o, RemoteMsg.setActive(activeFeatures))            // remote_set_active
             m.has(8) -> write(o, RemoteMsg.pong(m.msg(8)?.int(1) ?: 0))         // remote_ping_request
             m.has(21) -> {                                                       // remote_ime_batch_edit
+                lastSyncAt = System.nanoTime()
+                remember("21")
                 val b = m.msg(21)
                 imeCounter = b?.int(1) ?: 0
                 imeField = b?.int(2) ?: 0
@@ -216,19 +226,24 @@ class AtvRemote(private val context: Context) : RemoteLink {
             }
             m.has(22) -> {                                                       // remote_ime_show_request
                 // remote_text_field_status=2 { counter_field=1, value=2 }
+                lastSyncAt = System.nanoTime()
                 val st = m.msg(22)?.msg(2)
+                remember("22[\"${st?.str(2).orEmpty().take(12)}\"]")
                 st?.let { if (it.has(1)) imeSeq = it.int(1) }
                 imeText = st?.str(2) ?: ""
                 onImeShow?.invoke(imeText)
             }
             m.has(20) -> {                                                       // remote_ime_key_inject
                 // app_info=1 { label=10 }: TV'de bir yazı kutusu seçilip klavye açıldı
+                lastFocusAt = System.nanoTime()
                 val app = m.msg(20)?.msg(1)
+                remember("20[${app?.str(12).orEmpty().substringAfterLast('.')}/${app?.str(10).orEmpty()}${if (m.msg(20)?.has(2) == true) "/kutu" else ""}]")
                 if (app != null) {
                     imeHint = app.str(10)
                     onImeShow?.invoke(imeText)
                 }
             }
+            m.has(24) || m.has(29) -> remember(m.fieldNumbers.joinToString(","))
             m.has(30) -> {                                                       // remote_voice_begin
                 val sid = m.msg(30)?.int(1) ?: 0
                 voiceWaiter?.let { if (!it.isDone) it.complete(sid) }
@@ -317,6 +332,42 @@ class AtvRemote(private val context: Context) : RemoteLink {
      * Canlı yazma: TV'deki kutunun içeriğini verilen metinle değiştirir (boş metin kutuyu temizler).
      * Türkçe karakterler olduğu gibi gönderilir.
      */
+    @Volatile private var lastFocusAt = 0L
+    @Volatile private var lastSyncAt = 0L
+
+    /**
+     * TV, seçili kutunun içeriğini bizimle paylaşıyor mu? Son kutu seçiminden (20) sonra
+     * TV kutu bilgisi (21/22) gönderdiyse evet: yazı kutuya doğrudan gider (Türkçe harfler
+     * korunur). Göndermediyse kutu bize kapalıdır (ör. Stremio, Play Store): tuş tuş yazılır.
+     */
+    val syncActive: Boolean get() = lastSyncAt != 0L && lastSyncAt >= lastFocusAt
+
+    /**
+     * Karma canlı yazma: TV'de görünen metni [prev]'den [cur]'a getirir.
+     * Kutu paylaşılıyorsa içerik doğrudan değiştirilir; değilse farkı kadar "sil" ve harf
+     * tuşu gönderilir (fiziksel klavye gibi, her uygulamada çalışır; Türkçe harfler sadeleşir).
+     */
+    fun typeLive(prev: String, cur: String) {
+        if (syncActive) { setText(cur); return }
+        val p = normalizeText(prev)
+        val c = normalizeText(cur)
+        var common = 0
+        while (common < p.length && common < c.length && p[common] == c[common]) common++
+        repeat(p.length - common) { send(RemoteMsg.key(Keys.DEL)) }
+        for (ch in c.substring(common)) keyFor(ch)?.let { send(RemoteMsg.key(it)) }
+        sentTexts++
+    }
+
+    /** Harfin Android tuş kodu (büyük harfler küçük olarak yazılır; karşılığı olmayanlar atlanır). */
+    private fun keyFor(ch: Char): Int? = when (val c = ch.lowercaseChar()) {
+        in 'a'..'z' -> 29 + (c - 'a')
+        in '0'..'9' -> 7 + (c - '0')
+        ' ' -> 62
+        '.' -> 56; ',' -> 55; '-' -> 69; '=' -> 70; '[' -> 71; ']' -> 72; '\\' -> 73
+        ';' -> 74; '\'' -> 75; '/' -> 76; '@' -> 77; '+' -> 81; '#' -> 18; '*' -> 17
+        else -> null
+    }
+
     fun setText(value: String) {
         val t = value.replace('\n', ' ')
         send(RemoteMsg.text(counterForSend, imeField, t))
@@ -349,6 +400,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
     private fun closeRemote() {
         imeText = ""
         imeSeq = 0
+        lastFocusAt = 0L
+        lastSyncAt = 0L
         imeHint = ""
         val s = socket
         socket = null

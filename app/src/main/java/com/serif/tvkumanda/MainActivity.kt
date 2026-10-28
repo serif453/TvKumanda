@@ -332,9 +332,10 @@ class MainActivity : ComponentActivity() {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
         imeReady = true
         typingHint = atv.imeHint
-        // Ekran zaten açıksa metne dokunulmaz; gecikmeli bir TV bildirimi yazılanı ezmesin.
-        // Kapattıktan hemen sonra gelen bildirimler (ör. Enter'ın yankısı) ekranı yeniden açmaz.
-        if (!typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
+        // Kendiliğinden açılma şimdilik kapalı: TV bu bildirimi uygulama açılırken ve ana
+        // ekrana dönerken de gönderiyor. Doğru işaret bulunana kadar ekran yalnızca klavye
+        // tuşuyla açılır.
+        if (AUTO_OPEN_TYPING && !typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
     }
 
     private fun openTyping(seed: String) {
@@ -370,7 +371,8 @@ class MainActivity : ComponentActivity() {
                 val cur = liveText
                 if (cur == liveSent) break
                 try {
-                    withContext(io) { atv.setText(cur) }
+                    val prev = liveSent ?: ""
+                    withContext(io) { atv.typeLive(prev, cur) }
                     liveSent = cur
                 } catch (e: Exception) {
                     toast("Yazı gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
@@ -388,7 +390,7 @@ class MainActivity : ComponentActivity() {
             val cur = liveText
             try {
                 withContext(io) {
-                    if (cur != liveSent) { atv.setText(cur); liveSent = cur }
+                    if (cur != liveSent) { atv.typeLive(liveSent ?: "", cur); liveSent = cur }
                     atv.key(Keys.ENTER)
                 }
             } catch (e: Exception) {
@@ -447,6 +449,7 @@ class MainActivity : ComponentActivity() {
 
     private val VOICE_BLOCK = 16 * 1024
     private val LIVE_TEXT_MS = 120L
+    private val AUTO_OPEN_TYPING = false
 
     private fun startVoiceStream() {
         micStop = false
