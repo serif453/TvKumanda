@@ -312,7 +312,12 @@ class MainActivity : ComponentActivity() {
     private fun startMic() {
         // Standart bağlantıda ses doğrudan TV'nin sesli aramasına akar; desteklenmiyorsa
         // ya da ADB'de, ses telefonda yazıya çevrilip TV'ye arama olarak gönderilir.
-        if (method == ConnMethod.STANDARD && atv.supportsVoice) startVoiceStream() else startPhoneRecognition()
+        if (method == ConnMethod.STANDARD && atv.supportsVoice) {
+            startVoiceStream()
+        } else {
+            if (method == ConnMethod.STANDARD) toast("Ses teşhisi · TV ses aktarımını bildirmedi, telefonda tanıma kullanılıyor")
+            startPhoneRecognition()
+        }
     }
 
     private fun stopMic() {
@@ -340,12 +345,17 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
+    private val VOICE_BLOCK = 16 * 1024
+
     private fun startVoiceStream() {
         micStop = false
         micActive = true
         Thread({
             var rec: AudioRecord? = null
             var sentBytes = 0
+            var peak = 0f
+            var sessionId = -1
+            var stage = "mikrofon açılıyor"
             try {
                 val opened = openRecorder() ?: throw IllegalStateException("Mikrofon açılamadı")
                 rec = opened.first
@@ -356,7 +366,10 @@ class MainActivity : ComponentActivity() {
                 if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("Mikrofon kullanımda")
 
                 // Mikrofon hazır olduktan sonra TV'de oturumu aç; ses kaybolmasın
+                stage = "TV oturumu bekleniyor"
                 val sid = atv.startVoice()
+                sessionId = sid
+                stage = "ses gönderiliyor"
                 val buf = ByteArray(rate / 10 * 2)          // 100 ms
                 val pending = ByteArrayOutputStream()
                 val start = System.currentTimeMillis()
@@ -368,13 +381,17 @@ class MainActivity : ComponentActivity() {
                     val pcm8k = agc.process(resampler.process(VoiceDsp.toShorts(buf, n)))
                     pending.write(VoiceDsp.toBytes(pcm8k))
                     val level = VoiceDsp.level(pcm8k)
+                    peak = maxOf(peak, level)
                     runOnUiThread { micLevel = level }
                     val now = System.currentTimeMillis()
                     if (level > 0.08f) { heard = true; lastLoud = now }
-                    if (pending.size() >= RemoteMsg.VOICE_CHUNK_MIN) {
-                        atv.sendVoice(sid, pending.toByteArray())
-                        sentBytes += pending.size()
+                    // Referans örnekle aynı: tam 16 KB (8 kHz'de 1 sn) parçalar
+                    while (pending.size() >= VOICE_BLOCK) {
+                        val all = pending.toByteArray()
+                        atv.sendVoice(sid, all.copyOfRange(0, VOICE_BLOCK))
+                        sentBytes += VOICE_BLOCK
                         pending.reset()
+                        pending.write(all, VOICE_BLOCK, all.size - VOICE_BLOCK)
                     }
                     // Konuşma bitince (1,5 sn sessizlik) ya da hiç konuşulmazsa kendiliğinden dur
                     if (heard && now - lastLoud > 1500) break
@@ -386,10 +403,15 @@ class MainActivity : ComponentActivity() {
                     sentBytes += pending.size()
                 }
                 atv.endVoice(sid)
-                if (sentBytes == 0) runOnUiThread { toast("Mikrofondan ses alınamadı") }
+                stage = "bitti"
             } catch (e: Exception) {
-                runOnUiThread { toast("Sesli komut: ${e.message ?: "başlatılamadı"}") }
+                stage = "hata: ${e.message ?: e.javaClass.simpleName}"
             } finally {
+                // Geçici teşhis özeti (sesli komut oturduğunda kaldırılacak)
+                val secs = sentBytes / 16000.0
+                val summary = "Ses teşhisi · oturum: ${if (sessionId >= 0) "#$sessionId" else "yok"} · " +
+                    "gönderilen: ${"%.1f".format(secs)} sn · en yüksek seviye: ${(peak * 100).toInt()}% · $stage"
+                runOnUiThread { Toast.makeText(this, summary, Toast.LENGTH_LONG).show() }
                 runCatching { rec?.stop() }
                 runCatching { rec?.release() }
                 runOnUiThread { micActive = false; micLevel = 0f }
