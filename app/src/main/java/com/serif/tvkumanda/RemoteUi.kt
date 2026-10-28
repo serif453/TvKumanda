@@ -133,9 +133,15 @@ fun RemoteScreen(
     onCloseTyping: () -> Unit,
     onLiveText: (String) -> Unit,
     onTypingSubmit: () -> Unit,
-    onTvSearch: () -> Unit
+    onTvSearch: () -> Unit,
+    cast: CastUi = CastUi(),
+    onCastPick: (MediaKind) -> Unit = {},
+    onCastToggle: () -> Unit = {},
+    onCastSeek: (Double) -> Unit = {},
+    onCastStop: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
+    var tab by remember { mutableStateOf(Tab.REMOTE) }
     val pager = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
 
@@ -157,6 +163,13 @@ fun RemoteScreen(
     ) {
         TopBar(ui, onSettings = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
 
+        if (tab == Tab.CAST) {
+            CastScreen(
+                cast, ui.state == ConnState.CONNECTED,
+                onCastPick, onCastToggle, onCastSeek, onCastStop,
+                Modifier.weight(1f)
+            )
+        } else {
         Spacer(Modifier.height(12.dp))
         AppsRow(ui.apps, ui.state, ui.method, onLaunch)
 
@@ -186,7 +199,9 @@ fun RemoteScreen(
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onNumpad = { sheet = Sheet.NUMPAD }
         )
-        Spacer(Modifier.height(4.dp))
+        }
+        // Alt menü: Kumanda / Cast
+        BottomNav(tab) { tab = it }
     }
 
     if (typingOpen) {

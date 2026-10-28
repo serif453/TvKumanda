@@ -81,6 +81,17 @@ class MainActivity : ComponentActivity() {
     private var imeReady by mutableStateOf(false)
     @Volatile private var liveText = ""
 
+    // Cast (TV'nin yerleşik Chromecast'i)
+    private val castClient = CastClient()
+    private lateinit var mediaServer: MediaServer
+    private var cast by mutableStateOf(CastUi())
+    private var castPollJob: Job? = null
+    private val castIo = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    private var pendingKind = MediaKind.VIDEO
+    private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) castMedia(uri, pendingKind)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         adb = TvRemote(applicationContext)
@@ -90,6 +101,9 @@ class MainActivity : ComponentActivity() {
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
         atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
         atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
+        mediaServer = MediaServer(applicationContext)
+        castClient.onStatus = { st -> runOnUiThread { onCastStatus(st) } }
+        castClient.onClosed = { reason -> runOnUiThread { onCastClosed(reason) } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -127,7 +141,12 @@ class MainActivity : ComponentActivity() {
                     onCloseTyping = ::closeTyping,
                     onLiveText = ::onLiveText,
                     onTypingSubmit = ::submitTyping,
-                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } }
+                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
+                    cast = cast,
+                    onCastPick = ::pickForCast,
+                    onCastToggle = ::castToggle,
+                    onCastSeek = ::castSeek,
+                    onCastStop = ::castStop
                 )
             }
         }
@@ -365,6 +384,122 @@ class MainActivity : ComponentActivity() {
         closeTyping()
     }
 
+    // ---------- Cast ----------
+
+    private fun pickForCast(kind: MediaKind) {
+        if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
+        pendingKind = kind
+        runCatching { pickMedia.launch(kind.mimeFilter) }.onFailure { toast("Dosya seçici açılamadı") }
+    }
+
+    /** Seçilen dosyayı telefondaki sunucudan yayınlar ve TV'nin Chromecast'ine oynatır. */
+    private fun castMedia(uri: android.net.Uri, kind: MediaKind) {
+        val ip = currentIp
+        val title = displayName(uri) ?: kind.label
+        val mime = contentResolver.getType(uri) ?: kind.fallbackMime
+        cast = CastUi(CastPhase.PREPARING, title, kind)
+        castPollJob?.cancel()
+        scope.launch {
+            try {
+                withContext(castIo) {
+                    val url = mediaServer.publish(uri, mime, ip)
+                    castClient.connect(ip)
+                    castClient.load(url, mime, title)
+                }
+                startCastPolling()
+            } catch (e: Exception) {
+                cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
+            }
+        }
+    }
+
+    private fun castError(e: Exception): String = when (e) {
+        is java.net.ConnectException, is java.net.SocketTimeoutException ->
+            "TV'nin Chromecast'ine bağlanılamadı (TV'de Chromecast açık mı?)"
+        else -> e.message ?: e.javaClass.simpleName
+    }
+
+    private fun displayName(uri: android.net.Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+
+    /** Oynatırken TV'den saniyede bir konum bilgisi istenir. */
+    private fun startCastPolling() {
+        castPollJob?.cancel()
+        castPollJob = scope.launch {
+            while (isActive) {
+                delay(1000)
+                if (cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING || cast.phase == CastPhase.PAUSED) {
+                    withContext(castIo) { castClient.refresh() }
+                }
+            }
+        }
+    }
+
+    private fun onCastStatus(st: CastClient.Status) {
+        if (cast.phase == CastPhase.NONE) return
+        val phase = when (st.playerState) {
+            "PLAYING" -> CastPhase.PLAYING
+            "PAUSED" -> CastPhase.PAUSED
+            "BUFFERING", "LOADING" -> CastPhase.BUFFERING
+            else -> when (st.idleReason) {
+                "FINISHED" -> CastPhase.ENDED
+                "ERROR" -> CastPhase.ERROR
+                "CANCELLED", "INTERRUPTED" -> CastPhase.ENDED
+                // Fotoğraflar gösterilirken alıcı oynatıcıyı boşta bildirebilir
+                else -> if (cast.kind == MediaKind.PHOTO && cast.phase != CastPhase.PREPARING) CastPhase.PLAYING else cast.phase
+            }
+        }
+        cast = cast.copy(
+            phase = phase,
+            position = st.currentTime,
+            duration = if (st.duration > 0) st.duration else cast.duration,
+            error = if (phase == CastPhase.ERROR) "TV dosyayı oynatamadı (biçim desteklenmiyor olabilir)" else ""
+        )
+        if (phase == CastPhase.ENDED || phase == CastPhase.ERROR) castPollJob?.cancel()
+    }
+
+    private fun onCastClosed(reason: String) {
+        castPollJob?.cancel()
+        if (cast.phase != CastPhase.NONE && cast.phase != CastPhase.ENDED && cast.phase != CastPhase.ERROR) {
+            cast = cast.copy(phase = CastPhase.ERROR, error = "Chromecast bağlantısı koptu")
+        }
+    }
+
+    private fun castToggle() {
+        val playing = cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING
+        if (cast.phase == CastPhase.ENDED) { castSeek(0.0); return }
+        cast = cast.copy(phase = if (playing) CastPhase.PAUSED else CastPhase.PLAYING)
+        castCommand { if (playing) pause() else play() }
+    }
+
+    private fun castSeek(seconds: Double) {
+        cast = cast.copy(position = seconds)
+        castCommand { seek(seconds) }
+    }
+
+    private fun castStop() {
+        castPollJob?.cancel()
+        cast = CastUi()
+        scope.launch(castIo) {
+            runCatching { castClient.stopMedia() }
+            mediaServer.stop()
+        }
+    }
+
+    private fun castCommand(action: CastClient.() -> Unit) {
+        scope.launch {
+            try {
+                withContext(castIo) { castClient.action() }
+                if (castPollJob?.isActive != true) startCastPolling()
+            } catch (e: Exception) {
+                toast("Cast: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
     // ---------- Sesli komut ----------
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -572,7 +707,8 @@ class MainActivity : ComponentActivity() {
         micStop = true
         recognizer?.destroy()
         scope.cancel()
-        Thread { adb.close(); atv.release(); io.close() }.start()
+        castPollJob?.cancel()
+        Thread { adb.close(); atv.release(); io.close(); castClient.close(); mediaServer.stop(); castIo.close() }.start()
     }
 }
 
