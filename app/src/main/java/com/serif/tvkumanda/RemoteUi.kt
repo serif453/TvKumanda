@@ -983,6 +983,10 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
             enabled = ui.state != ConnState.CONNECTING
         ) { onConnect(ip.trim()) }
     }
+    FoundTvList(ui.state) { tv ->
+        ip = tv.ip
+        onConnect(tv.ip)
+    }
     Spacer(Modifier.height(14.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         StatusDot(ui.state)
@@ -1007,6 +1011,57 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
     if (version != null) {
         Spacer(Modifier.height(18.dp))
         Text("TV Kumanda · Sürüm $version", color = Pal.Sub, fontSize = 12.sp)
+    }
+}
+
+/** Ağda otomatik bulunan TV'ler. Panel açıkken tarar, kapanınca durur. */
+@Composable
+private fun FoundTvList(state: ConnState, onPick: (FoundTv) -> Unit) {
+    val context = LocalContext.current
+    val discovery = remember { TvDiscovery(context) }
+    var tvs by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
+    DisposableEffect(Unit) {
+        discovery.start { tvs = it }
+        onDispose { discovery.stop() }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    Text(
+        "BULUNAN TV'LER",
+        color = Pal.Sub,
+        fontSize = 12.sp,
+        letterSpacing = 1.sp,
+        fontWeight = FontWeight.Medium
+    )
+    Spacer(Modifier.height(8.dp))
+    if (tvs.isEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+            CircularProgressIndicator(Modifier.size(16.dp), color = Pal.Sub, strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text("Aranıyor… Bulunamazsa IP'yi elle gir.", color = Pal.Sub, fontSize = 13.sp)
+        }
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (tv in tvs) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Pal.Btn)
+                    .clickable(enabled = state != ConnState.CONNECTING) { onPick(tv) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(AppIcons.Tv, null, tint = Pal.Blue, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(tv.name, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(tv.ip, color = Pal.Sub, fontSize = 12.sp)
+                }
+                Text("Bağlan", color = Pal.Blue, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 
