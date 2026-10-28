@@ -67,6 +67,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
         private set
     /** TV'deki yazı kutusunda bilinen son metin. */
     val imeText: String get() = fieldValue.orEmpty()
+    /** TV'de öndeki uygulama (remote_ime_key_inject içindeki app_package). */
+    @Volatile private var currentApp = ""
+    /** Kör modda (TV kutu bilgisi göndermezken) TV'ye gönderdiğimiz son metin. */
+    @Volatile private var blindText = ""
     @Volatile private var volumeInfo: Pair<Int, Int>? = null
     @Volatile private var deviceName = ""
 
@@ -194,7 +198,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     fun diagnostics(): String {
         val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
         return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
-            "sayaç=$imeCounter/$fieldCounter kutu=${fieldValue?.let { "\"${it.take(16)}\"" } ?: "yok"} gönderilen=$sentTexts | gelen: $types | " +
+            "uygulama=${currentApp.substringAfterLast('.')} sayaç=$imeCounter/$fieldCounter kutu=${fieldValue?.let { "\"${it.take(16)}\"" } ?: "yok"} gönderilen=$sentTexts | gelen: $types | " +
 "geçmiş: " + synchronized(history) { history.joinToString(" ; ") } + " | " +
             lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
@@ -242,6 +246,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 val st = m.msg(20)?.msg(2)
                 remember("20[${app?.str(12).orEmpty().substringAfterLast('.')}/${app?.str(10).orEmpty()}${if (st != null) "/kutu" else ""}]")
                 if (app != null && app.has(1)) imeCounter = app.int(1)
+                app?.str(12)?.takeIf { it.isNotEmpty() }?.let { currentApp = it }
                 // Yalnızca kutu bilgisi içeren mesaj gerçek bir kutu seçimidir; uygulama açılırken
                 // ve ana ekrana dönerken gelenlerde kutu bilgisi yoktur
                 if (st != null) {
@@ -380,9 +385,21 @@ class AtvRemote(private val context: Context) : RemoteLink {
      * TV her adımda kutunun yeni hâlini bildirir; sıradaki adım bu cevap beklenerek atılır.
      */
     private fun applyEdit(target: String) {
-        val current = fieldValue ?: return        // TV'de kutu yok (ör. uygulamanın kendi ekran klavyesi)
         if (activeFeatures and 4 == 0) return
         val t = target.replace('\n', ' ')
+        val current = fieldValue
+        if (current == null) {
+            // TV kutu bilgisi göndermiyor. Yalnızca YouTube'da "kör mod": YouTube kendi ekran
+            // klavyesini kullanır ve kutu bilgisi vermez ama yazma mesajını sayaçlara bakmadan
+            // kabul eder. Fark, TV'ye en son gönderdiğimiz metne göre bulunur.
+            if (currentApp != YOUTUBE) return
+            val common = blindText.commonPrefixWith(t).length
+            repeat(blindText.length - common) { send(RemoteMsg.key(67)) }   // KEYCODE_DEL
+            if (blindText.length > common) Thread.sleep(60)               // silme önce işlensin
+            insert(t.substring(common))
+            blindText = t
+            return
+        }
         val common = current.commonPrefixWith(t).length
         val deletes = current.length - common
         val tail = t.substring(common)
@@ -391,6 +408,9 @@ class AtvRemote(private val context: Context) : RemoteLink {
         insert(tail)
         awaitField(t)
     }
+
+    /** Yazma ekranı açıldı: kör modun başlangıç metni (TV'deki kutunun bilinen içeriği). */
+    fun startTyping(seed: String) { blindText = seed }
 
     /** Canlı yazma: TV kutusunun telefondaki [text] ile aynı olmasını sağlar. */
     fun type(text: String) { typingQueue.offer(text to false) }
@@ -424,6 +444,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
     private fun closeRemote() {
         updateField(null)
         imeHint = ""
+        currentApp = ""
+        blindText = ""
         val s = socket
         socket = null
         out = null
@@ -581,6 +603,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     }
 
     companion object {
+        private const val YOUTUBE = "com.google.android.youtube.tv"
         const val PORT_PAIRING = 6467
         const val PORT_REMOTE = 6466
         private const val ALIAS = "tvkumanda"

@@ -341,6 +341,7 @@ class MainActivity : ComponentActivity() {
         typingHint = atv.imeHint
         typingSeedTick++
         liveText = seed
+        atv.startTyping(seed)
         typing = true
         diagJob?.cancel()
         diagJob = scope.launch {
