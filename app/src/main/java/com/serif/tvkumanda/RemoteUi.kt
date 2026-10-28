@@ -308,7 +308,7 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
                 .size(72.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.65f))))
-                .pressable(inter, onClick = onClick),
+                .pressable(inter, deferMs = 500, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -418,7 +418,12 @@ private val EdgeZone = 30.dp
 private fun inEdge(x: Float, width: Int, edgePx: Float) = x < edgePx || x > width - edgePx
 
 @Composable
-private fun PadSurface(size: Dp, hint: List<String>, gesture: Modifier) {
+private fun PadSurface(
+    size: Dp,
+    hint: List<String>,
+    gesture: Modifier,
+    icon: (@Composable () -> Unit)? = null
+) {
     val shape = RoundedCornerShape(36.dp)
     Box(
         Modifier
@@ -433,6 +438,7 @@ private fun PadSurface(size: Dp, hint: List<String>, gesture: Modifier) {
         Box(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
         Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            icon?.invoke()
             hint.forEach {
                 Text(it, color = Pal.Sub, fontSize = 14.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(4.dp))
@@ -507,7 +513,7 @@ fun TrackPad(size: Dp, fastMode: Boolean, onMouse: (String) -> Unit) {
 
     PadSurface(
         size,
-        listOf("Kaydır: imleç", "Dokun: tıkla", "İki parmak: sayfa kaydır"),
+        emptyList(),
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -562,8 +568,55 @@ fun TrackPad(size: Dp, fastMode: Boolean, onMouse: (String) -> Unit) {
                     }
                 }
             }
-        }
+        },
+        icon = { TrackpadIcon(Modifier.size(size * 0.3f)) }
     )
+}
+
+/** Trackpad simgesi: dokunmatik yüzey + işaret eden el. */
+@Composable
+private fun TrackpadIcon(modifier: Modifier) {
+    val line = Color(0xFFCFCBDC)
+    val cut = Color(0xFF2E2E31)
+    Canvas(modifier) {
+        val u = size.width / 48f
+        fun p(x: Float, y: Float) = Offset(x * u, y * u)
+        val stroke = Stroke(width = 3f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+        // Yüzey
+        drawRoundRect(
+            color = line,
+            topLeft = p(3f, 7f),
+            size = androidx.compose.ui.geometry.Size(36f * u, 27f * u),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(5f * u),
+            style = stroke
+        )
+
+        // El
+        val hand = Path().apply {
+            moveTo(26f * u, 36f * u)
+            lineTo(26f * u, 21f * u)
+            cubicTo(26f * u, 17f * u, 32f * u, 17f * u, 32f * u, 21f * u)
+            lineTo(32f * u, 28f * u)
+            lineTo(40f * u, 29.5f * u)
+            quadraticBezierTo(44f * u, 30.5f * u, 43.5f * u, 34.5f * u)
+            lineTo(42.5f * u, 40.5f * u)
+            quadraticBezierTo(41.5f * u, 44.5f * u, 37.5f * u, 44.5f * u)
+            lineTo(30.5f * u, 44.5f * u)
+            quadraticBezierTo(27.5f * u, 44.5f * u, 25.5f * u, 42.5f * u)
+            lineTo(20.5f * u, 37.5f * u)
+            quadraticBezierTo(19f * u, 35.5f * u, 21f * u, 34.3f * u)
+            quadraticBezierTo(23f * u, 33.2f * u, 26f * u, 36f * u)
+            close()
+        }
+        // Elin altındaki çizgiyi kes, sonra eli çiz
+        drawPath(hand, cut)
+        drawPath(hand, cut, style = Stroke(width = 8f * u, join = StrokeJoin.Round))
+        drawPath(hand, line, style = stroke)
+        // Parmak boğumları
+        drawLine(line, p(35.5f, 32f), p(35.5f, 37f), 2.5f * u, StrokeCap.Round)
+        drawLine(line, p(39.5f, 33f), p(39.5f, 37f), 2.5f * u, StrokeCap.Round)
+    }
 }
 
 private val modeNames = listOf("Yön tuşları", "Kaydırma", "Fare")
