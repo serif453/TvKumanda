@@ -31,17 +31,17 @@ jobs:
           }
 
       - name: APK'yı yeniden adlandır
-        run: cp app/build/outputs/apk/debug/app-debug.apk TvKumanda.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk TvKumanda-0.${{ github.run_number }}.apk
 
       - name: Artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
-          name: TvKumanda-apk
-          path: TvKumanda.apk
+          name: TvKumanda-0.${{ github.run_number }}
+          path: TvKumanda-0.${{ github.run_number }}.apk
 
       - name: Release olarak yayınla (telefondan direkt indirilebilir)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.${{ github.run_number }}
           name: TV Kumanda 0.${{ github.run_number }}
-          files: TvKumanda.apk
+          files: TvKumanda-0.${{ github.run_number }}.apk
