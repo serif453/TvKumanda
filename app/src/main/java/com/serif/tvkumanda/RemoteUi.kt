@@ -153,11 +153,11 @@ fun RemoteScreen(
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
     val context = LocalContext.current
     val mediaLibrary = remember { MediaLibrary(context.applicationContext) }
-    val sheet = rememberPlayerSheet()
+    val playerSheet = rememberPlayerSheet()
     var showInFolderTick by remember { mutableStateOf(0) }
     // Yayın bitince ya da Cast sekmesinden çıkınca tam ekran oynatıcı gizlenir
     LaunchedEffect(cast.phase == CastPhase.NONE, tab) {
-        if (cast.phase == CastPhase.NONE || tab != Tab.CAST) sheet.hideNow()
+        if (cast.phase == CastPhase.NONE || tab != Tab.CAST) playerSheet.hideNow()
     }
     val pager = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
@@ -168,7 +168,7 @@ fun RemoteScreen(
     }
 
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
-    Box(Modifier.fillMaxSize().background(Pal.Bg).onSizeChanged { sheet.height = it.height.toFloat() }) {
+    Box(Modifier.fillMaxSize().background(Pal.Bg).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
     Column(
         Modifier
             .fillMaxSize()
@@ -185,7 +185,7 @@ fun RemoteScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 onCastPrev, onCastNext, onCastSkip, onCastWarmup,
-                mediaLibrary, showInFolderTick, sheet,
+                mediaLibrary, showInFolderTick, playerSheet,
                 modifier = Modifier.weight(1f)
             )
         } else {
@@ -225,15 +225,15 @@ fun RemoteScreen(
 
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
     // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır
-    if (sheet.visible && tab == Tab.CAST && cast.phase != CastPhase.NONE) {
+    if (playerSheet.visible && tab == Tab.CAST && cast.phase != CastPhase.NONE) {
         FullPlayer(
-            sheet, cast, ui.tvName, mediaLibrary,
+            playerSheet, cast, ui.tvName, mediaLibrary,
             onToggle = onCastToggle, onSeek = onCastSeek,
-            onStop = { sheet.hideNow(); onCastStop() },
+            onStop = { playerSheet.hideNow(); onCastStop() },
             onPrev = onCastPrev, onNext = onCastNext, onSkip = onCastSkip,
             onVolume = onCastVolume,
             onPlayAt = onCastPlayAt,
-            onShowInFolder = { sheet.close(); showInFolderTick++ }
+            onShowInFolder = { playerSheet.close(); showInFolderTick++ }
         )
     }
 
