@@ -315,7 +315,6 @@ class MainActivity : ComponentActivity() {
         if (method == ConnMethod.STANDARD && atv.supportsVoice) {
             startVoiceStream()
         } else {
-            if (method == ConnMethod.STANDARD) toast("Ses teşhisi · TV ses aktarımını bildirmedi, telefonda tanıma kullanılıyor")
             startPhoneRecognition()
         }
     }
@@ -354,7 +353,6 @@ class MainActivity : ComponentActivity() {
             var rec: AudioRecord? = null
             var sentBytes = 0
             var peak = 0f
-            var sessionId = -1
             var stage = "mikrofon açılıyor"
             try {
                 val opened = openRecorder() ?: throw IllegalStateException("Mikrofon açılamadı")
@@ -368,7 +366,6 @@ class MainActivity : ComponentActivity() {
                 // Mikrofon hazır olduktan sonra TV'de oturumu aç; ses kaybolmasın
                 stage = "TV oturumu bekleniyor"
                 val sid = atv.startVoice()
-                sessionId = sid
                 stage = "ses gönderiliyor"
                 val buf = ByteArray(rate / 10 * 2)          // 100 ms
                 val pending = ByteArrayOutputStream()
@@ -407,11 +404,14 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 stage = "hata: ${e.message ?: e.javaClass.simpleName}"
             } finally {
-                // Geçici teşhis özeti (sesli komut oturduğunda kaldırılacak)
-                val secs = sentBytes / 16000.0
-                val summary = "Ses teşhisi · oturum: ${if (sessionId >= 0) "#$sessionId" else "yok"} · " +
-                    "gönderilen: ${"%.1f".format(secs)} sn · en yüksek seviye: ${(peak * 100).toInt()}% · $stage"
-                runOnUiThread { Toast.makeText(this, summary, Toast.LENGTH_LONG).show() }
+                // Yalnızca gerçek sorunlarda kullanıcıya bilgi ver
+                val problem = when {
+                    stage.startsWith("hata") -> "Sesli komut: ${stage.removePrefix("hata: ")}"
+                    sentBytes == 0 -> "Mikrofondan ses alınamadı"
+                    peak < 0.05f -> "Ses çok kısık algılandı, telefona daha yakın konuş"
+                    else -> null
+                }
+                if (problem != null) runOnUiThread { toast(problem) }
                 runCatching { rec?.stop() }
                 runCatching { rec?.release() }
                 runOnUiThread { micActive = false; micLevel = 0f }
