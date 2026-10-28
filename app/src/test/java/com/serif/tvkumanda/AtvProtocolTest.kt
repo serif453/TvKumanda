@@ -57,4 +57,19 @@ class AtvProtocolTest {
         // Boş alt mesaj (ör. configuration_ack {}) da "var" sayılmalı
         assertTrue(PbMsg.parse(hex("fa0100")).has(31))
     }
+
+    @Test fun selfSignedCertificateIsValid() {
+        val kpg = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }
+        val kp = kpg.generateKeyPair()
+        val now = System.currentTimeMillis()
+        // 2050 sonrası bitiş tarihi GeneralizedTime yolunu da sınar
+        val der = SelfSignedCert.create(kp, "TV Kumanda", now - 1000, now + 40L * 365 * 86_400_000L, BigInteger.valueOf(now))
+        val cert = java.security.cert.CertificateFactory.getInstance("X.509")
+            .generateCertificate(ByteArrayInputStream(der)) as java.security.cert.X509Certificate
+        cert.verify(kp.public)          // imza geçerli
+        cert.checkValidity()            // şu an geçerli
+        assertEquals(3, cert.version)
+        assertTrue(cert.subjectX500Principal.name.contains("CN=TV Kumanda"))
+        assertEquals(kp.public, cert.publicKey)
+    }
 }

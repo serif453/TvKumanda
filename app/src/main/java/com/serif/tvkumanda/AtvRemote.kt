@@ -1,8 +1,6 @@
 package com.serif.tvkumanda
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.EOFException
@@ -14,34 +12,31 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.KeyPairGenerator
-import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.Principal
 import java.security.PrivateKey
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.security.interfaces.RSAPublicKey
-import java.util.Date
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.X509ExtendedKeyManager
 import javax.net.ssl.X509TrustManager
-import javax.security.auth.x500.X500Principal
 
 /**
  * Standart bağlantı: Android TV Remote v2 (ADB gerektirmez).
  * Protokol ayrıntıları için [Polo] ve [RemoteMsg] (AtvProtocol.kt).
  *
  * Güvenlik:
- *  - İstemci anahtarı Android Keystore'da üretilir; özel anahtar cihazdan dışarı çıkamaz.
+ *  - İstemci anahtarı uygulamanın korumalı klasöründe üretilir ve yedeklemeye dahil edilmez.
  *  - Eşleştirmede TV'nin sertifikası, ekranda gösterilen kodla birlikte hash'e girer;
  *    araya giren biri olursa kod tutmaz.
  *  - Kumanda kanalında TV sertifikası ilk başarılı bağlantıda sabitlenir (pin);
  *    sonradan değişirse yeniden eşleştirme istenir.
  */
-class AtvRemote(context: Context) : RemoteLink {
+class AtvRemote(private val context: Context) : RemoteLink {
 
     class PairingRequired(msg: String) : Exception(msg)
     class BadCode(msg: String) : Exception(msg)
@@ -310,40 +305,50 @@ class AtvRemote(context: Context) : RemoteLink {
         return s
     }
 
-    private fun keyStore() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    // İstemci anahtarı uygulamanın korumalı klasöründe tutulur (ADB anahtarı gibi; yedekleme kapalı).
+    // Not: Android Keystore anahtarları bazı cihazlarda TLS imzasında "RSA internal error" verdiği
+    // için kullanılmıyor.
+    private val keyFile = java.io.File(context.filesDir, "atv_client_key.der")
+    private val certFile = java.io.File(context.filesDir, "atv_client_cert.der")
+    private var clientKey: PrivateKey? = null
+    private var clientCert: X509Certificate? = null
 
+    @Synchronized
     private fun ensureClientKey() {
-        if (keyStore().containsAlias(ALIAS)) return
-        val now = System.currentTimeMillis()
-        val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
-        kpg.initialize(
-            KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_SIGN)
-                .setKeySize(2048)
-                .setDigests(
-                    KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256,
-                    KeyProperties.DIGEST_SHA384, KeyProperties.DIGEST_SHA512
-                )
-                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1, KeyProperties.SIGNATURE_PADDING_RSA_PSS)
-                .setCertificateSubject(X500Principal("CN=TV Kumanda"))
-                .setCertificateSerialNumber(BigInteger.valueOf(now))
-                .setCertificateNotBefore(Date(now - 86_400_000L))
-                .setCertificateNotAfter(Date(now + 30L * 365 * 86_400_000L))
-                .build()
-        )
-        kpg.generateKeyPair()
+        if (clientKey != null && clientCert != null) return
+        if (!keyFile.exists() || !certFile.exists()) {
+            val kpg = KeyPairGenerator.getInstance("RSA")
+            kpg.initialize(2048)
+            val kp = kpg.generateKeyPair()
+            val now = System.currentTimeMillis()
+            val der = SelfSignedCert.create(
+                kp, "TV Kumanda", now - 86_400_000L, now + 20L * 365 * 86_400_000L, BigInteger.valueOf(now)
+            )
+            keyFile.writeBytes(kp.private.encoded)   // PKCS#8
+            certFile.writeBytes(der)
+        }
+        clientKey = java.security.KeyFactory.getInstance("RSA")
+            .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(keyFile.readBytes()))
+        clientCert = java.security.cert.CertificateFactory.getInstance("X.509")
+            .generateCertificate(certFile.inputStream()) as X509Certificate
     }
 
-    private fun clientCertificate(): X509Certificate = keyStore().getCertificate(ALIAS) as X509Certificate
+    private fun clientCertificate(): X509Certificate {
+        ensureClientKey()
+        return clientCert!!
+    }
 
     private inner class ClientKeyManager : X509ExtendedKeyManager() {
-        private val ks = keyStore()
         override fun chooseClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, socket: Socket?) = ALIAS
         override fun chooseEngineClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, engine: SSLEngine?) = ALIAS
         override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) = arrayOf(ALIAS)
         override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?): Array<String>? = null
         override fun chooseServerAlias(keyType: String?, issuers: Array<out Principal>?, socket: Socket?): String? = null
-        override fun getCertificateChain(alias: String?): Array<X509Certificate> = arrayOf(ks.getCertificate(ALIAS) as X509Certificate)
-        override fun getPrivateKey(alias: String?): PrivateKey = ks.getKey(ALIAS, null) as PrivateKey
+        override fun getCertificateChain(alias: String?): Array<X509Certificate> = arrayOf(clientCertificate())
+        override fun getPrivateKey(alias: String?): PrivateKey {
+            ensureClientKey()
+            return clientKey!!
+        }
     }
 
     /**
@@ -365,7 +370,7 @@ class AtvRemote(context: Context) : RemoteLink {
     companion object {
         const val PORT_PAIRING = 6467
         const val PORT_REMOTE = 6466
-        private const val ALIAS = "atv_remote_client"
+        private const val ALIAS = "tvkumanda"
         private const val CLIENT_NAME = "TV Kumanda"
         private fun pairedKey(ip: String) = "paired_$ip"
         private fun pinKey(ip: String) = "pin_$ip"

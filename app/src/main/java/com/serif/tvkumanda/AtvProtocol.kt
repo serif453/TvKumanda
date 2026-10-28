@@ -213,3 +213,60 @@ object RemoteMsg {
     /** remote_app_link_launch_request=90 { app_link=1 } */
     fun appLink(link: String) = Pb().msg(90, Pb().str(1, link)).build()
 }
+
+// ---------------- Kendinden imzalı istemci sertifikası (saf JVM) ----------------
+
+/**
+ * Bağımlılıksız, küçük bir X.509 v3 sertifika üreticisi (DER).
+ * Android TV Remote yalnızca sertifikanın açık anahtarını kullanır; içerik basit tutulur.
+ */
+object SelfSignedCert {
+    private fun len(n: Int): ByteArray = when {
+        n < 0x80 -> byteArrayOf(n.toByte())
+        n < 0x100 -> byteArrayOf(0x81.toByte(), n.toByte())
+        n < 0x10000 -> byteArrayOf(0x82.toByte(), (n shr 8).toByte(), n.toByte())
+        else -> byteArrayOf(0x83.toByte(), (n shr 16).toByte(), (n shr 8).toByte(), n.toByte())
+    }
+    private fun tlv(tag: Int, body: ByteArray) = byteArrayOf(tag.toByte()) + len(body.size) + body
+    private fun seq(vararg parts: ByteArray) = tlv(0x30, parts.fold(ByteArray(0)) { a, b -> a + b })
+    private fun set(vararg parts: ByteArray) = tlv(0x31, parts.fold(ByteArray(0)) { a, b -> a + b })
+    private fun integer(v: BigInteger) = tlv(0x02, v.toByteArray())
+
+    private val SHA256_WITH_RSA = byteArrayOf(0x06, 0x09, 0x2A, 0x86.toByte(), 0x48, 0x86.toByte(), 0xF7.toByte(), 0x0D, 0x01, 0x01, 0x0B)
+    private val OID_CN = byteArrayOf(0x06, 0x03, 0x55, 0x04, 0x03)
+    private val NULL = byteArrayOf(0x05, 0x00)
+
+    private fun name(cn: String) = seq(set(seq(OID_CN, tlv(0x0C, cn.toByteArray(Charsets.UTF_8)))))
+
+    private fun time(ms: Long): ByteArray {
+        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = ms }
+        val y = c.get(java.util.Calendar.YEAR)
+        val rest = String.format(
+            java.util.Locale.US, "%02d%02d%02d%02d%02dZ",
+            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH),
+            c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND)
+        )
+        return if (y < 2050) tlv(0x17, (String.format(java.util.Locale.US, "%02d", y % 100) + rest).toByteArray())
+        else tlv(0x18, (y.toString() + rest).toByteArray())
+    }
+
+    /** DER kodlu sertifika döndürür. */
+    fun create(keyPair: java.security.KeyPair, cn: String, notBefore: Long, notAfter: Long, serial: BigInteger): ByteArray {
+        val algo = seq(SHA256_WITH_RSA, NULL)
+        val tbs = seq(
+            tlv(0xA0, integer(BigInteger.valueOf(2))),   // v3
+            integer(serial),
+            algo,
+            name(cn),
+            seq(time(notBefore), time(notAfter)),
+            name(cn),
+            keyPair.public.encoded                       // SubjectPublicKeyInfo (hazır DER)
+        )
+        val sig = java.security.Signature.getInstance("SHA256withRSA").run {
+            initSign(keyPair.private)
+            update(tbs)
+            sign()
+        }
+        return seq(tbs, algo, tlv(0x03, byteArrayOf(0) + sig))
+    }
+}
