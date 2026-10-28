@@ -193,7 +193,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
         val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
         return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
             "sayaç=$imeCounter/$imeField sıra=$imeSeq gönderilen=$sentTexts | gelen: $types | " +
-            "yöntem=${if (syncActive) "kutu" else "tuş"} | geçmiş: " + synchronized(history) { history.joinToString(" ; ") } + " | " +
+"geçmiş: " + synchronized(history) { history.joinToString(" ; ") } + " | " +
             lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
     }
 
@@ -216,7 +216,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
             m.has(2) -> write(o, RemoteMsg.setActive(activeFeatures))            // remote_set_active
             m.has(8) -> write(o, RemoteMsg.pong(m.msg(8)?.int(1) ?: 0))         // remote_ping_request
             m.has(21) -> {                                                       // remote_ime_batch_edit
-                lastSyncAt = System.nanoTime()
                 remember("21")
                 val b = m.msg(21)
                 imeCounter = b?.int(1) ?: 0
@@ -226,16 +225,20 @@ class AtvRemote(private val context: Context) : RemoteLink {
             }
             m.has(22) -> {                                                       // remote_ime_show_request
                 // remote_text_field_status=2 { counter_field=1, value=2 }
-                lastSyncAt = System.nanoTime()
                 val st = m.msg(22)?.msg(2)
                 remember("22[\"${st?.str(2).orEmpty().take(12)}\"]")
                 st?.let { if (it.has(1)) imeSeq = it.int(1) }
                 imeText = st?.str(2) ?: ""
+                echo?.let { if (!it.isDone) it.complete(imeText) }
                 onImeShow?.invoke(imeText)
             }
             m.has(20) -> {                                                       // remote_ime_key_inject
                 // app_info=1 { label=10 }: TV'de bir yazı kutusu seçilip klavye açıldı
                 lastFocusAt = System.nanoTime()
+                // text_field_status=2 { counter_field=1 }: katı uygulamaların (Play Store,
+                // Stremio) istediği sıra sayacı kutu seçilince burada da geliyor
+                m.msg(20)?.msg(2)?.let { if (it.has(1)) imeSeq = it.int(1) }
+                testText = ""
                 val app = m.msg(20)?.msg(1)
                 remember("20[${app?.str(12).orEmpty().substringAfterLast('.')}/${app?.str(10).orEmpty()}${if (m.msg(20)?.has(2) == true) "/kutu" else ""}]")
                 if (app != null) {
@@ -328,56 +331,61 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     fun endVoice(sessionId: Int) = send(RemoteMsg.voiceEnd(sessionId))
 
-    /**
-     * Canlı yazma: TV'deki kutunun içeriğini verilen metinle değiştirir (boş metin kutuyu temizler).
-     * Türkçe karakterler olduğu gibi gönderilir.
-     */
     @Volatile private var lastFocusAt = 0L
-    @Volatile private var lastSyncAt = 0L
+
+    @Volatile private var echo: java.util.concurrent.CompletableFuture<String>? = null
+
+    /** Olası (sıra, kutu) sayaç çiftleri; en olası olan başta. */
+    private fun counterPairs(): List<Pair<Int, Int>> = buildList {
+        if (imeSeq != 0) add(imeSeq to imeField)
+        add(imeCounter to imeField)
+        add(imeCounter to imeField + 1)
+    }.distinct()
 
     /**
-     * TV, seçili kutunun içeriğini bizimle paylaşıyor mu? Son kutu seçiminden (20) sonra
-     * TV kutu bilgisi (21/22) gönderdiyse evet: yazı kutuya doğrudan gider (Türkçe harfler
-     * korunur). Göndermediyse kutu bize kapalıdır (ör. Stremio, Play Store): tuş tuş yazılır.
+     * Kutuya yazar ve TV'nin "kutu şimdi şunu içeriyor" cevabını (22) kısa süre bekler.
+     * Cevap gelmezse aynı metin diğer olası sayaçlarla da gönderilir. Yanlış sayaçlı mesajları
+     * TV yok sayar; her gönderim kutuyu aynı metne ayarladığı için yazı çoğalmaz.
+     * Dönüş: kabul edilen denemenin sırası (1..n) ya da 0 (cevap gelmedi).
      */
-    val syncActive: Boolean get() = lastSyncAt != 0L && lastSyncAt >= lastFocusAt
-
-    /**
-     * Karma canlı yazma: TV'de görünen metni [prev]'den [cur]'a getirir.
-     * Kutu paylaşılıyorsa içerik doğrudan değiştirilir; değilse farkı kadar "sil" ve harf
-     * tuşu gönderilir (fiziksel klavye gibi, her uygulamada çalışır; Türkçe harfler sadeleşir).
-     */
-    fun typeLive(prev: String, cur: String) {
-        if (syncActive) { setText(cur); return }
-        val p = normalizeText(prev)
-        val c = normalizeText(cur)
-        var common = 0
-        while (common < p.length && common < c.length && p[common] == c[common]) common++
-        repeat(p.length - common) { send(RemoteMsg.key(Keys.DEL)) }
-        for (ch in c.substring(common)) keyFor(ch)?.let { send(RemoteMsg.key(it)) }
-        sentTexts++
+    fun setTextVerified(value: String): Int {
+        val t = value.replace('\n', ' ')
+        val pairs = counterPairs()
+        val first = pairs.first()
+        val wait = java.util.concurrent.CompletableFuture<String>()
+        echo = wait
+        try {
+            send(RemoteMsg.text(first.first, first.second, t))
+            sentTexts++
+            imeText = t
+            val ok = runCatching { wait.get(ECHO_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS) }.isSuccess
+            if (ok) return 1
+            // Cevap yok: kalan olasılıkları beklemeden gönder
+            for (p in pairs.drop(1)) send(RemoteMsg.text(p.first, p.second, t))
+            return 0
+        } finally {
+            echo = null
+        }
     }
 
-    /** Harfin Android tuş kodu (büyük harfler küçük olarak yazılır; karşılığı olmayanlar atlanır). */
-    private fun keyFor(ch: Char): Int? = when (val c = ch.lowercaseChar()) {
-        in 'a'..'z' -> 29 + (c - 'a')
-        in '0'..'9' -> 7 + (c - '0')
-        ' ' -> 62
-        '.' -> 56; ',' -> 55; '-' -> 69; '=' -> 70; '[' -> 71; ']' -> 72; '\\' -> 73
-        ';' -> 74; '\'' -> 75; '/' -> 76; '@' -> 77; '+' -> 81; '#' -> 18; '*' -> 17
-        else -> null
-    }
+    /** Geçici test paneli: her basışta bir harf daha ekleyerek (a, aa, aaa…) farklı yöntemlerle gönderir. */
+    @Volatile private var testText = ""
 
-    /** Geçici test paneli: "a" harfini farklı yöntemlerle gönderir. Dönüş: kullanılan değerler. */
     fun testSend(kind: Int): String {
         val c = imeCounter; val f = imeField
+        if (kind >= 2) testText += "a"
+        val t = testText
         return when (kind) {
             0 -> { send(RemoteMsg.key(29)); "tuş" }
             1 -> { send(RemoteMsg.key(29, 1)); send(RemoteMsg.key(29, 2)); "tuş bas/bırak" }
-            2 -> { send(RemoteMsg.text(c, f, "a")); "kutu $c/$f" }
-            3 -> { send(RemoteMsg.text(c + 1, f, "a")); "kutu ${c + 1}/$f" }
-            4 -> { send(RemoteMsg.text(c, f + 1, "a")); "kutu $c/${f + 1}" }
-            else -> { send(RemoteMsg.text(imeSeq, f, "a")); "kutu sıra $imeSeq/$f" }
+            2 -> { send(RemoteMsg.text(c, f, t)); "kutu $c/$f \"$t\"" }
+            3 -> { send(RemoteMsg.text(c + 1, f, t)); "kutu ${c + 1}/$f \"$t\"" }
+            4 -> { send(RemoteMsg.text(c, f + 1, t)); "kutu $c/${f + 1} \"$t\"" }
+            5 -> { send(RemoteMsg.text(imeSeq, f, t)); "kutu sıra $imeSeq/$f \"$t\"" }
+            else -> {
+                val r = setTextVerified(t)
+                "otomatik \"$t\": " + if (r > 0) "TV kabul etti" else "cevap yok, tüm sayaçlar denendi"
+            }
         }.also { remember("test:$it") }
     }
 
@@ -414,7 +422,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
         imeText = ""
         imeSeq = 0
         lastFocusAt = 0L
-        lastSyncAt = 0L
         imeHint = ""
         val s = socket
         socket = null
@@ -573,6 +580,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     }
 
     companion object {
+        private const val ECHO_WAIT_MS = 250L
         const val PORT_PAIRING = 6467
         const val PORT_REMOTE = 6466
         private const val ALIAS = "tvkumanda"

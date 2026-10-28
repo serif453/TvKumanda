@@ -377,8 +377,7 @@ class MainActivity : ComponentActivity() {
                 val cur = liveText
                 if (cur == liveSent) break
                 try {
-                    val prev = liveSent ?: ""
-                    withContext(io) { atv.typeLive(prev, cur) }
+                    withContext(io) { atv.setTextVerified(cur) }
                     liveSent = cur
                 } catch (e: Exception) {
                     toast("Yazı gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
@@ -396,7 +395,7 @@ class MainActivity : ComponentActivity() {
             val cur = liveText
             try {
                 withContext(io) {
-                    if (cur != liveSent) { atv.typeLive(liveSent ?: "", cur); liveSent = cur }
+                    if (cur != liveSent) { atv.setTextVerified(cur); liveSent = cur }
                     atv.key(Keys.ENTER)
                 }
             } catch (e: Exception) {

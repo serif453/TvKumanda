@@ -1418,9 +1418,9 @@ private fun TypingScreen(
             }
             // Geçici test paneli: aynı "a" harfi farklı yöntemlerle gönderilir
             Spacer(Modifier.height(20.dp))
-            Text("Test: TV'de \"a\" çıkaran düğmeyi not et", color = Pal.Sub, fontSize = 12.sp)
+            Text("Test: her basış bir \"a\" daha ekler; TV'de artan düğmeyi not et", color = Pal.Sub, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
-            val labels = listOf("1 Tuş", "2 Bas/bırak", "3 Kutu", "4 Kutu c+1", "5 Kutu f+1", "6 Kutu sıra")
+            val labels = listOf("1 Tuş", "2 Bas/bırak", "3 Kutu", "4 Kutu c+1", "5 Kutu f+1", "6 Kutu sıra", "7 Otomatik")
             for (row in labels.indices.chunked(3)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                     for (i in row) {
