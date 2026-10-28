@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                     onPairCode = ::submitPairingCode,
                     onPickSaved = ::connectSaved,
                     onForgetSaved = { tv ->
-                        savedTvs = savedTvs.filterNot { it.ip == tv.ip }
+                        savedTvs = savedTvs.filterNot { it.ip == tv.ip && it.method == tv.method }
                         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
                     },
                     onPairCancel = ::cancelPairing
@@ -115,7 +115,8 @@ class MainActivity : ComponentActivity() {
 
     private fun onConnected(model: String, ip: String) {
         // Başarılı her bağlantı kayıtlı TV listesinin en başına yazılır
-        savedTvs = listOf(SavedTv(ip, model.ifBlank { ip }, method)) + savedTvs.filterNot { it.ip == ip }
+        savedTvs = listOf(SavedTv(ip, model.ifBlank { ip }, method)) +
+            savedTvs.filterNot { it.ip == ip && it.method == method }
         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
         tvName = model
         fastMode = remote.isFast
@@ -130,10 +131,9 @@ class MainActivity : ComponentActivity() {
     private fun connectSaved(tv: SavedTv) {
         if (tv.method != method) {
             prefs.edit().putString("method", tv.method.name).apply()
-            switchMethod(tv.method)
-        } else {
-            Thread { remote.close() }.start()
+            switchMethod(tv.method)   // diğer yöntemin bağlantısını kapatır
         }
+        // Aynı yöntemde eski bağlantıyı connectTo() kendisi, aynı iş parçacığında kapatır
         prefs.edit().putString("ip", tv.ip).apply()
         connect(tv.ip)
     }
@@ -309,7 +309,7 @@ data class UiState(
     val savedTvs: List<SavedTv>
 )
 
-/** Kayıtlı TV: IP, görünen ad ve en son başarıyla kullanılan bağlantı yöntemi. */
+/** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */
 data class SavedTv(val ip: String, val name: String, val method: ConnMethod) {
     companion object {
         fun load(json: String?): List<SavedTv> = runCatching {

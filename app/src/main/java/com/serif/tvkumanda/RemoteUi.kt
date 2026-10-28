@@ -1054,7 +1054,7 @@ private fun ConnectSheet(
     }
 }
 
-/** Kayıtlı TV'ler: dokununca o TV'ye son kullanılan yöntemle bağlanır; × ile listeden kaldırılır. */
+/** Kayıtlı TV'ler: her satır bir TV + yöntem; dokununca o yöntemle bağlanır, × ile kaldırılır. */
 @Composable
 private fun SavedTvList(ui: UiState, online: Set<String>, onPick: (SavedTv) -> Unit, onForget: (SavedTv) -> Unit) {
     if (ui.savedTvs.isEmpty()) return
@@ -1063,7 +1063,7 @@ private fun SavedTvList(ui: UiState, online: Set<String>, onPick: (SavedTv) -> U
     Spacer(Modifier.height(8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (tv in ui.savedTvs) {
-            val current = ui.state == ConnState.CONNECTED && ui.message == tv.ip
+            val current = ui.state == ConnState.CONNECTED && ui.message == tv.ip && ui.method == tv.method
             Row(
                 Modifier
                     .fillMaxWidth()
