@@ -109,7 +109,10 @@ fun RemoteScreen(
     onKey: (Int) -> Unit,
     onText: (String) -> Unit,
     onMouse: (String) -> Unit,
-    onLaunch: (TvApp) -> Unit
+    onLaunch: (TvApp) -> Unit,
+    onMethod: (ConnMethod) -> Unit,
+    onPairCode: (String) -> Unit,
+    onPairCancel: () -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -130,7 +133,7 @@ fun RemoteScreen(
         TopBar(ui, onSettings = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
 
         Spacer(Modifier.height(12.dp))
-        AppsRow(ui.apps, ui.state, onLaunch)
+        AppsRow(ui.apps, ui.state, ui.method, onLaunch)
 
         // Yön tuşu kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
         BoxWithConstraints(
@@ -144,7 +147,7 @@ fun RemoteScreen(
                     when (p) {
                         0 -> DPad(padSize, onKey)
                         1 -> TouchPad(padSize, onKey)
-                        else -> TrackPad(padSize, ui.fastMode, onMouse)
+                        else -> TrackPad(padSize, ui.fastMode, ui.method, onMouse)
                     }
                 }
             }
@@ -168,7 +171,7 @@ fun RemoteScreen(
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect)
+                    Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect, onMethod)
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.NONE -> {}
@@ -176,6 +179,45 @@ fun RemoteScreen(
             }
         }
     }
+
+    if (ui.pairing) PairingDialog(ui.pairingError, onPairCode, onPairCancel)
+}
+
+/** Standart bağlantıda TV'nin gösterdiği 6 haneli kodu isteyen küçük pencere. */
+@Composable
+private fun PairingDialog(error: String, onCode: (String) -> Unit, onCancel: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        containerColor = Color(0xFF242426),
+        title = { Text("TV ile eşleştir", color = Pal.Text) },
+        text = {
+            Column {
+                Text("TV ekranında görünen 6 haneli kodu gir.", color = Pal.Sub, fontSize = 14.sp)
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { v -> code = v.uppercase().filter { it.isDigit() || it in 'A'..'F' }.take(6) },
+                    placeholder = { Text("ör. 1A2B3C") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = fieldColors(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (code.length == 6) onCode(code) })
+                )
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, color = Pal.Red, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onCode(code) }, enabled = code.length == 6) { Text("Eşleştir") }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text("İptal", color = Pal.Sub) }
+        }
+    )
 }
 
 // ---------- Üst çubuk ----------
@@ -268,7 +310,7 @@ private val tileColors = listOf(
 )
 
 @Composable
-private fun AppsRow(apps: List<TvApp>, state: ConnState, onLaunch: (TvApp) -> Unit) {
+private fun AppsRow(apps: List<TvApp>, state: ConnState, method: ConnMethod, onLaunch: (TvApp) -> Unit) {
     if (apps.isEmpty()) {
         Box(
             Modifier
@@ -279,7 +321,11 @@ private fun AppsRow(apps: List<TvApp>, state: ConnState, onLaunch: (TvApp) -> Un
             contentAlignment = Alignment.Center
         ) {
             Text(
-                if (state == ConnState.CONNECTED) "Uygulamalar yükleniyor…" else "Bağlanınca TV'deki uygulamalar burada görünür",
+                when {
+                    method == ConnMethod.STANDARD -> "Uygulama listesi ADB bağlantısında görünür"
+                    state == ConnState.CONNECTED -> "Uygulamalar yükleniyor…"
+                    else -> "Bağlanınca TV'deki uygulamalar burada görünür"
+                },
                 color = Pal.Sub,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -501,7 +547,11 @@ fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
 
 /** Fare modu: TV'de imleç. Tek parmak imleç, dokunma tık, iki parmak sayfa kaydırma. */
 @Composable
-fun TrackPad(size: Dp, fastMode: Boolean, onMouse: (String) -> Unit) {
+fun TrackPad(size: Dp, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit) {
+    if (method == ConnMethod.STANDARD) {
+        PadSurface(size, listOf("Bu özellik", "ADB bağlantısında çalışır"), Modifier)
+        return
+    }
     if (!fastMode) {
         PadSurface(size, listOf("Fare modu için", "⚡ Hızlı mod gerekli", "Bağlantıyı yenilemeyi dene"), Modifier)
         return
@@ -910,9 +960,11 @@ private fun SheetTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> Unit) {
+private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> Unit, onMethod: (ConnMethod) -> Unit) {
     var ip by remember { mutableStateOf(initialIp) }
     SheetTitle("TV'ye bağlan", "TV ve telefon aynı Wi-Fi ağında olmalı.")
+    MethodSelector(ui.method, onMethod)
+    Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = ip,
@@ -955,6 +1007,40 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
     if (version != null) {
         Spacer(Modifier.height(18.dp))
         Text("TV Kumanda · Sürüm $version", color = Pal.Sub, fontSize = 12.sp)
+    }
+}
+
+/** Bağlantı yöntemi seçimi: Standart (ADB'siz) | ADB. */
+@Composable
+private fun MethodSelector(method: ConnMethod, onMethod: (ConnMethod) -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(shape)
+            .background(Pal.Btn)
+            .padding(4.dp)
+    ) {
+        for ((m, label) in listOf(ConnMethod.STANDARD to "Standart", ConnMethod.ADB to "ADB")) {
+            val selected = m == method
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .then(if (selected) Modifier.background(RingBrush) else Modifier)
+                    .clickable { onMethod(m) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    label,
+                    color = if (selected) Color.White else Pal.Sub,
+                    fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+        }
     }
 }
 

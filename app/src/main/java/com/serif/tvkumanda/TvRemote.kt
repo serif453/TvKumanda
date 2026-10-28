@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  *
  * Tüm fonksiyonlar bloklayıcıdır; arka plan iş parçacığından çağrılmalıdır.
  */
-class TvRemote(private val context: Context) {
+class TvRemote(private val context: Context) : RemoteLink {
 
     private var dadb: Dadb? = null
     private var fast: AdbStream? = null
@@ -25,7 +25,7 @@ class TvRemote(private val context: Context) {
     private var port: Int = 5555
     private val waiter = Executors.newSingleThreadExecutor()
 
-    val isFast: Boolean get() = fast != null
+    override val isFast: Boolean get() = fast != null
 
     private val keyPair: AdbKeyPair by lazy {
         val priv = File(context.filesDir, "adbkey")
@@ -34,9 +34,11 @@ class TvRemote(private val context: Context) {
         AdbKeyPair.read(priv, pub)
     }
 
+    override fun connectTo(ip: String): String = connect(ip, 5555)
+
     /** Bağlanır ve TV'nin model adını döndürür. */
     @Synchronized
-    fun connect(ip: String, port: Int = 5555): String {
+    fun connect(ip: String, port: Int): String {
         close()
         host = ip
         this.port = port
@@ -89,7 +91,7 @@ class TvRemote(private val context: Context) {
     }
 
     @Synchronized
-    fun key(code: Int) {
+    override fun key(code: Int) {
         if (!sendFast("k $code")) {
             shell("input keyevent $code")
         }
@@ -97,12 +99,12 @@ class TvRemote(private val context: Context) {
 
     /** Fare komutu (yalnızca hızlı modda çalışır). */
     @Synchronized
-    fun mouse(line: String) {
+    override fun mouse(line: String) {
         sendFast(line)
     }
 
     @Synchronized
-    fun text(raw: String) {
+    override fun text(raw: String) {
         val t = normalizeText(raw)
         if (t.isEmpty()) return
         if (!sendFast("t $t")) {
@@ -123,7 +125,7 @@ class TvRemote(private val context: Context) {
     }
 
     /** TV'deki başlatılabilir uygulamaları listeler. Kilit tutmaz, tuş gönderimini bekletmez. */
-    fun listApps(): List<TvApp> {
+    override fun listApps(): List<TvApp> {
         val d = dadb ?: return emptyList()
         fun run(cmd: String) = runCatching { d.shell(cmd).output }.getOrDefault("")
         val found = LinkedHashMap<String, String>()
@@ -151,12 +153,16 @@ class TvRemote(private val context: Context) {
             .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
     }
 
+    override fun launch(app: TvApp) {
+        shell(launchCommand(app))
+    }
+
     fun launchCommand(app: TvApp): String =
         if (app.activity.isNotEmpty()) "am start -n ${app.pkg}/${app.activity}"
         else "monkey -p ${app.pkg} -c android.intent.category.LEANBACK_LAUNCHER 1"
 
     /** Medya ses seviyesi (değer, en yüksek). Kilit tutmaz; birkaç yöntemi sırayla dener. */
-    fun volume(): Pair<Int, Int>? {
+    override fun volume(): Pair<Int, Int>? {
         val d = dadb ?: return null
         fun run(cmd: String) = runCatching {
             val r = d.shell(cmd)
@@ -197,7 +203,7 @@ class TvRemote(private val context: Context) {
     }
 
     @Synchronized
-    fun close() {
+    override fun close() {
         runCatching { fast?.close() }
         fast = null
         runCatching { dadb?.close() }

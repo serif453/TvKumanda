@@ -26,7 +26,14 @@ enum class ConnState { IDLE, CONNECTING, CONNECTED, ERROR }
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var remote: TvRemote
+    // İki bağımsız bağlantı yöntemi; hangisinin kullanılacağını kullanıcı seçer
+    private lateinit var adb: TvRemote
+    private lateinit var atv: AtvRemote
+    private var method by mutableStateOf(ConnMethod.ADB)
+    private val remote: RemoteLink get() = if (method == ConnMethod.STANDARD) atv else adb
+    private var pairing by mutableStateOf(false)
+    private var pairingError by mutableStateOf("")
+    private var currentIp = ""
     // Tuşlar sırayla gitsin diye tek iş parçacığı
     private val io = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = MainScope()
@@ -43,14 +50,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        remote = TvRemote(applicationContext)
+        adb = TvRemote(applicationContext)
+        atv = AtvRemote(applicationContext)
+        atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
+        atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         val prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         val savedIp = prefs.getString("ip", "") ?: ""
+        method = runCatching { ConnMethod.valueOf(prefs.getString("method", null) ?: "ADB") }.getOrDefault(ConnMethod.ADB)
 
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -59,7 +70,15 @@ class MainActivity : ComponentActivity() {
                     onKey = ::key,
                     onText = ::sendText,
                     onMouse = ::mouse,
-                    onLaunch = { app -> send(remote.launchCommand(app)) }
+                    onLaunch = { app -> run { this.launch(app) } },
+                    onMethod = { m ->
+                        if (m != method) {
+                            prefs.edit().putString("method", m.name).apply()
+                            switchMethod(m)
+                        }
+                    },
+                    onPairCode = ::submitPairingCode,
+                    onPairCancel = ::cancelPairing
                 )
             }
         }
@@ -69,17 +88,16 @@ class MainActivity : ComponentActivity() {
 
     private fun connect(ip: String) {
         if (ip.isBlank()) { state = ConnState.ERROR; message = "IP adresi gir"; return }
+        currentIp = ip
         state = ConnState.CONNECTING
-        message = "Bağlanıyor… TV'de izin isterse onayla"
+        message = if (method == ConnMethod.ADB) "Bağlanıyor… TV'de izin isterse onayla" else "Bağlanıyor…"
+        val link = remote
         scope.launch {
             try {
-                val model = withContext(io) { remote.connect(ip) }
-                tvName = model
-                fastMode = remote.isFast
-                state = ConnState.CONNECTED
-                message = ip
-                loadApps()
-                refreshVolume(0)
+                val model = withContext(io) { link.connectTo(ip) }
+                onConnected(model, ip)
+            } catch (e: AtvRemote.PairingRequired) {
+                startPairing(ip)
             } catch (e: Exception) {
                 state = ConnState.ERROR
                 message = "Bağlanamadı: ${e.message ?: e.javaClass.simpleName}"
@@ -87,9 +105,94 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun onConnected(model: String, ip: String) {
+        tvName = model
+        fastMode = remote.isFast
+        state = ConnState.CONNECTED
+        message = ip
+        apps = emptyList()
+        loadApps()
+        refreshVolume(0)
+    }
+
+    /** Yöntem değişince açık bağlantı kapatılır; diğer yönteme otomatik geçiş yapılmaz. */
+    private fun switchMethod(m: ConnMethod) {
+        val old = remote
+        method = m
+        pairing = false
+        Thread { old.close() }.start()
+        state = ConnState.IDLE
+        fastMode = false
+        apps = emptyList()
+        volume = null
+        message = "Bağlı değil"
+    }
+
+    // ---------- Standart bağlantı: eşleştirme ----------
+
+    private fun startPairing(ip: String) {
+        state = ConnState.CONNECTING
+        message = "Eşleştirme başlatılıyor… TV'de kod görünecek"
+        scope.launch {
+            try {
+                withContext(io) { atv.startPairing(ip) }
+                pairingError = ""
+                pairing = true
+                message = "TV ekranındaki kodu gir"
+            } catch (e: Exception) {
+                state = ConnState.ERROR
+                message = "Eşleştirme başlatılamadı: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    private fun submitPairingCode(code: String) {
+        scope.launch {
+            try {
+                withContext(io) { atv.finishPairing(code) }
+                pairing = false
+                message = "Eşleşti, bağlanıyor…"
+                val model = withContext(io) { atv.connectTo(currentIp) }
+                onConnected(model, currentIp)
+            } catch (e: AtvRemote.BadCode) {
+                pairingError = e.message ?: "Kod hatalı"   // pencere açık kalır, yeniden denenebilir
+            } catch (e: Exception) {
+                pairing = false
+                state = ConnState.ERROR
+                message = "Eşleştirilemedi: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    private fun cancelPairing() {
+        pairing = false
+        scope.launch(io) { atv.cancelPairing() }
+        state = ConnState.IDLE
+        message = "Eşleştirme iptal edildi"
+    }
+
+    /** TV bağlantıyı kapattıysa (ör. uyku sonrası) bir kez sessizce yeniden bağlanmayı dener. */
+    private fun onStandardDisconnected() {
+        if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
+        val ip = currentIp
+        scope.launch {
+            delay(1000)
+            try {
+                val model = withContext(io) { atv.connectTo(ip) }
+                if (method == ConnMethod.STANDARD) tvName = model
+            } catch (e: Exception) {
+                if (method == ConnMethod.STANDARD) {
+                    state = ConnState.ERROR
+                    message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
+                }
+            }
+        }
+    }
+
     private fun loadApps() {
         scope.launch {
-            apps = withContext(Dispatchers.IO) { runCatching { remote.listApps() }.getOrDefault(emptyList()) }
+            val link = remote
+            apps = withContext(Dispatchers.IO) { runCatching { link.listApps() }.getOrDefault(emptyList()) }
         }
     }
 
@@ -98,17 +201,19 @@ class MainActivity : ComponentActivity() {
         volumeJob?.cancel()
         volumeJob = scope.launch {
             delay(delayMs)
-            val v = withContext(Dispatchers.IO) { runCatching { remote.volume() }.getOrNull() }
+            val link = remote
+            val v = withContext(Dispatchers.IO) { runCatching { link.volume() }.getOrNull() }
             if (v != null) { volume = v.first; volumeMax = v.second }
         }
     }
 
     /** Bağlantı üzerinde arka planda iş çalıştırır. */
-    private fun run(action: TvRemote.() -> Unit) {
+    private fun run(action: RemoteLink.() -> Unit) {
         if (state != ConnState.CONNECTED) { message = "Önce TV'ye bağlan"; return }
+        val link = remote
         scope.launch {
             try {
-                withContext(io) { remote.action() }
+                withContext(io) { link.action() }
                 fastMode = remote.isFast
             } catch (e: Exception) {
                 state = ConnState.ERROR
@@ -116,10 +221,6 @@ class MainActivity : ComponentActivity() {
                 message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
             }
         }
-    }
-
-    private fun send(command: String) {
-        run { this.shell(command) }
     }
 
     private fun key(code: Int) {
@@ -140,7 +241,8 @@ class MainActivity : ComponentActivity() {
 
     private fun mouse(line: String) {
         if (state != ConnState.CONNECTED) return
-        scope.launch(io) { runCatching { remote.mouse(line) } }
+        val link = remote
+        scope.launch(io) { runCatching { link.mouse(line) } }
     }
 
     private fun sendText(value: String) {
@@ -165,7 +267,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
-        Thread { remote.close(); io.close() }.start()
+        Thread { adb.close(); atv.close(); io.close() }.start()
     }
 }
 
@@ -177,5 +279,8 @@ data class UiState(
     val apps: List<TvApp>,
     val volume: Int?,
     val volumeMax: Int,
-    val volumeTick: Int
+    val volumeTick: Int,
+    val method: ConnMethod,
+    val pairing: Boolean,
+    val pairingError: String
 )

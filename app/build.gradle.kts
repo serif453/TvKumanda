@@ -71,6 +71,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
+    testImplementation("junit:junit:4.13.2")
+
     // ADB istemcisi (Wi-Fi üzerinden TV'ye bağlanır)
     implementation("dev.mobile:dadb:1.2.10")
 }
