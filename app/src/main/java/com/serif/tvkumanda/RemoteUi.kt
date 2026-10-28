@@ -359,16 +359,22 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
     val iconBitmap = remember(app.pkg, app.icon) {
         app.icon?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
     }
+    // Serbest düzen: simge kendi biçiminde gösterilir (kare kare, geniş afiş geniş);
+    // yükseklik sabit, genişlik görselin oranına göre
+    val tileH = 72.dp
+    val tileW = if (iconBitmap != null && iconBitmap.height > 0)
+        (tileH * (iconBitmap.width.toFloat() / iconBitmap.height)).coerceIn(56.dp, 128.dp)
+    else tileH
     Column(
-        Modifier.width(76.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+        Modifier.width(maxOf(tileW, 76.dp)).graphicsLayer { scaleX = scale; scaleY = scale },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(18.dp))
+                .size(tileW, tileH)
+                .clip(RoundedCornerShape(14.dp))
                 .then(
-                    if (iconBitmap != null) Modifier.background(Color(0xFF2C2C2E))
+                    if (iconBitmap != null) Modifier
                     else Modifier.background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.65f))))
                 )
                 .pressable(inter, deferMs = 500, onClick = onClick),
@@ -378,8 +384,7 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
                 Image(
                     iconBitmap,
                     contentDescription = app.name,
-                    // Geniş afişler kutucuğu dolduracak şekilde ortadan hafif yakınlaştırılır
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

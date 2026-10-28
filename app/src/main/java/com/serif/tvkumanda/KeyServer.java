@@ -227,22 +227,27 @@ public final class KeyServer {
      * kutucuğu doldurmak üzere kırpılabilecek kadar yüksek çözünürlükte çizilir.
      * Hata olursa ya da görsel tamamen boşsa "" döner (sıradaki kaynak denenir).
      */
+    private static String lastErr = "";
+
     private static String iconPng(Drawable d) {
+        lastErr = "";
         if (d == null) return "";
         try {
             int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
-            int w = 144, h = 144;
-            if (iw > 0 && ih > 0 && iw > ih * 1.2f) { h = 160; w = Math.min(400, Math.round(160f * iw / ih)); }
+            // Görselin kendi en-boy oranı korunur (kare simge kare, geniş afiş geniş kalır)
+            int w = 160, h = 160;
+            if (iw > 0 && ih > 0 && iw != ih) w = Math.max(80, Math.min(400, Math.round(160f * iw / ih)));
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bmp);
             d.setBounds(0, 0, w, h);
             d.draw(c);
-            if (isBlank(bmp)) { bmp.recycle(); return ""; }
+            if (isBlank(bmp)) { bmp.recycle(); lastErr = "(boş)"; return ""; }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
             bmp.recycle();
             return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
         } catch (Throwable t) {
+            lastErr = "(" + t.getClass().getSimpleName() + ")";
             return "";
         }
     }
@@ -260,13 +265,15 @@ public final class KeyServer {
      * Simgeyi uygulamanın kendi teması uygulanmış bağlamından yükler. Bazı uygulamaların
      * (ör. Stremio) simgesi temadaki renklere başvurur; tema olmadan çizilemez.
      */
-    private static Drawable themed(ActivityInfo ai, int resId) throws Throwable {
+    private static Drawable themed(ActivityInfo ai, int resId, int density) throws Throwable {
         if (resId == 0) return null;
         Context app = context().createPackageContext(ai.packageName, Context.CONTEXT_IGNORE_SECURITY);
         int theme = ai.getThemeResource();
         if (theme == 0 && ai.applicationInfo != null) theme = ai.applicationInfo.theme;
         if (theme != 0) app.setTheme(theme);
-        return app.getResources().getDrawable(resId, app.getTheme());
+        return density > 0
+                ? app.getResources().getDrawableForDensity(resId, density, app.getTheme())
+                : app.getResources().getDrawable(resId, app.getTheme());
     }
 
     private interface IconSource { Drawable load() throws Throwable; }
@@ -276,30 +283,50 @@ public final class KeyServer {
      * TV afişi (banner), logo; en son sistemin varsayılan simgesi. İlk başarıyla
      * çizilen kullanılır. Bazı TV uygulamalarında kare simge yoktur, yalnızca afiş vardır.
      */
-    private static String bestIcon(final PackageManager pm, final ResolveInfo ri) {
+    /**
+     * Dönüş: {png, hataÖzeti}. png boşsa hataÖzeti her denemenin neden başarısız
+     * olduğunu kısaca anlatır (teşhis için telefona gönderilir).
+     */
+    private static String[] bestIcon(final PackageManager pm, final ResolveInfo ri) {
         final ActivityInfo ai = ri.activityInfo;
-        final boolean hasOwnIcon = ai.getIconResource() != 0
-                || (ai.applicationInfo != null && ai.applicationInfo.icon != 0);
+        final android.content.pm.ApplicationInfo app = ai.applicationInfo;
+        final boolean hasOwnIcon = ai.getIconResource() != 0 || (app != null && app.icon != 0);
+        final android.content.ComponentName cn = new android.content.ComponentName(ai.packageName, ai.name);
+        final String[] names = {"ri", "app", "banner", "appBanner", "logo", "pmApp", "pmAct", "pmBanner",
+                "tIcon", "tAppIcon", "tBanner", "tAppBanner", "dIcon", "dAppIcon", "default"};
         IconSource[] sources = new IconSource[] {
                 () -> hasOwnIcon ? ri.loadIcon(pm) : null,
-                () -> ai.applicationInfo != null && ai.applicationInfo.icon != 0 ? ai.applicationInfo.loadIcon(pm) : null,
+                () -> app != null && app.icon != 0 ? app.loadIcon(pm) : null,
                 () -> ai.loadBanner(pm),
-                () -> ai.applicationInfo != null ? ai.applicationInfo.loadBanner(pm) : null,
+                () -> app != null ? app.loadBanner(pm) : null,
                 () -> ai.loadLogo(pm),
-                () -> themed(ai, ai.getIconResource()),
-                () -> themed(ai, ai.applicationInfo != null ? ai.applicationInfo.icon : 0),
-                () -> themed(ai, ai.getBannerResource()),
-                () -> themed(ai, ai.applicationInfo != null ? ai.applicationInfo.banner : 0),
+                () -> pm.getApplicationIcon(ai.packageName),
+                () -> pm.getActivityIcon(cn),
+                () -> pm.getActivityBanner(cn),
+                () -> themed(ai, ai.getIconResource(), 0),
+                () -> themed(ai, app != null ? app.icon : 0, 0),
+                () -> themed(ai, ai.getBannerResource(), 0),
+                () -> themed(ai, app != null ? app.banner : 0, 0),
+                () -> themed(ai, ai.getIconResource(), 480),
+                () -> themed(ai, app != null ? app.icon : 0, 480),
                 () -> ri.loadIcon(pm)
         };
-        for (IconSource src : sources) {
+        StringBuilder why = new StringBuilder("res=").append(ai.getIconResource())
+                .append('/').append(app != null ? app.icon : -1)
+                .append(" b=").append(ai.getBannerResource()).append('/').append(app != null ? app.banner : -1);
+        for (int i = 0; i < sources.length; i++) {
             try {
-                String png = iconPng(src.load());
-                if (!png.isEmpty()) return png;
-            } catch (Throwable ignored) {
+                Drawable d = sources[i].load();
+                if (d == null) { why.append(' ').append(names[i]).append(":null"); continue; }
+                String png = iconPng(d);
+                if (!png.isEmpty()) return new String[]{png, ""};
+                why.append(' ').append(names[i]).append(":").append(d.getClass().getSimpleName())
+                   .append(d.getIntrinsicWidth()).append('x').append(d.getIntrinsicHeight()).append(lastErr);
+            } catch (Throwable t) {
+                why.append(' ').append(names[i]).append(":").append(t.getClass().getSimpleName());
             }
         }
-        return "";
+        return new String[]{"", clean(why)};
     }
 
     private static void listApps() {
@@ -313,8 +340,9 @@ public final class KeyServer {
                 String pkg = ri.activityInfo.packageName;
                 String act = ri.activityInfo.name;
                 String label = clean(ri.loadLabel(pm));
+                String[] icon = bestIcon(pm, ri);
                 sb.append("APP\t").append(pkg).append('\t').append(act).append('\t')
-                  .append(label).append('\t').append(bestIcon(pm, ri)).append('\n');
+                  .append(label).append('\t').append(icon[0]).append('\t').append(icon[1]).append('\n');
             }
         } catch (Throwable ignored) {
             // Liste alınamazsa telefon eski yönteme geri döner

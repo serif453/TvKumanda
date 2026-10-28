@@ -162,7 +162,13 @@ class TvRemote(private val context: Context) : RemoteLink {
             if (pkg == context.packageName) return@mapNotNull null
             val icon = p.getOrNull(4)?.takeIf { it.isNotEmpty() }
                 ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
-            TvApp(pkg, p[2], p[3].ifBlank { appName(pkg) }, icon)
+            val ok = icon != null && android.graphics.BitmapFactory.decodeByteArray(icon, 0, icon.size) != null
+            val why = when {
+                ok -> null
+                icon != null -> "telefon çözemedi (${icon.size} bayt)"
+                else -> p.getOrNull(5)?.takeIf { it.isNotBlank() } ?: "TV simge göndermedi"
+            }
+            TvApp(pkg, p[2], p[3].ifBlank { appName(pkg) }, icon.takeIf { ok }, why)
         }
             .distinctBy { it.pkg }
             .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
@@ -276,7 +282,11 @@ fun buildTextCommand(text: String): String {
     return "input text '$sb'"
 }
 
-data class TvApp(val pkg: String, val activity: String, val name: String, val icon: ByteArray? = null) {
+data class TvApp(
+    val pkg: String, val activity: String, val name: String, val icon: ByteArray? = null,
+    /** Geçici teşhis: simge alınamadıysa nedeni */
+    val iconError: String? = null
+) {
     override fun equals(other: Any?) = other is TvApp && other.pkg == pkg && other.activity == activity && other.name == name
     override fun hashCode() = pkg.hashCode()
 }
