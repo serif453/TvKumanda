@@ -6,4 +6,4 @@
 -keep class dadb.** { *; }
 
 # Kütüphanelerin isteğe bağlı başvurduğu, uygulamada bulunmayan sınıflar için uyarıları yok say
--dontwarn **
+# (geçici kontrol)
