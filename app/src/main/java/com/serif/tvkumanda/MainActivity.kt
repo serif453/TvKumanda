@@ -509,7 +509,9 @@ class MainActivity : ComponentActivity() {
         cast = CastUi()
         CastService.stop(this)
         scope.launch(castIo) {
-            runCatching { castClient.stopMedia() }
+            // TV'deki oynatıcı da kapatılır; bekleme ekranı kalmaz
+            runCatching { castClient.stopApp() }
+            runCatching { Thread.sleep(300); castClient.close() }
             mediaServer.stop()
         }
     }

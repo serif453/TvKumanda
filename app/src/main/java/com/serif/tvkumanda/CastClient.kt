@@ -42,6 +42,8 @@ class CastClient {
     private var socket: SSLSocket? = null
     private var out: OutputStream? = null
     private var transportId: String? = null
+    /** TV'de açılan oynatıcı oturumu (kapatmak için). */
+    @Volatile private var appSessionId: String? = null
     @Volatile private var mediaSessionId = 0
     private var requestId = 1
     private val waiters = HashMap<Int, java.util.concurrent.CompletableFuture<JSONObject>>()
@@ -64,6 +66,7 @@ class CastClient {
         socket = s
         out = BufferedOutputStream(s.outputStream)
         transportId = null
+        appSessionId = null
         mediaSessionId = 0
         lastPong = System.currentTimeMillis()
         send(RECEIVER, NS_CONNECTION, JSONObject().put("type", "CONNECT"))
@@ -99,6 +102,21 @@ class CastClient {
     fun play() = mediaCommand("PLAY")
     fun pause() = mediaCommand("PAUSE")
     fun stopMedia() = mediaCommand("STOP")
+
+    /**
+     * Yayını tamamen bitirir: medyayı durdurur ve TV'deki oynatıcı uygulamasını kapatır,
+     * böylece TV'de Chromecast bekleme ekranı kalmaz (telefonun bildirimindeki "durdur" gibi).
+     */
+    fun stopApp() {
+        runCatching { if (mediaSessionId != 0) mediaCommand("STOP") }
+        val sid = appSessionId
+        if (sid != null) {
+            runCatching { send(RECEIVER, NS_RECEIVER, JSONObject().put("type", "STOP").put("sessionId", sid).put("requestId", nextId())) }
+        }
+        transportId = null
+        appSessionId = null
+        mediaSessionId = 0
+    }
     fun seek(seconds: Double) = mediaCommand("SEEK", JSONObject().put("currentTime", seconds))
 
     /** Oynatıcı durumunu ister (cevap [onStatus] ile gelir). */
@@ -147,7 +165,10 @@ class CastClient {
         val apps = reply.optJSONObject("status")?.optJSONArray("applications") ?: return null
         for (i in 0 until apps.length()) {
             val a = apps.getJSONObject(i)
-            if (a.optString("appId") == APP_ID) return a.optString("transportId").ifEmpty { null }
+            if (a.optString("appId") == APP_ID) {
+                a.optString("sessionId").ifEmpty { null }?.let { appSessionId = it }
+                return a.optString("transportId").ifEmpty { null }
+            }
         }
         return null
     }
