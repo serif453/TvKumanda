@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -59,7 +62,13 @@ data class CastUi(
     /** Hazırlık aşaması ("TV'ye bağlanılıyor…" vb.). */
     val stage: String = "",
     /** Klasör/albüm sırasıyla oynatılıyor mu (önceki/sonraki tuşları için). */
-    val hasList: Boolean = false
+    val hasList: Boolean = false,
+    /** Oynatılan dosyanın kimliği (galeride vurgulamak için). */
+    val currentId: Long? = null,
+    /** Oynatmanın başlatıldığı klasör/albüm. */
+    val albumId: Long? = null,
+    /** Önceki/sonraki/otomatik geçişte artar: liste oynatılanı takip etsin. */
+    val stepTick: Int = 0
 )
 
 enum class Tab { REMOTE, CAST }
@@ -104,7 +113,7 @@ fun CastScreen(
     cast: CastUi,
     connected: Boolean,
     onPick: (MediaKind) -> Unit,
-    onCastItem: (MediaItem, List<MediaItem>) -> Unit,
+    onCastItem: (MediaItem, List<MediaItem>, Long) -> Unit,
     onToggle: () -> Unit,
     onSeek: (Double) -> Unit,
     onStop: () -> Unit,
@@ -121,6 +130,9 @@ fun CastScreen(
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
+    // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
+    var jumpAlbum by remember { mutableStateOf<Long?>(null) }
+    var jumpTick by remember { mutableStateOf(0) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permTick++ }
     // İzin telefonun Ayarlar ekranından verilip uygulamaya dönülürse de yeniden kontrol edilir
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -182,20 +194,39 @@ fun CastScreen(
                         value = withContext(Dispatchers.IO) { runCatching { library.albums(kind) }.getOrDefault(emptyList()) }
                     }
                     val list = albums
+                    // "Oynatılan klasöre dön" isteği: klasör listesi yüklenince o klasör açılır
+                    LaunchedEffect(list, jumpAlbum) {
+                        val target = jumpAlbum
+                        if (list != null && target != null) {
+                            list.firstOrNull { it.id == target }?.let { album = it; jumpTick++ }
+                            jumpAlbum = null
+                        }
+                    }
                     val open = album
+                    val current = if (cast.phase != CastPhase.NONE && cast.kind == kind) cast.currentId else null
+                    // Liste yalnızca oynatmanın başladığı klasörde kendiliğinden kayar
+                    val follow = open != null && open.id == cast.albumId && cast.kind == kind
+                    val scrollKey = if (follow) cast.stepTick * 1000 + jumpTick else -1
                     when {
                         list == null -> CenterText("Yükleniyor…")
                         list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
                         open == null -> AlbumGrid(list, library) { album = it }
-                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected) { onCastItem(it, open.items) }
-                        else -> ItemGrid(open.items, library, connected) { onCastItem(it, open.items) }
+                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        else -> ItemGrid(open.items, library, connected, current, scrollKey) { onCastItem(it, open.items, open.id) }
                     }
                 }
             }
         }
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
-            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip)
+            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, onTitle = {
+                // Oynatmanın başladığı klasöre dön ve oynatılan öğeyi göster
+                val target = cast.albumId
+                if (target != null) {
+                    if (browse == cast.kind && album?.id == target) jumpTick++
+                    else { browse = cast.kind; album = null; jumpAlbum = target }
+                }
+            })
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -276,16 +307,48 @@ private fun AlbumGrid(albums: List<MediaAlbum>, library: MediaLibrary, onOpen: (
     }
 }
 
+/**
+ * Liste oynatılanı takip eder: [scrollKey] değişince (önceki/sonraki/otomatik geçiş ya da
+ * "klasöre dön") oynatılan öğe ekranda değilse yumuşakça ona kaydırılır; görünüyorsa kımıldamaz.
+ */
 @Composable
-private fun ItemGrid(items: List<MediaItem>, library: MediaLibrary, enabled: Boolean, onCast: (MediaItem) -> Unit) {
+private fun FollowCurrent(state: androidx.compose.foundation.lazy.grid.LazyGridState?, listState: androidx.compose.foundation.lazy.LazyListState?, index: Int, scrollKey: Int) {
+    LaunchedEffect(scrollKey) {
+        if (scrollKey < 0 || index < 0) return@LaunchedEffect
+        if (state != null) {
+            val visible = state.layoutInfo.visibleItemsInfo
+            val fully = visible.any { it.index == index && it.offset.y >= 0 &&
+                it.offset.y + it.size.height <= state.layoutInfo.viewportEndOffset }
+            if (!fully) state.animateScrollToItem(index)
+        } else if (listState != null) {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            val fully = visible.any { it.index == index && it.offset >= 0 &&
+                it.offset + it.size <= listState.layoutInfo.viewportEndOffset }
+            if (!fully) listState.animateScrollToItem(index)
+        }
+    }
+}
+
+@Composable
+private fun ItemGrid(
+    items: List<MediaItem>, library: MediaLibrary, enabled: Boolean,
+    currentId: Long?, scrollKey: Int, onCast: (MediaItem) -> Unit
+) {
+    val state = rememberLazyGridState()
+    FollowCurrent(state, null, items.indexOfFirst { it.id == currentId }, scrollKey)
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Fixed(3),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         items(items, key = { it.id }) { item ->
-            Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).clickable(enabled = enabled) { onCast(item) }) {
+            val playing = item.id == currentId
+            Box(
+                Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = enabled) { onCast(item) }
+            ) {
                 Thumb(item, library, Modifier.fillMaxSize(), placeholderFor(item.kind))
                 if (item.kind == MediaKind.VIDEO && item.durationMs > 0) {
                     Text(
@@ -296,23 +359,51 @@ private fun ItemGrid(items: List<MediaItem>, library: MediaLibrary, enabled: Boo
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
+                if (playing) {
+                    // Oynatılan: mavi çerçeve + köşede küçük "oynatılıyor" simgesi
+                    Box(Modifier.fillMaxSize().border(3.dp, Pal.Blue, RoundedCornerShape(10.dp)))
+                    PlayingBadge(Modifier.align(Alignment.TopEnd).padding(6.dp))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TrackList(items: List<MediaItem>, library: MediaLibrary, enabled: Boolean, onCast: (MediaItem) -> Unit) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+private fun PlayingBadge(modifier: Modifier) {
+    Box(
+        modifier.size(24.dp).clip(CircleShape).background(Pal.Blue),
+        contentAlignment = Alignment.Center
+    ) { Icon(AppIcons.PlayArrow, "Oynatılıyor", tint = Pal.Text, modifier = Modifier.size(16.dp)) }
+}
+
+@Composable
+private fun TrackList(
+    items: List<MediaItem>, library: MediaLibrary, enabled: Boolean,
+    currentId: Long?, scrollKey: Int, onCast: (MediaItem) -> Unit
+) {
+    val state = rememberLazyListState()
+    FollowCurrent(null, state, items.indexOfFirst { it.id == currentId }, scrollKey)
+    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
+            val playing = item.id == currentId
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(enabled = enabled) { onCast(item) }.padding(8.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                    .background(if (playing) Pal.Blue.copy(alpha = 0.16f) else Pal.Bg)
+                    .clickable(enabled = enabled) { onCast(item) }.padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Thumb(item, library, Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)), AppIcons.MusicNote)
+                Box(Modifier.size(48.dp)) {
+                    Thumb(item, library, Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)), AppIcons.MusicNote)
+                    if (playing) PlayingBadge(Modifier.align(Alignment.Center))
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(item.title, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        item.title, color = if (playing) Pal.Blue else Pal.Text, fontSize = 15.sp,
+                        fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                     if (item.subtitle.isNotBlank()) Text(item.subtitle, color = Pal.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (item.durationMs > 0) Text(timeText(item.durationMs / 1000.0), color = Pal.Sub, fontSize = 12.sp)
@@ -346,7 +437,8 @@ private fun PlayerCard(
     onStop: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onSkip: (Double) -> Unit
+    onSkip: (Double) -> Unit,
+    onTitle: () -> Unit = {}
 ) {
     Column(
         Modifier
@@ -357,7 +449,11 @@ private fun PlayerCard(
     ) {
         // Başlık satırı: dosya adı + durum, sağ üstte küçük durdur tuşu
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+            // Dosya adına dokununca oynatmanın başladığı klasöre dönülür
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = cast.albumId != null, onClick = onTitle)
+            ) {
                 Text(
                     cast.title.ifBlank { cast.kind.label },
                     color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,

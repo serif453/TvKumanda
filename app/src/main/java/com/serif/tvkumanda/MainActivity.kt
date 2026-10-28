@@ -91,8 +91,10 @@ class MainActivity : ComponentActivity() {
     /** Oynatmanın başlatıldığı klasör/albüm (önceki/sonraki ve otomatik geçiş için). */
     private var playlist: List<MediaItem> = emptyList()
     private var playIndex = -1
+    private var playAlbumId: Long? = null
+    private var castStepTick = 0
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) { playlist = emptyList(); playIndex = -1; castMedia(uri, pendingKind) }
+        if (uri != null) { playlist = emptyList(); playIndex = -1; playAlbumId = null; castMedia(uri, pendingKind) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -147,7 +149,7 @@ class MainActivity : ComponentActivity() {
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
                     cast = cast,
                     onCastPick = ::pickForCast,
-                    onCastItem = { item, list -> playFromList(list, list.indexOf(item)) },
+                    onCastItem = { item, list, albumId -> playAlbumId = albumId; playFromList(list, list.indexOf(item)) },
                     onCastPrev = { castStep(-1) },
                     onCastNext = { castStep(1) },
                     onCastSkip = ::castSkip,
@@ -407,7 +409,12 @@ class MainActivity : ComponentActivity() {
         val ip = currentIp
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
         val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
-        cast = CastUi(CastPhase.PREPARING, title, kind, hasList = playlist.size > 1)
+        cast = CastUi(
+            CastPhase.PREPARING, title, kind, hasList = playlist.size > 1,
+            currentId = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri }?.id,
+            albumId = if (playlist.isNotEmpty()) playAlbumId else null,
+            stepTick = castStepTick
+        )
         castPollJob?.cancel()
         scope.launch {
             try {
@@ -455,6 +462,7 @@ class MainActivity : ComponentActivity() {
     private fun castStep(dir: Int) {
         if (playlist.isEmpty()) return
         val n = playlist.size
+        castStepTick++                     // galeri listesi yeni öğeyi takip etsin
         playFromList(playlist, ((playIndex + dir) % n + n) % n)
     }
 
@@ -563,6 +571,7 @@ class MainActivity : ComponentActivity() {
         cast = CastUi()
         playlist = emptyList()
         playIndex = -1
+        playAlbumId = null
         CastService.stop(this)
         scope.launch(castIo) {
             // TV'deki oynatıcı da kapatılır; bekleme ekranı kalmaz

@@ -136,7 +136,7 @@ fun RemoteScreen(
     onTvSearch: () -> Unit,
     cast: CastUi = CastUi(),
     onCastPick: (MediaKind) -> Unit = {},
-    onCastItem: (MediaItem, List<MediaItem>) -> Unit = { _, _ -> },
+    onCastItem: (MediaItem, List<MediaItem>, Long) -> Unit = { _, _, _ -> },
     onCastToggle: () -> Unit = {},
     onCastSeek: (Double) -> Unit = {},
     onCastStop: () -> Unit = {},
