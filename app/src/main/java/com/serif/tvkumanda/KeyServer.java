@@ -276,6 +276,49 @@ public final class KeyServer {
                 : app.getResources().getDrawable(resId, app.getTheme());
     }
 
+    /**
+     * Simgeyi sistemin hazır kaynak yükleyicisini atlayıp doğrudan uygulamanın APK
+     * dosyalarından (ana APK + parçalı "split" APK'lar) okur. Bazı uygulamalarda
+     * (Play'den parça parça yüklenenler) simge yalnızca yoğunluk parçasındadır ve
+     * sistem bağlamı onu bulamaz (NotFoundException). Ekran yoğunluğu da açıkça verilir.
+     */
+    private static Drawable fromApk(ActivityInfo ai, int resId) throws Throwable {
+        if (resId == 0 || ai.applicationInfo == null) return null;
+        android.content.pm.ApplicationInfo app = ai.applicationInfo;
+        android.content.res.Resources r = apkResources.get(app.packageName);
+        if (r == null) {
+            android.content.res.AssetManager am = android.content.res.AssetManager.class
+                    .getDeclaredConstructor().newInstance();
+            Method add = android.content.res.AssetManager.class.getDeclaredMethod("addAssetPath", String.class);
+            add.setAccessible(true);
+            add.invoke(am, app.sourceDir);
+            if (app.splitSourceDirs != null) for (String sp : app.splitSourceDirs) add.invoke(am, sp);
+            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+            dm.setToDefaults();
+            dm.densityDpi = 320; dm.density = 2f; dm.scaledDensity = 2f;
+            dm.widthPixels = 1920; dm.heightPixels = 1080;
+            android.content.res.Configuration cfg = new android.content.res.Configuration();
+            cfg.setToDefaults();
+            cfg.densityDpi = 320;
+            cfg.screenWidthDp = 960; cfg.screenHeightDp = 540; cfg.smallestScreenWidthDp = 540;
+            cfg.uiMode = android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+                    | android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            r = new android.content.res.Resources(am, dm, cfg);
+            apkResources.put(app.packageName, r);
+        }
+        android.content.res.Resources.Theme t = r.newTheme();
+        int theme = ai.getThemeResource();
+        if (theme == 0) theme = app.theme;
+        if (theme != 0) try { t.applyStyle(theme, true); } catch (Throwable ignored) { }
+        try {
+            return r.getDrawableForDensity(resId, 320, t);
+        } catch (Throwable e) {
+            return r.getDrawable(resId, t);
+        }
+    }
+
+    private static final java.util.HashMap<String, android.content.res.Resources> apkResources = new java.util.HashMap<>();
+
     private interface IconSource { Drawable load() throws Throwable; }
 
     /**
@@ -293,7 +336,8 @@ public final class KeyServer {
         final boolean hasOwnIcon = ai.getIconResource() != 0 || (app != null && app.icon != 0);
         final android.content.ComponentName cn = new android.content.ComponentName(ai.packageName, ai.name);
         final String[] names = {"ri", "app", "banner", "appBanner", "logo", "pmApp", "pmAct", "pmBanner",
-                "tIcon", "tAppIcon", "tBanner", "tAppBanner", "dIcon", "dAppIcon", "default"};
+                "tIcon", "tAppIcon", "tBanner", "tAppBanner", "dIcon", "dAppIcon",
+                "apkIcon", "apkAppIcon", "apkBanner", "apkAppBanner", "default"};
         IconSource[] sources = new IconSource[] {
                 () -> hasOwnIcon ? ri.loadIcon(pm) : null,
                 () -> app != null && app.icon != 0 ? app.loadIcon(pm) : null,
@@ -309,6 +353,10 @@ public final class KeyServer {
                 () -> themed(ai, app != null ? app.banner : 0, 0),
                 () -> themed(ai, ai.getIconResource(), 480),
                 () -> themed(ai, app != null ? app.icon : 0, 480),
+                () -> fromApk(ai, ai.getIconResource()),
+                () -> fromApk(ai, app != null ? app.icon : 0),
+                () -> fromApk(ai, ai.getBannerResource()),
+                () -> fromApk(ai, app != null ? app.banner : 0),
                 () -> ri.loadIcon(pm)
         };
         StringBuilder why = new StringBuilder("res=").append(ai.getIconResource())
