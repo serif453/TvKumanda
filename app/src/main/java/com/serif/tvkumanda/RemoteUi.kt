@@ -190,7 +190,7 @@ fun RemoteScreen(
     }
 
     if (typingOpen) {
-        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
+        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
     }
     }
 
@@ -1317,6 +1317,7 @@ private fun TypingScreen(
     seed: String,
     seedTick: Int,
     imeReady: Boolean,
+    diag: String,
     onText: (String) -> Unit,
     onSubmit: () -> Unit,
     onClose: () -> Unit,
@@ -1410,6 +1411,21 @@ private fun TypingScreen(
                         Icon(AppIcons.Clear, "Tümünü sil", tint = Pal.Sub, modifier = Modifier.size(26.dp))
                     }
                 }
+            }
+            // Geçici teşhis: dokununca panoya kopyalanır
+            if (diag.isNotEmpty()) {
+                val ctx = LocalContext.current
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    "Teşhis (kopyalamak için dokun): $diag",
+                    color = Pal.Sub.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.clickable {
+                        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("teşhis", diag))
+                    }
+                )
             }
         }
     }

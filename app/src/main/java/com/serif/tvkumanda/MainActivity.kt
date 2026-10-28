@@ -78,6 +78,8 @@ class MainActivity : ComponentActivity() {
     private var typingSeed by mutableStateOf("")
     private var typingSeedTick by mutableStateOf(0)
     private var imeReady by mutableStateOf(false)
+    private var typingDiag by mutableStateOf("")   // geçici teşhis
+    private var diagJob: Job? = null
     @Volatile private var liveText = ""
     private var liveSent: String? = null
     private var liveJob: Job? = null
@@ -98,7 +100,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady),
+                        typing, typingSeed, typingSeedTick, imeReady, typingDiag),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -339,6 +341,8 @@ class MainActivity : ComponentActivity() {
         liveText = seed
         liveSent = seed
         typing = true
+        diagJob?.cancel()
+        diagJob = scope.launch { while (typing) { typingDiag = atv.diagnostics(); delay(500) } }
     }
 
     private fun closeTyping() {
@@ -617,7 +621,8 @@ data class UiState(
     val typing: Boolean,
     val typingSeed: String,
     val typingSeedTick: Int,
-    val imeReady: Boolean
+    val imeReady: Boolean,
+    val typingDiag: String = ""
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */

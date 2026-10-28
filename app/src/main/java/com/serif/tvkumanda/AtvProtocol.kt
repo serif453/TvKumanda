@@ -47,6 +47,7 @@ class Pb {
 
 class PbMsg private constructor(private val fields: Map<Int, List<Any>>) {
     fun has(n: Int) = fields.containsKey(n)
+    val fieldNumbers: Set<Int> get() = fields.keys
     fun long(n: Int): Long = fields[n]?.firstOrNull() as? Long ?: 0L
     fun int(n: Int): Int = long(n).toInt()
     fun bytes(n: Int): ByteArray? = fields[n]?.firstOrNull() as? ByteArray

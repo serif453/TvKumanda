@@ -165,10 +165,28 @@ class AtvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    // ---- Geçici teşhis (yazma sorunu): TV'nin desteklediği özellikler ve gelen mesaj türleri ----
+    @Volatile private var tvFeatures = -1
+    private val seen = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    @Volatile private var lastIme = ""
+    @Volatile private var sentTexts = 0
+
+    fun diagnostics(): String {
+        val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
+        return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
+            "sayaç=$imeCounter/$imeField gönderilen=$sentTexts | gelen: $types | son IME: $lastIme"
+    }
+
     private fun handle(m: PbMsg, o: OutputStream) {
+        for (f in m.fieldNumbers) if (f != 8) seen.merge(f, 1, Int::plus)
+        if (m.has(20) || m.has(21) || m.has(22)) {
+            lastIme = m.fieldNumbers.joinToString(",") + ":" + (m.bytes(20) ?: m.bytes(21) ?: m.bytes(22))
+                ?.joinToString("") { "%02x".format(it) }?.take(160)
+        }
         when {
             m.has(1) -> { // remote_configure
                 val cfg = m.msg(1)
+                tvFeatures = cfg?.int(1) ?: 0
                 activeFeatures = RemoteMsg.FEATURES and (cfg?.int(1) ?: 0)
                 val info = cfg?.msg(2)
                 deviceName = listOf(info?.str(2), info?.str(1))
@@ -282,6 +300,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     fun setText(value: String) {
         val t = value.replace('\n', ' ')
         send(RemoteMsg.text(imeCounter, imeField, t))
+        sentTexts++
         imeText = t
     }
 
