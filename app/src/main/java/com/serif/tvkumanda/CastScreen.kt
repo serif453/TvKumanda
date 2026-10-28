@@ -14,6 +14,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
@@ -108,6 +111,13 @@ fun CastScreen(
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permTick++ }
+    // İzin telefonun Ayarlar ekranından verilip uygulamaya dönülürse de yeniden kontrol edilir
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) permTick++ }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
 
     BackHandler(enabled = browse != null) {
         if (album != null) album = null else browse = null
@@ -149,7 +159,9 @@ fun CastScreen(
             }
             Spacer(Modifier.height(10.dp))
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (!library.hasPermission(kind)) {
+                // permTick'e bağlı: izin cevabı gelince ya da uygulamaya dönülünce yeniden kontrol edilir
+                val granted = remember(kind, permTick) { library.hasPermission(kind) }
+                if (!granted) {
                     PermissionNeeded(
                         onAsk = { permLauncher.launch(library.permissionsFor(kind)) },
                         onPicker = { onPick(kind) }
