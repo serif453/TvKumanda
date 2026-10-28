@@ -18,19 +18,27 @@ android {
         versionName = "0.$build"
     }
 
-    // Sabit imza anahtarı: her derlemede aynı imza, böylece yeni sürüm eskisinin üstüne kurulur
+    // İmza anahtarı depoda DURMAZ. GitHub Actions'ta Secrets'tan geçici dosyaya çözülür,
+    // yol ve parola ortam değişkenleriyle verilir. Yerelde bu değişkenler yoksa
+    // release derlemesi imzasız kalır (yalnızca debug derlemesi çalıştırılabilir).
+    val ksFile = System.getenv("ANDROID_KEYSTORE_FILE")
+    val ksPass = System.getenv("ANDROID_KEYSTORE_PASSWORD")
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        if (ksFile != null && ksPass != null) {
+            create("release") {
+                storeFile = file(ksFile)
+                storePassword = ksPass
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "tvkumanda"
+                keyPassword = ksPass
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            isDebuggable = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {

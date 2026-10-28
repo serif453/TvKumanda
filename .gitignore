@@ -4,3 +4,12 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+# Gizli dosyalar asla depoya girmesin
+*.jks
+*.keystore
+*.p12
+*.pem
+*.b64
+keystore.properties
+.env
+build.log
