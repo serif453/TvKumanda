@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -144,16 +145,20 @@ fun RemoteScreen(
     onCastNext: () -> Unit = {},
     onCastSkip: (Double) -> Unit = {},
     onCastWarmup: () -> Unit = {},
-    onCastVolume: (Float) -> Unit = {}
+    onCastVolume: (Float) -> Unit = {},
+    onCastPlayAt: (Int) -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
     val context = LocalContext.current
     val mediaLibrary = remember { MediaLibrary(context.applicationContext) }
-    var playerOpen by remember { mutableStateOf(false) }
+    val sheet = rememberPlayerSheet()
     var showInFolderTick by remember { mutableStateOf(0) }
-    if (cast.phase == CastPhase.NONE && playerOpen) playerOpen = false
+    // Yayın bitince ya da Cast sekmesinden çıkınca tam ekran oynatıcı gizlenir
+    LaunchedEffect(cast.phase == CastPhase.NONE, tab) {
+        if (cast.phase == CastPhase.NONE || tab != Tab.CAST) sheet.hideNow()
+    }
     val pager = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
 
@@ -163,7 +168,7 @@ fun RemoteScreen(
     }
 
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
-    Box(Modifier.fillMaxSize().background(Pal.Bg)) {
+    Box(Modifier.fillMaxSize().background(Pal.Bg).onSizeChanged { sheet.height = it.height.toFloat() }) {
     Column(
         Modifier
             .fillMaxSize()
@@ -180,7 +185,7 @@ fun RemoteScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 onCastPrev, onCastNext, onCastSkip, onCastWarmup,
-                mediaLibrary, showInFolderTick, onOpenPlayer = { playerOpen = true },
+                mediaLibrary, showInFolderTick, sheet,
                 modifier = Modifier.weight(1f)
             )
         } else {
@@ -219,19 +224,16 @@ fun RemoteScreen(
     }
 
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
-    androidx.compose.animation.AnimatedVisibility(
-        visible = playerOpen && tab == Tab.CAST,
-        enter = androidx.compose.animation.slideInVertically { it },
-        exit = androidx.compose.animation.slideOutVertically { it }
-    ) {
+    // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır
+    if (sheet.visible && tab == Tab.CAST && cast.phase != CastPhase.NONE) {
         FullPlayer(
-            cast, ui.tvName, mediaLibrary,
-            onClose = { playerOpen = false },
+            sheet, cast, ui.tvName, mediaLibrary,
             onToggle = onCastToggle, onSeek = onCastSeek,
-            onStop = { playerOpen = false; onCastStop() },
+            onStop = { sheet.hideNow(); onCastStop() },
             onPrev = onCastPrev, onNext = onCastNext, onSkip = onCastSkip,
             onVolume = onCastVolume,
-            onShowInFolder = { playerOpen = false; showInFolderTick++ }
+            onPlayAt = onCastPlayAt,
+            onShowInFolder = { sheet.close(); showInFolderTick++ }
         )
     }
 

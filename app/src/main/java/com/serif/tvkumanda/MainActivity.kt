@@ -159,6 +159,7 @@ class MainActivity : ComponentActivity() {
                     onCastSkip = ::castSkip,
                     onCastWarmup = ::castWarmup,
                     onCastVolume = ::castVolume,
+                    onCastPlayAt = { i -> castStepTick++; playFromList(playlist, i) },
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -420,7 +421,8 @@ class MainActivity : ComponentActivity() {
             albumId = if (playlist.isNotEmpty()) playAlbumId else null,
             stepTick = castStepTick,
             item = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri },
-            volume = castVolumeKnown
+            volume = castVolumeKnown,
+            list = playlist
         )
         castPollJob?.cancel()
         scope.launch {

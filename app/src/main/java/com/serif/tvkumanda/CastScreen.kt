@@ -72,7 +72,9 @@ data class CastUi(
     /** Oynatılan dosya (tam ekran oynatıcıdaki görsel ve alt başlık için). */
     val item: MediaItem? = null,
     /** Chromecast ses düzeyi 0..1 (bilinmiyorsa -1). */
-    val volume: Float = -1f
+    val volume: Float = -1f,
+    /** Oynatmanın başladığı klasörün öğeleri (önizleme şeridi için). */
+    val list: List<MediaItem> = emptyList()
 )
 
 enum class Tab { REMOTE, CAST }
@@ -127,7 +129,7 @@ fun CastScreen(
     onWarmup: () -> Unit,
     library: MediaLibrary,
     showInFolderTick: Int,
-    onOpenPlayer: () -> Unit,
+    sheet: PlayerSheet,
     modifier: Modifier = Modifier
 ) {
     // Sekme açılınca TV'nin Chromecast'ine arka planda (görünmeden) bağlanılır
@@ -233,7 +235,7 @@ fun CastScreen(
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
             // Kart başlığına dokununca tam ekran oynatıcı açılır
-            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, onTitle = onOpenPlayer)
+            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, sheet)
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -448,7 +450,7 @@ private fun PlayerCard(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
-    onTitle: () -> Unit = {}
+    sheet: PlayerSheet
 ) {
     Column(
         Modifier
@@ -459,10 +461,11 @@ private fun PlayerCard(
     ) {
         // Başlık satırı: dosya adı + durum, sağ üstte küçük durdur tuşu
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Dosya adına dokununca tam ekran oynatıcı açılır
+            // Dosya adına dokununca ya da yukarı kaydırınca tam ekran oynatıcı açılır
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onTitle)
+                    .swipeUpToOpen(sheet)
+                    .clickable { sheet.open() }
             ) {
                 Text(
                     cast.title.ifBlank { cast.kind.label },

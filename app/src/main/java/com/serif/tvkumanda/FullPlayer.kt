@@ -4,9 +4,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -21,23 +25,73 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Tam ekran oynatıcı: büyük görsel, başlık, ilerleme çubuğu, ses çubuğu ve tüm tuşlar.
- * Parmakla aşağı kaydırınca (ya da aşağı ok / geri tuşu) kapanır.
+ * Tam ekran oynatıcının konumu (ekranın üstünden aşağı uzaklık, piksel).
+ * 0 = tamamen açık, [height] = tamamen kapalı. Hem tam ekrandan aşağı kaydırma hem de
+ * küçük karttan yukarı kaydırma bu tek değeri değiştirir; ekran parmağı takip eder.
+ */
+class PlayerSheet(private val scope: CoroutineScope) {
+    val y = Animatable(HIDDEN)
+    var height by mutableStateOf(0f)
+
+    val visible: Boolean get() = height > 0f && y.value < height - 1f
+
+    fun open() = scope.launch {
+        if (y.value > height) y.snapTo(height)
+        y.animateTo(0f, tween(260))
+    }
+
+    fun close() = scope.launch { y.animateTo(if (height > 0f) height else HIDDEN, tween(220)) }
+
+    fun hideNow() = scope.launch { y.snapTo(HIDDEN) }
+
+    /** Sürükleme başlarken (küçük karttan) oynatıcı ekranın hemen altına yerleştirilir. */
+    fun startFromBottom() = scope.launch { if (y.value > height) y.snapTo(height) }
+
+    fun dragBy(dy: Float) = scope.launch { y.snapTo((y.value + dy).coerceIn(0f, height)) }
+
+    /** Parmak kalkınca: [fromMini] ise yukarı çekme, değilse aşağı itme eşiğine bakılır. */
+    fun settle(fromMini: Boolean) {
+        val openIt = if (fromMini) y.value < height * 0.78f else y.value < height * 0.22f
+        if (openIt) open() else close()
+    }
+
+    private companion object { const val HIDDEN = 100_000f }
+}
+
+@Composable
+fun rememberPlayerSheet(): PlayerSheet {
+    val scope = rememberCoroutineScope()
+    return remember { PlayerSheet(scope) }
+}
+
+/** Küçük karttaki başlık bölgesi: yukarı kaydırınca tam ekran oynatıcı parmağı takip ederek açılır. */
+fun Modifier.swipeUpToOpen(sheet: PlayerSheet): Modifier = pointerInput(sheet) {
+    detectVerticalDragGestures(
+        onDragStart = { sheet.startFromBottom() },
+        onVerticalDrag = { ch, dy -> ch.consume(); sheet.dragBy(dy) },
+        onDragEnd = { sheet.settle(fromMini = true) },
+        onDragCancel = { sheet.close() }
+    )
+}
+
+/**
+ * Tam ekran oynatıcı: büyük görsel, başlık, ilerleme ve ses çubuğu, tuşlar; fotoğraf ve
+ * videoda altta "Bu klasörden" önizleme şeridi. Aşağı kaydırınca (ya da aşağı ok / geri) kapanır.
  */
 @Composable
 fun FullPlayer(
+    sheet: PlayerSheet,
     cast: CastUi,
     tvName: String,
     library: MediaLibrary,
-    onClose: () -> Unit,
     onToggle: () -> Unit,
     onSeek: (Double) -> Unit,
     onStop: () -> Unit,
@@ -45,35 +99,22 @@ fun FullPlayer(
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
     onVolume: (Float) -> Unit,
+    onPlayAt: (Int) -> Unit,
     onShowInFolder: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    val drag = remember { Animatable(0f) }
-    var height by remember { mutableStateOf(1) }
-    BackHandler(onBack = onClose)
+    BackHandler(enabled = sheet.visible) { sheet.close() }
 
     Box(
         Modifier
             .fillMaxSize()
-            .onSizeChanged { height = it.height }
-            .graphicsLayer { translationY = drag.value }
+            .graphicsLayer { translationY = sheet.y.value }
             .background(Brush.verticalGradient(listOf(Pal.Btn, Pal.Bg)))
             // Aşağı kaydırma: ekran parmağı takip eder; yeterince çekilirse kapanır
-            .pointerInput(Unit) {
+            .pointerInput(sheet) {
                 detectVerticalDragGestures(
-                    onVerticalDrag = { ch, dy ->
-                        ch.consume()
-                        scope.launch { drag.snapTo((drag.value + dy).coerceAtLeast(0f)) }
-                    },
-                    onDragEnd = {
-                        scope.launch {
-                            if (drag.value > height * 0.22f) {
-                                drag.animateTo(height.toFloat(), tween(180))
-                                onClose()
-                            } else drag.animateTo(0f, tween(200))
-                        }
-                    },
-                    onDragCancel = { scope.launch { drag.animateTo(0f, tween(200)) } }
+                    onVerticalDrag = { ch, dy -> ch.consume(); sheet.dragBy(dy) },
+                    onDragEnd = { sheet.settle(fromMini = false) },
+                    onDragCancel = { sheet.open() }
                 )
             }
             .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -82,7 +123,7 @@ fun FullPlayer(
             // Üst çubuk: kapat + TV adı
             Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose),
+                    Modifier.size(44.dp).clip(CircleShape).clickable { sheet.close() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(AppIcons.ArrowBack, "Kapat", tint = Pal.Text,
@@ -98,7 +139,7 @@ fun FullPlayer(
             }
             Spacer(Modifier.height(10.dp))
 
-            // Büyük görsel + durum etiketi
+            // Büyük görsel + durum etiketi (kalan alana göre boyutlanır)
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true).clip(RoundedCornerShape(28.dp))) {
                     val it = cast.item
@@ -124,15 +165,11 @@ fun FullPlayer(
             }
             Spacer(Modifier.height(18.dp))
 
-            // Başlık + alt başlık + "klasörde göster"
+            // Üst satır: dosya adı + "Klasörde göster"
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(cast.title.ifBlank { cast.kind.label }, color = Pal.Text, fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val sub = cast.item?.subtitle.orEmpty()
-                    if (sub.isNotBlank()) Text(sub, color = Pal.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (cast.phase == CastPhase.ERROR) Text(cast.error, color = Pal.Red, fontSize = 13.sp)
-                }
+                Text(cast.title.ifBlank { cast.kind.label }, color = Pal.Text, fontSize = 22.sp,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
                 if (cast.albumId != null) {
                     Spacer(Modifier.width(10.dp))
                     Text(
@@ -142,10 +179,18 @@ fun FullPlayer(
                     )
                 }
             }
+            // Alt satır: sanatçı/klasör + küçük durdur tuşu
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                Column(Modifier.weight(1f)) {
+                    val sub = cast.item?.subtitle.orEmpty()
+                    if (sub.isNotBlank()) Text(sub, color = Pal.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (cast.phase == CastPhase.ERROR) Text(cast.error, color = Pal.Red, fontSize = 13.sp)
+                }
+                RoundAction(AppIcons.Stop, "Durdur", size = 40.dp, iconSize = 20.dp, onClick = onStop)
+            }
 
             // İlerleme
             if (cast.kind != MediaKind.PHOTO && cast.duration > 0) {
-                Spacer(Modifier.height(10.dp))
                 var dragging by remember { mutableStateOf<Float?>(null) }
                 val fraction = dragging ?: (cast.position / cast.duration).toFloat().coerceIn(0f, 1f)
                 Slider(
@@ -159,7 +204,7 @@ fun FullPlayer(
                     Spacer(Modifier.weight(1f))
                     Text(timeText(cast.duration), color = Pal.Sub, fontSize = 12.sp)
                 }
-            } else Spacer(Modifier.height(12.dp))
+            } else Spacer(Modifier.height(10.dp))
 
             // Ses (TV'nin Chromecast sesi)
             if (cast.volume >= 0f) {
@@ -197,11 +242,48 @@ fun FullPlayer(
                 } else Spacer(Modifier.width(48.dp))
                 RoundAction(AppIcons.SkipNext, "Sonraki", size = 52.dp, enabled = cast.hasList, onClick = onNext)
             }
-            Spacer(Modifier.height(14.dp))
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                RoundAction(AppIcons.Stop, "Durdur", size = 48.dp, iconSize = 22.dp, onClick = onStop)
+
+            // Fotoğraf ve videoda: "Bu klasörden" önizleme şeridi
+            if (cast.kind != MediaKind.MUSIC && cast.list.size > 1) {
+                Spacer(Modifier.height(16.dp))
+                Text("Bu klasörden", color = Pal.Sub, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                PreviewStrip(cast, library, onPlayAt)
             }
             Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+/** Yatay küçük resim şeridi: oynatılan öğe çerçeveli ve ortada; dokununca o dosya açılır. */
+@Composable
+private fun PreviewStrip(cast: CastUi, library: MediaLibrary, onPlayAt: (Int) -> Unit) {
+    val state = rememberLazyListState()
+    val index = cast.list.indexOfFirst { it.id == cast.currentId }
+    LaunchedEffect(index) {
+        if (index < 0) return@LaunchedEffect
+        // Oynatılan öğeyi şeridin ortasına getir
+        val viewport = state.layoutInfo.viewportSize.width
+        val itemPx = state.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 0
+        state.animateScrollToItem(index, -((viewport - itemPx) / 2).coerceAtLeast(0))
+    }
+    LazyRow(state = state, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().height(76.dp)) {
+        itemsIndexed(cast.list, key = { _, it -> it.id }) { i, item ->
+            val playing = item.id == cast.currentId
+            Box(
+                Modifier.size(76.dp).clip(RoundedCornerShape(12.dp)).clickable { if (!playing) onPlayAt(i) }
+            ) {
+                Thumb(item, library, Modifier.fillMaxSize(), placeholderFor(item.kind))
+                if (item.kind == MediaKind.VIDEO && item.durationMs > 0) {
+                    Text(
+                        timeText(item.durationMs / 1000.0), color = Pal.Text, fontSize = 10.sp,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                            .clip(RoundedCornerShape(5.dp)).background(Pal.Bg.copy(alpha = 0.7f))
+                            .padding(horizontal = 4.dp)
+                    )
+                }
+                if (playing) Box(Modifier.fillMaxSize().border(3.dp, Pal.Blue, RoundedCornerShape(12.dp)))
+            }
         }
     }
 }
