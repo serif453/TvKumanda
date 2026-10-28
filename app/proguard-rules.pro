@@ -5,5 +5,5 @@
 # ADB istemcisi (dadb) olduğu gibi kalsın
 -keep class dadb.** { *; }
 
-# Kütüphanelerin isteğe bağlı başvurduğu, uygulamada bulunmayan sınıflar için uyarıları yok say
-# (geçici kontrol)
+# Not: Uyarıları toptan susturan kural (-dontwarn **) yok. Kontrol derlemesinde hiç
+# eksik sınıf uyarısı çıkmadı; ileride bir uyarı çıkarsa derleme durur ve görülür.

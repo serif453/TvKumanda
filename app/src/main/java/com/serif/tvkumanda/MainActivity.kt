@@ -245,7 +245,9 @@ class MainActivity : ComponentActivity() {
                 if (cached.isNotEmpty() && apps.isEmpty() && remote === link) apps = cached
             }
             val fresh = withContext(Dispatchers.IO) { runCatching { link.listApps() }.getOrDefault(emptyList()) }
-            if (remote === link && (fresh.isNotEmpty() || apps.isEmpty())) apps = fresh
+            // Simgesiz yedek liste (hızlı mod açılamadıysa) simgeli önbelleğin yerine geçmez
+            val downgrade = fresh.none { it.icon != null } && apps.any { it.icon != null }
+            if (remote === link && !downgrade && (fresh.isNotEmpty() || apps.isEmpty())) apps = fresh
         }
     }
 

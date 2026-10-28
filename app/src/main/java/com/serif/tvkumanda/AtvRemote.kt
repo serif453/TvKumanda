@@ -73,17 +73,38 @@ class AtvRemote(private val context: Context) : RemoteLink {
         closeRemote()
         host = ip
         if (!prefs.getBoolean(pairedKey(ip), false)) throw PairingRequired("Eşleştirme gerekli")
-        try {
-            openRemote(ip)
-        } catch (e: SSLException) {
-            forget(ip)
-            throw PairingRequired("TV bu cihazı tanımadı, yeniden eşleştirme gerekli")
-        } catch (e: EOFException) {
-            // Eşleşmemiş istemcide TV bağlantıyı el sıkışmadan hemen sonra kapatır
-            forget(ip)
-            throw PairingRequired("TV bağlantıyı reddetti, yeniden eşleştirme gerekli")
+        // Anlık bir ağ aksaklığı da güvenli el sıkışmayı bozabilir. Eşleştirme hemen
+        // silinmez: kısa bir beklemeden sonra bir kez daha denenir. İki deneme de aynı
+        // şekilde reddedilirse TV bu cihazı gerçekten tanımıyordur.
+        var rejection: Exception? = null
+        for (attempt in 0..1) {
+            try {
+                openRemote(ip)
+                return deviceName.ifBlank { ip }
+            } catch (e: Exception) {
+                if (!isRejection(e)) throw e          // ağ hatası: eşleştirme korunur
+                rejection = e
+                if (attempt == 0) Thread.sleep(700)
+            }
         }
-        return deviceName.ifBlank { ip }
+        forget(ip)
+        throw PairingRequired(
+            if (rejection is EOFException) "TV bağlantıyı reddetti, yeniden eşleştirme gerekli"
+            else "TV bu cihazı tanımadı, yeniden eşleştirme gerekli"
+        )
+    }
+
+    /**
+     * TV'nin bu cihazı tanımadığını gösteren hatalar: TLS reddi ya da el sıkışmadan hemen
+     * sonra kapanan bağlantı (eşleşmemiş istemcide TV böyle yapar). Bağlantı sıfırlanması
+     * gibi ağ hataları ret sayılmaz.
+     */
+    private fun isRejection(e: Exception): Boolean {
+        if (e is EOFException) return true
+        if (e !is SSLException) return false
+        val msg = generateSequence<Throwable>(e) { it.cause }.joinToString(" ") { it.message.orEmpty() }.lowercase()
+        val network = listOf("reset", "broken pipe", "timed out", "timeout", "connection abort", "connection closed by peer", "i/o error", "read error", "write error")
+        return network.none { it in msg }
     }
 
     private fun openRemote(ip: String) {
@@ -237,8 +258,9 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     fun endVoice(sessionId: Int) = send(RemoteMsg.voiceEnd(sessionId))
 
+    /** Standart bağlantının yazı kanalı Türkçe karakterleri destekler; metin sadeleştirilmez. */
     override fun text(raw: String) {
-        val t = normalizeText(raw)
+        val t = raw.replace('\n', ' ')
         if (t.isNotEmpty()) send(RemoteMsg.text(imeCounter, imeField, t))
     }
 

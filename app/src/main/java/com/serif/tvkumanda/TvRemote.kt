@@ -25,7 +25,9 @@ class TvRemote(private val context: Context) : RemoteLink {
     private var fast: AdbStream? = null
     private var host: String = ""
     private var port: Int = 5555
-    private val waiter = Executors.newSingleThreadExecutor()
+    // Bekleme süreli okumalar için iş parçacıkları. Tek iş parçacığı yerine havuz:
+    // takılan bir okuma, sonraki bağlantının "hazır" beklemesini engellemez.
+    private val waiter = Executors.newCachedThreadPool { r -> Thread(r, "adb-wait").apply { isDaemon = true } }
 
     override val isFast: Boolean get() = fast != null
 
@@ -155,7 +157,7 @@ class TvRemote(private val context: Context) : RemoteLink {
     private fun listAppsFromServer(): List<TvApp>? {
         val s = fast ?: return null
         if (!sendFast("a")) return null
-        val lines = waiter.submit<List<String>> {
+        val task = waiter.submit<List<String>> {
             val out = ArrayList<String>()
             while (true) {
                 val l = s.source.readUtf8Line() ?: break
@@ -163,7 +165,15 @@ class TvRemote(private val context: Context) : RemoteLink {
                 out.add(l)
             }
             out
-        }.get(20, TimeUnit.SECONDS)
+        }
+        val lines = try {
+            task.get(20, TimeUnit.SECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            // Yarım kalan liste akışı bozar: sunucu kapatılıp temiz şekilde yeniden başlatılır,
+            // böylece bekleyen okuma da serbest kalır.
+            restartFastMode(s)
+            throw e
+        }
         runCatching { cacheFile(host).writeText(lines.joinToString("\n")) }
         return parseServerApps(lines)
     }
@@ -264,6 +274,14 @@ class TvRemote(private val context: Context) : RemoteLink {
     }
 
     @Volatile private var volumeMethod: Int? = null
+
+    @Synchronized
+    private fun restartFastMode(stale: AdbStream) {
+        if (fast !== stale) return
+        runCatching { stale.close() }
+        fast = null
+        dadb?.let { startFastMode(it, exists = true) }
+    }
 
     private fun reconnect() {
         runCatching { fast?.close() }
