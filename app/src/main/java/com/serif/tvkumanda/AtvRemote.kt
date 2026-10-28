@@ -182,36 +182,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
         }
     }
 
-    // ---- Geçici teşhis (yazma sorunu): TV'nin desteklediği özellikler ve gelen mesaj türleri ----
-    @Volatile private var tvFeatures = -1
-    private val seen = java.util.concurrent.ConcurrentHashMap<Int, Int>()
-    private val lastRaw = java.util.concurrent.ConcurrentHashMap<Int, String>()
-    @Volatile private var sentTexts = 0
-    private val history = java.util.ArrayDeque<String>()
-    private val t0 = System.currentTimeMillis()
-
-    private fun remember(entry: String) = synchronized(history) {
-        history.addLast("${(System.currentTimeMillis() - t0) / 100 / 10.0}s $entry")
-        while (history.size > 10) history.removeFirst()
-    }
-
-    fun diagnostics(): String {
-        val types = seen.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}×${it.value}" }
-        return "TV özellik=$tvFeatures aktif=$activeFeatures ime=${activeFeatures and 4 != 0} " +
-            "uygulama=${currentApp.substringAfterLast('.')} sayaç=$imeCounter/$fieldCounter kutu=${fieldValue?.let { "\"${it.take(16)}\"" } ?: "yok"} gönderilen=$sentTexts | gelen: $types | " +
-"geçmiş: " + synchronized(history) { history.joinToString(" ; ") } + " | " +
-            lastRaw.entries.sortedBy { it.key }.joinToString(" | ") { "${it.key}: ${it.value}" }
-    }
-
     private fun handle(m: PbMsg, o: OutputStream) {
-        for (f in m.fieldNumbers) if (f != 8) seen.merge(f, 1, Int::plus)
-        for (f in intArrayOf(20, 21, 22, 29)) {
-            if (m.has(f)) lastRaw[f] = (m.bytes(f)?.joinToString("") { "%02x".format(it) } ?: "int:${m.long(f)}").take(120)
-        }
         when {
             m.has(1) -> { // remote_configure
                 val cfg = m.msg(1)
-                tvFeatures = cfg?.int(1) ?: 0
                 activeFeatures = RemoteMsg.FEATURES and (cfg?.int(1) ?: 0)
                 val info = cfg?.msg(2)
                 deviceName = listOf(info?.str(2), info?.str(1))
@@ -223,7 +197,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
             m.has(8) -> write(o, RemoteMsg.pong(m.msg(8)?.int(1) ?: 0))         // remote_ping_request
             m.has(21) -> {                                                       // remote_ime_batch_edit
                 val b = m.msg(21)
-                remember("21[${b?.int(1)}/${b?.int(2)}]")
                 // ime_counter 0: TV klavyesi kapandı (ör. geri tuşu)
                 if ((b?.int(1) ?: 0) == 0 && fieldValue != null) {
                     updateField(null)
@@ -233,7 +206,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
             m.has(22) -> {                                                       // remote_ime_show_request
                 // remote_text_field_status=2 { counter_field=1, value=2, label=6 }
                 val st = m.msg(22)?.msg(2)
-                remember("22[${st?.int(1)}/\"${st?.str(2).orEmpty().take(12)}\"]")
                 if (st != null) {
                     if (st.has(1)) fieldCounter = st.int(1)
                     // TV her düzenlemeden sonra kutunun gerçek içeriğini bildirir
@@ -244,7 +216,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 // app_info=1 { counter=1, label=10, app_package=12 }, text_field_status=2 { counter_field=1, value=2 }
                 val app = m.msg(20)?.msg(1)
                 val st = m.msg(20)?.msg(2)
-                remember("20[${app?.str(12).orEmpty().substringAfterLast('.')}/${app?.str(10).orEmpty()}${if (st != null) "/kutu" else ""}]")
                 if (app != null && app.has(1)) imeCounter = app.int(1)
                 app?.str(12)?.takeIf { it.isNotEmpty() }?.let { currentApp = it }
                 // Yalnızca kutu bilgisi içeren mesaj gerçek bir kutu seçimidir; uygulama açılırken
@@ -256,7 +227,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
                     onImeShow?.invoke(st.str(2))
                 }
             }
-            m.has(24) || m.has(29) -> remember(m.fieldNumbers.joinToString(","))
             m.has(30) -> {                                                       // remote_voice_begin
                 val sid = m.msg(30)?.int(1) ?: 0
                 voiceWaiter?.let { if (!it.isDone) it.complete(sid) }
@@ -360,7 +330,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
     private fun insert(text: String) {
         if (text.isEmpty()) return
         send(RemoteMsg.text(imeCounter, fieldCounter, text))
-        sentTexts++
     }
 
     // Canlı yazma kuyruğu: düzenlemeler sırayla, TV'nin cevabı beklenerek uygulanır
@@ -393,11 +362,14 @@ class AtvRemote(private val context: Context) : RemoteLink {
             // klavyesini kullanır ve kutu bilgisi vermez ama yazma mesajını sayaçlara bakmadan
             // kabul eder. Fark, TV'ye en son gönderdiğimiz metne göre bulunur.
             if (currentApp != YOUTUBE) return
-            val common = blindText.commonPrefixWith(t).length
+            // YouTube'un ekran klavyesi bu yoldan gelen Türkçe harfleri atıyor; sadeleştirilmezse
+            // TV'deki metinle bildiğimiz metin ayrışır ve fazladan "sil" geri tuşu gibi çalışır
+            val plain = normalizeText(t)
+            val common = blindText.commonPrefixWith(plain).length
             repeat(blindText.length - common) { send(RemoteMsg.key(67)) }   // KEYCODE_DEL
             if (blindText.length > common) Thread.sleep(60)               // silme önce işlensin
-            insert(t.substring(common))
-            blindText = t
+            insert(plain.substring(common))
+            blindText = plain
             return
         }
         val common = current.commonPrefixWith(t).length
@@ -410,7 +382,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     }
 
     /** Yazma ekranı açıldı: kör modun başlangıç metni (TV'deki kutunun bilinen içeriği). */
-    fun startTyping(seed: String) { blindText = seed }
+    fun startTyping(seed: String) { blindText = normalizeText(seed) }
 
     /** Canlı yazma: TV kutusunun telefondaki [text] ile aynı olmasını sağlar. */
     fun type(text: String) { typingQueue.offer(text to false) }

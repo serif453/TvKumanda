@@ -79,8 +79,7 @@ class MainActivity : ComponentActivity() {
     private var typingSeedTick by mutableStateOf(0)
     private var typingHint by mutableStateOf("")
     private var imeReady by mutableStateOf(false)
-    private var typingDiag by mutableStateOf("")   // geçici teşhis
-    private var diagJob: Job? = null
+    private var imeJob: Job? = null
     @Volatile private var liveText = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,7 +99,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingDiag, typingHint),
+                        typing, typingSeed, typingSeedTick, imeReady, typingHint),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -128,8 +127,7 @@ class MainActivity : ComponentActivity() {
                     onCloseTyping = ::closeTyping,
                     onLiveText = ::onLiveText,
                     onTypingSubmit = ::submitTyping,
-                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
-                    onTypingTest = {}
+                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } }
                 )
             }
         }
@@ -343,10 +341,9 @@ class MainActivity : ComponentActivity() {
         liveText = seed
         atv.startTyping(seed)
         typing = true
-        diagJob?.cancel()
-        diagJob = scope.launch {
-            while (typing) { typingDiag = atv.diagnostics(); imeReady = atv.hasTextField; delay(300) }
-        }
+        // TV'de yazı kutusu seçili mi: ekrandaki bilgi satırı buna göre gösterilir
+        imeJob?.cancel()
+        imeJob = scope.launch { while (typing) { imeReady = atv.hasTextField; delay(300) } }
     }
 
     private var typingClosedAt = 0L
@@ -600,7 +597,6 @@ data class UiState(
     val typingSeed: String,
     val typingSeedTick: Int,
     val imeReady: Boolean,
-    val typingDiag: String = "",
     val typingHint: String = ""
 )
 

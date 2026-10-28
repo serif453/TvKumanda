@@ -133,8 +133,7 @@ fun RemoteScreen(
     onCloseTyping: () -> Unit,
     onLiveText: (String) -> Unit,
     onTypingSubmit: () -> Unit,
-    onTvSearch: () -> Unit,
-    onTypingTest: (Int) -> Unit = {}
+    onTvSearch: () -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -191,7 +190,7 @@ fun RemoteScreen(
     }
 
     if (typingOpen) {
-        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch, onTypingTest)
+        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
     }
     }
 
@@ -1318,13 +1317,11 @@ private fun TypingScreen(
     seed: String,
     seedTick: Int,
     imeReady: Boolean,
-    diag: String,
     hint: String,
     onText: (String) -> Unit,
     onSubmit: () -> Unit,
     onClose: () -> Unit,
-    onTvSearch: () -> Unit,
-    onTest: (Int) -> Unit
+    onTvSearch: () -> Unit
 ) {
     var value by remember { mutableStateOf(TextFieldValue(seed, TextRange(seed.length))) }
     LaunchedEffect(seedTick) {
@@ -1415,21 +1412,6 @@ private fun TypingScreen(
                         Icon(AppIcons.Clear, "Tümünü sil", tint = Pal.Sub, modifier = Modifier.size(26.dp))
                     }
                 }
-            }
-            // Geçici teşhis: dokununca panoya kopyalanır
-            if (diag.isNotEmpty()) {
-                val ctx = LocalContext.current
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    "Teşhis (kopyalamak için dokun): $diag",
-                    color = Pal.Sub.copy(alpha = 0.8f),
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    modifier = Modifier.clickable {
-                        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("teşhis", diag))
-                    }
-                )
             }
         }
     }
