@@ -34,6 +34,8 @@ class MainActivity : ComponentActivity() {
     private var pairing by mutableStateOf(false)
     private var pairingError by mutableStateOf("")
     private var currentIp = ""
+    private var savedTvs by mutableStateOf<List<SavedTv>>(emptyList())
+    private lateinit var prefs: android.content.SharedPreferences
     // Tuşlar sırayla gitsin diye tek iş parçacığı
     private val io = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = MainScope()
@@ -54,14 +56,15 @@ class MainActivity : ComponentActivity() {
         atv = AtvRemote(applicationContext)
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
-        val prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
+        savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
         method = runCatching { ConnMethod.valueOf(prefs.getString("method", null) ?: "ADB") }.getOrDefault(ConnMethod.ADB)
 
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -78,6 +81,11 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onPairCode = ::submitPairingCode,
+                    onPickSaved = ::connectSaved,
+                    onForgetSaved = { tv ->
+                        savedTvs = savedTvs.filterNot { it.ip == tv.ip }
+                        prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
+                    },
                     onPairCancel = ::cancelPairing
                 )
             }
@@ -106,6 +114,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onConnected(model: String, ip: String) {
+        // Başarılı her bağlantı kayıtlı TV listesinin en başına yazılır
+        savedTvs = listOf(SavedTv(ip, model.ifBlank { ip }, method)) + savedTvs.filterNot { it.ip == ip }
+        prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
         tvName = model
         fastMode = remote.isFast
         state = ConnState.CONNECTED
@@ -113,6 +124,18 @@ class MainActivity : ComponentActivity() {
         apps = emptyList()
         loadApps()
         refreshVolume(0)
+    }
+
+    /** Kayıtlı bir TV'ye, en son çalışan yöntemiyle bağlanır. */
+    private fun connectSaved(tv: SavedTv) {
+        if (tv.method != method) {
+            prefs.edit().putString("method", tv.method.name).apply()
+            switchMethod(tv.method)
+        } else {
+            Thread { remote.close() }.start()
+        }
+        prefs.edit().putString("ip", tv.ip).apply()
+        connect(tv.ip)
     }
 
     /** Yöntem değişince açık bağlantı kapatılır; diğer yönteme otomatik geçiş yapılmaz. */
@@ -282,5 +305,27 @@ data class UiState(
     val volumeTick: Int,
     val method: ConnMethod,
     val pairing: Boolean,
-    val pairingError: String
+    val pairingError: String,
+    val savedTvs: List<SavedTv>
 )
+
+/** Kayıtlı TV: IP, görünen ad ve en son başarıyla kullanılan bağlantı yöntemi. */
+data class SavedTv(val ip: String, val name: String, val method: ConnMethod) {
+    companion object {
+        fun load(json: String?): List<SavedTv> = runCatching {
+            val arr = org.json.JSONArray(json ?: "[]")
+            (0 until arr.length()).map {
+                val o = arr.getJSONObject(it)
+                SavedTv(
+                    o.getString("ip"),
+                    o.optString("name", o.getString("ip")),
+                    runCatching { ConnMethod.valueOf(o.optString("method", "ADB")) }.getOrDefault(ConnMethod.ADB)
+                )
+            }
+        }.getOrDefault(emptyList())
+
+        fun save(list: List<SavedTv>): String = org.json.JSONArray().apply {
+            list.forEach { put(org.json.JSONObject().put("ip", it.ip).put("name", it.name).put("method", it.method.name)) }
+        }.toString()
+    }
+}

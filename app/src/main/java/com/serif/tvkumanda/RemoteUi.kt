@@ -112,7 +112,9 @@ fun RemoteScreen(
     onLaunch: (TvApp) -> Unit,
     onMethod: (ConnMethod) -> Unit,
     onPairCode: (String) -> Unit,
-    onPairCancel: () -> Unit
+    onPairCancel: () -> Unit,
+    onPickSaved: (SavedTv) -> Unit,
+    onForgetSaved: (SavedTv) -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -171,7 +173,7 @@ fun RemoteScreen(
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect, onMethod)
+                    Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved)
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.NONE -> {}
@@ -960,8 +962,23 @@ private fun SheetTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> Unit, onMethod: (ConnMethod) -> Unit) {
+private fun ConnectSheet(
+    initialIp: String,
+    ui: UiState,
+    onConnect: (String) -> Unit,
+    onMethod: (ConnMethod) -> Unit,
+    onPickSaved: (SavedTv) -> Unit,
+    onForgetSaved: (SavedTv) -> Unit
+) {
     var ip by remember { mutableStateOf(initialIp) }
+    // Ağ taraması panel açıkken çalışır; sonuç hem kayıtlı hem bulunan listelerinde kullanılır
+    val context = LocalContext.current
+    val discovery = remember { TvDiscovery(context) }
+    var found by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
+    DisposableEffect(Unit) {
+        discovery.start { found = it }
+        onDispose { discovery.stop() }
+    }
     SheetTitle("TV'ye bağlan", "TV ve telefon aynı Wi-Fi ağında olmalı.")
     MethodSelector(ui.method, onMethod)
     Spacer(Modifier.height(12.dp))
@@ -983,7 +1000,8 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
             enabled = ui.state != ConnState.CONNECTING
         ) { onConnect(ip.trim()) }
     }
-    FoundTvList(ui.state) { tv ->
+    SavedTvList(ui, found.map { it.ip }.toSet(), onPick = { tv -> ip = tv.ip; onPickSaved(tv) }, onForget = onForgetSaved)
+    FoundTvList(found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }, ui.state, anySaved = ui.savedTvs.isNotEmpty()) { tv ->
         ip = tv.ip
         onConnect(tv.ip)
     }
@@ -1004,7 +1022,6 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
             fontSize = 14.sp
         )
     }
-    val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
     }
@@ -1014,16 +1031,62 @@ private fun ConnectSheet(initialIp: String, ui: UiState, onConnect: (String) -> 
     }
 }
 
-/** Ağda otomatik bulunan TV'ler. Panel açıkken tarar, kapanınca durur. */
+/** Kayıtlı TV'ler: dokununca o TV'ye son kullanılan yöntemle bağlanır; × ile listeden kaldırılır. */
 @Composable
-private fun FoundTvList(state: ConnState, onPick: (FoundTv) -> Unit) {
-    val context = LocalContext.current
-    val discovery = remember { TvDiscovery(context) }
-    var tvs by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
-    DisposableEffect(Unit) {
-        discovery.start { tvs = it }
-        onDispose { discovery.stop() }
+private fun SavedTvList(ui: UiState, online: Set<String>, onPick: (SavedTv) -> Unit, onForget: (SavedTv) -> Unit) {
+    if (ui.savedTvs.isEmpty()) return
+    Spacer(Modifier.height(16.dp))
+    Text("KAYITLI TV'LER", color = Pal.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Medium)
+    Spacer(Modifier.height(8.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (tv in ui.savedTvs) {
+            val current = ui.state == ConnState.CONNECTED && ui.message == tv.ip
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Pal.Btn)
+                    .then(if (current) Modifier.border(1.dp, RingBrush, RoundedCornerShape(14.dp)) else Modifier)
+                    .clickable(enabled = ui.state != ConnState.CONNECTING && !current) { onPick(tv) }
+                    .padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(AppIcons.Tv, null, tint = if (current) Pal.Blue else Pal.Text, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(tv.name, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (tv.ip in online) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(Pal.Green))
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(
+                            "${tv.ip} · ${if (tv.method == ConnMethod.STANDARD) "Standart" else "ADB"}",
+                            color = Pal.Sub, fontSize = 12.sp
+                        )
+                    }
+                }
+                if (current) {
+                    Text("Bağlı", color = Pal.Green, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable { onForget(tv) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("×", color = Pal.Sub, fontSize = 20.sp)
+                }
+            }
+        }
     }
+}
+
+/** Ağda otomatik bulunan (henüz kayıtlı olmayan) TV'ler. */
+@Composable
+private fun FoundTvList(tvs: List<FoundTv>, state: ConnState, anySaved: Boolean, onPick: (FoundTv) -> Unit) {
 
     Spacer(Modifier.height(16.dp))
     Text(
@@ -1038,7 +1101,10 @@ private fun FoundTvList(state: ConnState, onPick: (FoundTv) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
             CircularProgressIndicator(Modifier.size(16.dp), color = Pal.Sub, strokeWidth = 2.dp)
             Spacer(Modifier.width(10.dp))
-            Text("Aranıyor… Bulunamazsa IP'yi elle gir.", color = Pal.Sub, fontSize = 13.sp)
+            Text(
+                if (anySaved) "Yeni TV aranıyor…" else "Aranıyor… Bulunamazsa IP'yi elle gir.",
+                color = Pal.Sub, fontSize = 13.sp
+            )
         }
         return
     }
