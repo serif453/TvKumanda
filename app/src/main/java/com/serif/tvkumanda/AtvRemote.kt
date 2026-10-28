@@ -368,6 +368,19 @@ class AtvRemote(private val context: Context) : RemoteLink {
         else -> null
     }
 
+    /** Geçici test paneli: "a" harfini farklı yöntemlerle gönderir. Dönüş: kullanılan değerler. */
+    fun testSend(kind: Int): String {
+        val c = imeCounter; val f = imeField
+        return when (kind) {
+            0 -> { send(RemoteMsg.key(29)); "tuş" }
+            1 -> { send(RemoteMsg.key(29, 1)); send(RemoteMsg.key(29, 2)); "tuş bas/bırak" }
+            2 -> { send(RemoteMsg.text(c, f, "a")); "kutu $c/$f" }
+            3 -> { send(RemoteMsg.text(c + 1, f, "a")); "kutu ${c + 1}/$f" }
+            4 -> { send(RemoteMsg.text(c, f + 1, "a")); "kutu $c/${f + 1}" }
+            else -> { send(RemoteMsg.text(imeSeq, f, "a")); "kutu sıra $imeSeq/$f" }
+        }.also { remember("test:$it") }
+    }
+
     fun setText(value: String) {
         val t = value.replace('\n', ' ')
         send(RemoteMsg.text(counterForSend, imeField, t))

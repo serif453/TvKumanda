@@ -129,7 +129,13 @@ class MainActivity : ComponentActivity() {
                     onCloseTyping = ::closeTyping,
                     onLiveText = ::onLiveText,
                     onTypingSubmit = ::submitTyping,
-                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } }
+                    onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
+                    onTypingTest = { k ->
+                        scope.launch {
+                            val r = withContext(io) { runCatching { atv.testSend(k) }.getOrElse { "hata: ${it.message}" } }
+                            toast("Gönderildi: $r")
+                        }
+                    }
                 )
             }
         }

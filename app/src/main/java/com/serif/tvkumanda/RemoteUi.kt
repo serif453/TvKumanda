@@ -133,7 +133,8 @@ fun RemoteScreen(
     onCloseTyping: () -> Unit,
     onLiveText: (String) -> Unit,
     onTypingSubmit: () -> Unit,
-    onTvSearch: () -> Unit
+    onTvSearch: () -> Unit,
+    onTypingTest: (Int) -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -190,7 +191,7 @@ fun RemoteScreen(
     }
 
     if (typingOpen) {
-        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
+        TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingDiag, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch, onTypingTest)
     }
     }
 
@@ -1322,7 +1323,8 @@ private fun TypingScreen(
     onText: (String) -> Unit,
     onSubmit: () -> Unit,
     onClose: () -> Unit,
-    onTvSearch: () -> Unit
+    onTvSearch: () -> Unit,
+    onTest: (Int) -> Unit
 ) {
     var value by remember { mutableStateOf(TextFieldValue(seed, TextRange(seed.length))) }
     LaunchedEffect(seedTick) {
@@ -1411,6 +1413,24 @@ private fun TypingScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(AppIcons.Clear, "Tümünü sil", tint = Pal.Sub, modifier = Modifier.size(26.dp))
+                    }
+                }
+            }
+            // Geçici test paneli: aynı "a" harfi farklı yöntemlerle gönderilir
+            Spacer(Modifier.height(20.dp))
+            Text("Test: TV'de \"a\" çıkaran düğmeyi not et", color = Pal.Sub, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            val labels = listOf("1 Tuş", "2 Bas/bırak", "3 Kutu", "4 Kutu c+1", "5 Kutu f+1", "6 Kutu sıra")
+            for (row in labels.indices.chunked(3)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                    for (i in row) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Pal.Btn)
+                                .clickable { onTest(i) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) { Text(labels[i], color = Pal.Text, fontSize = 13.sp) }
                     }
                 }
             }
