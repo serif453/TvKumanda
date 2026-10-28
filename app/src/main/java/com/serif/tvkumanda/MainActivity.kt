@@ -320,23 +320,44 @@ class MainActivity : ComponentActivity() {
         recognizer?.stopListening()
     }
 
-    /** Standart: mikrofon → 8 kHz PCM → TV (referans: androidtvremote2 voice). */
+    /**
+     * Standart: mikrofon → 8 kHz / 16 bit / mono PCM → TV (referans: androidtvremote2 voice).
+     * Kayıt, telefonun desteklediği bir hızda açılır ve 8 kHz'e dönüştürülür; kısık ses yükseltilir.
+     */
     @SuppressLint("MissingPermission")
+    private fun openRecorder(): Pair<AudioRecord, Int>? {
+        val sources = listOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
+        val rates = listOf(16000, 48000, 44100, 8000)
+        for (src in sources) for (rate in rates) {
+            val min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            if (min <= 0) continue
+            val r = runCatching {
+                AudioRecord(src, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, rate * 2 / 5))
+            }.getOrNull() ?: continue
+            if (r.state == AudioRecord.STATE_INITIALIZED) return r to rate
+            r.release()
+        }
+        return null
+    }
+
     private fun startVoiceStream() {
         micStop = false
         micActive = true
         Thread({
             var rec: AudioRecord? = null
+            var sentBytes = 0
             try {
-                val sid = atv.startVoice()
-                val rate = RemoteMsg.VOICE_SAMPLE_RATE
-                val minBuf = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-                rec = AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, 8192)
-                )
+                val opened = openRecorder() ?: throw IllegalStateException("Mikrofon açılamadı")
+                rec = opened.first
+                val rate = opened.second
+                val resampler = VoiceDsp.Resampler(rate, RemoteMsg.VOICE_SAMPLE_RATE)
+                val agc = VoiceDsp.AutoGain()
                 rec.startRecording()
-                val buf = ByteArray(1600)               // 100 ms
+                if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("Mikrofon kullanımda")
+
+                // Mikrofon hazır olduktan sonra TV'de oturumu aç; ses kaybolmasın
+                val sid = atv.startVoice()
+                val buf = ByteArray(rate / 10 * 2)          // 100 ms
                 val pending = ByteArrayOutputStream()
                 val start = System.currentTimeMillis()
                 var heard = false
@@ -344,13 +365,15 @@ class MainActivity : ComponentActivity() {
                 while (!micStop) {
                     val n = rec.read(buf, 0, buf.size)
                     if (n <= 0) break
-                    pending.write(buf, 0, n)
-                    val level = pcmLevel(buf, n)
+                    val pcm8k = agc.process(resampler.process(VoiceDsp.toShorts(buf, n)))
+                    pending.write(VoiceDsp.toBytes(pcm8k))
+                    val level = VoiceDsp.level(pcm8k)
                     runOnUiThread { micLevel = level }
                     val now = System.currentTimeMillis()
                     if (level > 0.08f) { heard = true; lastLoud = now }
                     if (pending.size() >= RemoteMsg.VOICE_CHUNK_MIN) {
                         atv.sendVoice(sid, pending.toByteArray())
+                        sentBytes += pending.size()
                         pending.reset()
                     }
                     // Konuşma bitince (1,5 sn sessizlik) ya da hiç konuşulmazsa kendiliğinden dur
@@ -358,8 +381,12 @@ class MainActivity : ComponentActivity() {
                     if (!heard && now - start > 6000) break
                     if (now - start > 15000) break
                 }
-                if (pending.size() > 0) atv.sendVoice(sid, pending.toByteArray())
+                if (pending.size() > 0) {
+                    atv.sendVoice(sid, pending.toByteArray())
+                    sentBytes += pending.size()
+                }
                 atv.endVoice(sid)
+                if (sentBytes == 0) runOnUiThread { toast("Mikrofondan ses alınamadı") }
             } catch (e: Exception) {
                 runOnUiThread { toast("Sesli komut: ${e.message ?: "başlatılamadı"}") }
             } finally {
@@ -368,19 +395,6 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread { micActive = false; micLevel = 0f }
             }
         }, "voice").start()
-    }
-
-    /** 16 bit PCM'den 0..1 arası ses seviyesi (animasyon ve sessizlik algılama için). */
-    private fun pcmLevel(b: ByteArray, n: Int): Float {
-        var sum = 0.0
-        var count = 0
-        var i = 0
-        while (i + 1 < n) {
-            val v = ((b[i + 1].toInt() shl 8) or (b[i].toInt() and 0xFF)).toShort().toDouble() / 32768.0
-            sum += v * v; count++; i += 2
-        }
-        if (count == 0) return 0f
-        return (kotlin.math.sqrt(sum / count) * 4).toFloat().coerceIn(0f, 1f)
     }
 
     /** ADB (ve sesi desteklemeyen TV'ler): telefonda yazıya çevir, TV'de ara. */

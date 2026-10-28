@@ -83,4 +83,28 @@ class AtvProtocolTest {
         assertTrue(tv.has(30))
         assertEquals(7, tv.msg(30)!!.int(1))
     }
+
+    @Test fun voiceResamplingAndGain() {
+        // 16 kHz'de 1 sn sinüs -> 8 kHz'de ~8000 örnek, parça parça işlense de kayıpsız
+        val src = ShortArray(16000) { (8000 * kotlin.math.sin(2 * Math.PI * 440 * it / 16000.0)).toInt().toShort() }
+        val rs = VoiceDsp.Resampler(16000, 8000)
+        var total = 0
+        for (i in 0 until 10) total += rs.process(src.copyOfRange(i * 1600, (i + 1) * 1600)).size
+        assertTrue("örnek sayısı: $total", total in 7990..8000)
+
+        // 44,1 kHz -> 8 kHz oranı da korunmalı
+        val rs2 = VoiceDsp.Resampler(44100, 8000)
+        var t2 = 0
+        for (i in 0 until 10) t2 += rs2.process(ShortArray(4410)).size
+        assertTrue("örnek sayısı: $t2", t2 in 7990..8000)
+
+        // Kısık ses yükseltilir ama kırpılmaz; bayt dönüşümü geri alınabilir
+        val quiet = ShortArray(800) { if (it % 2 == 0) 2000 else -2000 }
+        val agc = VoiceDsp.AutoGain()
+        var out = quiet
+        repeat(20) { out = agc.process(quiet) }
+        assertTrue(out.maxOrNull()!! > 6000)
+        assertTrue(out.maxOrNull()!! <= 32767)
+        assertArrayEquals(out, VoiceDsp.toShorts(VoiceDsp.toBytes(out), out.size * 2))
+    }
 }
