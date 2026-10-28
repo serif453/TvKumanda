@@ -95,3 +95,18 @@ class TvDiscovery(context: Context) {
         const val SERVICE_TYPE = "_androidtvremote2._tcp."
     }
 }
+
+/**
+ * Kayıtlı TV'ler için hafif "açık mı" kontrolü: tam tarama yapmadan, yalnızca
+ * Standart (6466) ve ADB (5555) portlarına kısa bir TCP bağlantısı denenir.
+ * Hiç veri gönderilmez; bağlantı hemen kapatılır.
+ */
+object TvPing {
+    fun isOnline(ip: String, timeoutMs: Int = 1200): Boolean =
+        listOf(AtvRemote.PORT_REMOTE, 5555).any { port ->
+            runCatching {
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(ip, port), timeoutMs) }
+                true
+            }.getOrDefault(false)
+        }
+}

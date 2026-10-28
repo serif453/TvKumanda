@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -988,6 +989,16 @@ private fun ConnectSheet(
         }
     }
     DisposableEffect(Unit) { onDispose { discovery.stop() } }
+    // Kayıtlı TV'lerin açık olup olmadığını panel açılınca hızlıca kontrol et
+    var reachable by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(ui.savedTvs) {
+        val ips = ui.savedTvs.map { it.ip }
+        reachable = kotlinx.coroutines.coroutineScope {
+            ips.map { ip ->
+                async(kotlinx.coroutines.Dispatchers.IO) { if (TvPing.isOnline(ip)) ip else null }
+            }.mapNotNull { it.await() }.toSet()
+        }
+    }
     SheetTitle("TV'ye bağlan", "TV ve telefon aynı Wi-Fi ağında olmalı.")
     MethodSelector(ui.method, onMethod)
     Spacer(Modifier.height(12.dp))
@@ -1009,7 +1020,7 @@ private fun ConnectSheet(
             enabled = ui.state != ConnState.CONNECTING
         ) { onConnect(ip.trim()) }
     }
-    SavedTvList(ui, found.map { it.ip }.toSet(), onPick = { tv -> ip = tv.ip; onPickSaved(tv) }, onForget = onForgetSaved)
+    SavedTvList(ui, reachable + found.map { it.ip }, onPick = { tv -> ip = tv.ip; onPickSaved(tv) }, onForget = onForgetSaved)
     FoundTvList(
         found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }, ui.state,
         scanning = scanning, scannedOnce = scannedOnce, onScan = { scanning = true }
