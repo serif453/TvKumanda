@@ -624,8 +624,9 @@ private fun TrackpadIcon(modifier: Modifier) {
 private val modeNames = listOf("Yön tuşları", "Kaydırma", "Fare")
 
 /**
- * Mod göstergesi: üç eşit çubuk, seçili olan parlak.
- * Dokunarak seçilebilir ya da bu alanda parmağı sağa-sola kaydırarak mod değiştirilebilir.
+ * Yüzen mod çubuğu: gölgeli kapsül içinde üç eşit çubuk ve seçili moda kayan renkli gösterge.
+ * Dokunarak ya da kapsül üzerinde sağa-sola kaydırarak mod değiştirilir.
+ * Mod değişince adı kapsülün üstünde kısa süre belirir.
  */
 @Composable
 private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
@@ -633,69 +634,104 @@ private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
     val step = with(LocalDensity.current) { 36.dp.toPx() }
     val currentPage by rememberUpdatedState(page)
     val select by rememberUpdatedState(onSelect)
-    Row(
-        Modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .pointerInput(Unit) {
-                var acc = 0f
-                var target = 0
-                detectHorizontalDragGestures(
-                    onDragStart = { acc = 0f; target = currentPage },
-                    onHorizontalDrag = { change, drag ->
-                        change.consume()
-                        acc += drag
-                        val moveBy = when {
-                            acc >= step -> 1
-                            acc <= -step -> -1
-                            else -> 0
-                        }
-                        if (moveBy != 0) {
-                            acc -= moveBy * step
-                            val next = (target + moveBy).coerceIn(0, modeNames.lastIndex)
-                            if (next != target) {
-                                target = next
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                select(next)
+
+    val seg = 40.dp
+    val bar = 24.dp
+    val thumbX by animateDpAsState(
+        seg * page + (seg - bar) / 2,
+        spring(dampingRatio = 0.7f, stiffness = 500f),
+        label = "thumb"
+    )
+
+    var showLabel by remember { mutableStateOf(false) }
+    LaunchedEffect(page) {
+        showLabel = true
+        delay(1300)
+        showLabel = false
+    }
+    val labelAlpha by animateFloatAsState(if (showLabel) 1f else 0f, tween(220), label = "label")
+
+    val capsule = RoundedCornerShape(50)
+    Box(contentAlignment = Alignment.Center) {
+        // Kısa süre görünen mod adı (çubuğun üstünde yüzer)
+        Box(
+            Modifier
+                .offset(y = (-38).dp)
+                .graphicsLayer { alpha = labelAlpha; translationY = (1f - labelAlpha) * 12f }
+                .shadow(8.dp, capsule)
+                .clip(capsule)
+                .background(Color(0xFF34343A))
+                .padding(horizontal = 12.dp, vertical = 5.dp)
+        ) {
+            Text(modeNames.getOrElse(page) { "" }, color = Pal.Text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
+
+        // Kapsül
+        Box(
+            Modifier
+                .shadow(12.dp, capsule, ambientColor = Color.Black, spotColor = Color.Black)
+                .clip(capsule)
+                .background(Color(0xFF29292D))
+                .border(1.dp, Color(0x14FFFFFF), capsule)
+                .pointerInput(Unit) {
+                    var acc = 0f
+                    var target = 0
+                    detectHorizontalDragGestures(
+                        onDragStart = { acc = 0f; target = currentPage },
+                        onHorizontalDrag = { change, drag ->
+                            change.consume()
+                            acc += drag
+                            val moveBy = when {
+                                acc >= step -> 1
+                                acc <= -step -> -1
+                                else -> 0
+                            }
+                            if (moveBy != 0) {
+                                acc -= moveBy * step
+                                val next = (target + moveBy).coerceIn(0, modeNames.lastIndex)
+                                if (next != target) {
+                                    target = next
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    select(next)
+                                }
                             }
                         }
+                    )
+                }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Box(Modifier.size(width = seg * modeNames.size, height = 28.dp)) {
+                Row {
+                    for (i in modeNames.indices) {
+                        Box(
+                            Modifier
+                                .size(width = seg, height = 28.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onSelect(i) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(width = bar, height = 5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF4A4A50))
+                            )
+                        }
                     }
-                )
-            }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        for (i in modeNames.indices) {
-            val selected = i == page
-            val color by animateColorAsState(
-                if (selected) Color(0xFFE4E4EA) else Color(0xFF4A4A50),
-                tween(200),
-                label = "bar"
-            )
-            Box(
-                Modifier
-                    .size(width = 38.dp, height = 40.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onSelect(i) },
-                contentAlignment = Alignment.Center
-            ) {
+                }
+                // Kayan seçili gösterge
                 Box(
                     Modifier
-                        .size(width = 26.dp, height = 6.dp)
+                        .align(Alignment.CenterStart)
+                        .offset(x = thumbX)
+                        .size(width = bar, height = 5.dp)
                         .clip(CircleShape)
-                        .background(color)
+                        .background(RingBrush)
                 )
             }
         }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            modeNames.getOrElse(page) { "" },
-            color = Pal.Sub,
-            fontSize = 12.sp,
-            modifier = Modifier.width(72.dp)
-        )
     }
 }
 
