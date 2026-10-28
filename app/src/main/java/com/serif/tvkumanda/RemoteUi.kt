@@ -136,6 +136,7 @@ fun RemoteScreen(
     onTvSearch: () -> Unit,
     cast: CastUi = CastUi(),
     onCastPick: (MediaKind) -> Unit = {},
+    onCastItem: (MediaItem) -> Unit = {},
     onCastToggle: () -> Unit = {},
     onCastSeek: (Double) -> Unit = {},
     onCastStop: () -> Unit = {}
@@ -166,7 +167,7 @@ fun RemoteScreen(
         if (tab == Tab.CAST) {
             CastScreen(
                 cast, ui.state == ConnState.CONNECTED,
-                onCastPick, onCastToggle, onCastSeek, onCastStop,
+                onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 Modifier.weight(1f)
             )
         } else {

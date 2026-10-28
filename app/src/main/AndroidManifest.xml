@@ -4,6 +4,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Sesli komut: ses yalnızca TV'ye ya da telefonun konuşma tanıma servisine gider -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Cast: telefondaki fotoğraf, video ve müzikleri galeride göstermek için (yalnızca okuma) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Cast: ekran kapalıyken de yayın sürsün (kalıcı bildirim + Wi-Fi uyanık) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <queries>
         <intent>
@@ -28,5 +39,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".CastService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

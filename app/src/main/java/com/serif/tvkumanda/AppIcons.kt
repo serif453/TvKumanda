@@ -39,4 +39,5 @@ object AppIcons {
     val PlayArrow = icon("PlayArrow", "M8,5v14l11,-7z")
     val Pause = icon("Pause", "M6,19h4L10,5L6,5v14zM14,5v14h4L18,5h-4z")
     val Stop = icon("Stop", "M6,6h12v12H6z")
+    val ArrowBack = icon("ArrowBack", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z")
 }

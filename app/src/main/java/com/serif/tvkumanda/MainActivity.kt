@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
                     cast = cast,
                     onCastPick = ::pickForCast,
+                    onCastItem = { item -> castMedia(item.uri, item.kind, item.title, item.mime) },
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -393,10 +394,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Seçilen dosyayı telefondaki sunucudan yayınlar ve TV'nin Chromecast'ine oynatır. */
-    private fun castMedia(uri: android.net.Uri, kind: MediaKind) {
+    private fun castMedia(uri: android.net.Uri, kind: MediaKind, knownTitle: String? = null, knownMime: String? = null) {
+        if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
+        askNotificationPermissionOnce()
         val ip = currentIp
-        val title = displayName(uri) ?: kind.label
-        val mime = contentResolver.getType(uri) ?: kind.fallbackMime
+        val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
+        val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
         cast = CastUi(CastPhase.PREPARING, title, kind)
         castPollJob?.cancel()
         scope.launch {
@@ -406,11 +409,23 @@ class MainActivity : ComponentActivity() {
                     castClient.connect(ip)
                     castClient.load(url, mime, title)
                 }
+                CastService.start(this@MainActivity, title)
                 startCastPolling()
             } catch (e: Exception) {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
             }
         }
+    }
+
+    private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** İlk yayında bildirim izni istenir (ekran kapalıyken yayının sürdüğünü gösteren bildirim için). */
+    private fun askNotificationPermissionOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        if (prefs.getBoolean("notif_asked", false)) return
+        prefs.edit().putBoolean("notif_asked", true).apply()
+        notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun castError(e: Exception): String = when (e) {
@@ -458,11 +473,15 @@ class MainActivity : ComponentActivity() {
             duration = if (st.duration > 0) st.duration else cast.duration,
             error = if (phase == CastPhase.ERROR) "TV dosyayı oynatamadı (biçim desteklenmiyor olabilir)" else ""
         )
-        if (phase == CastPhase.ENDED || phase == CastPhase.ERROR) castPollJob?.cancel()
+        if (phase == CastPhase.ENDED || phase == CastPhase.ERROR) {
+            castPollJob?.cancel()
+            CastService.stop(this)
+        }
     }
 
     private fun onCastClosed(reason: String) {
         castPollJob?.cancel()
+        CastService.stop(this)
         if (cast.phase != CastPhase.NONE && cast.phase != CastPhase.ENDED && cast.phase != CastPhase.ERROR) {
             cast = cast.copy(phase = CastPhase.ERROR, error = "Chromecast bağlantısı koptu")
         }
@@ -483,6 +502,7 @@ class MainActivity : ComponentActivity() {
     private fun castStop() {
         castPollJob?.cancel()
         cast = CastUi()
+        CastService.stop(this)
         scope.launch(castIo) {
             runCatching { castClient.stopMedia() }
             mediaServer.stop()
@@ -708,6 +728,7 @@ class MainActivity : ComponentActivity() {
         recognizer?.destroy()
         scope.cancel()
         castPollJob?.cancel()
+        CastService.stop(this)
         Thread { adb.close(); atv.release(); io.close(); castClient.close(); mediaServer.stop(); castIo.close() }.start()
     }
 }

@@ -1,6 +1,21 @@
 package com.serif.tvkumanda
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -72,35 +87,213 @@ private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick
     }
 }
 
-/** Cast sekmesi: tür seçimi ve oynatıcı kartı. */
+/**
+ * Cast sekmesi: tür seçimi, uygulama içi galeri (albümler → öğeler) ve oynatıcı kartı.
+ * Galeri izni verilmezse telefonun dosya seçicisiyle devam edilebilir.
+ */
 @Composable
 fun CastScreen(
     cast: CastUi,
     connected: Boolean,
     onPick: (MediaKind) -> Unit,
+    onCastItem: (MediaItem) -> Unit,
     onToggle: () -> Unit,
     onSeek: (Double) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier.fillMaxWidth().padding(top = 16.dp)) {
-        Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(4.dp))
+    val context = LocalContext.current
+    val library = remember { MediaLibrary(context.applicationContext) }
+    var browse by remember { mutableStateOf<MediaKind?>(null) }
+    var album by remember { mutableStateOf<MediaAlbum?>(null) }
+    var permTick by remember { mutableStateOf(0) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permTick++ }
+
+    BackHandler(enabled = browse != null) {
+        if (album != null) album = null else browse = null
+    }
+
+    Column(modifier.fillMaxWidth().padding(top = 12.dp)) {
+        val kind = browse
+        if (kind == null) {
+            Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (connected) "Telefondaki fotoğraf, video ya da müziği TV'de oynat" else "Önce bir TV'ye bağlan",
+                color = Pal.Sub, fontSize = 14.sp
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                for ((k, icon) in listOf(MediaKind.PHOTO to AppIcons.Photo, MediaKind.VIDEO to AppIcons.Movie, MediaKind.MUSIC to AppIcons.MusicNote)) {
+                    KindButton(icon, k.label, Modifier.weight(1f), connected) {
+                        browse = k
+                        album = null
+                        if (!library.hasPermission(k)) permLauncher.launch(library.permissionsFor(k))
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+        } else {
+            // Başlık: geri + albüm/tür adı
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).clickable { if (album != null) album = null else browse = null },
+                    contentAlignment = Alignment.Center
+                ) { Icon(AppIcons.ArrowBack, "Geri", tint = Pal.Text, modifier = Modifier.size(26.dp)) }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    album?.name ?: kind.label,
+                    color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (!library.hasPermission(kind)) {
+                    PermissionNeeded(
+                        onAsk = { permLauncher.launch(library.permissionsFor(kind)) },
+                        onPicker = { onPick(kind) }
+                    )
+                } else {
+                    val albums by produceState<List<MediaAlbum>?>(null, kind, permTick) {
+                        value = withContext(Dispatchers.IO) { runCatching { library.albums(kind) }.getOrDefault(emptyList()) }
+                    }
+                    val list = albums
+                    val open = album
+                    when {
+                        list == null -> CenterText("Yükleniyor…")
+                        list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
+                        open == null -> AlbumGrid(list, library) { album = it }
+                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected, onCastItem)
+                        else -> ItemGrid(open.items, library, connected, onCastItem)
+                    }
+                }
+            }
+        }
+        if (cast.phase != CastPhase.NONE) {
+            Spacer(Modifier.height(8.dp))
+            PlayerCard(cast, onToggle, onSeek, onStop)
+        }
+        Spacer(Modifier.height(6.dp))
+    }
+}
+
+@Composable
+private fun CenterText(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, color = Pal.Sub, fontSize = 15.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun PermissionNeeded(onAsk: () -> Unit, onPicker: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
         Text(
-            if (connected) "Telefondaki fotoğraf, video ya da müziği TV'de oynat"
-            else "Önce bir TV'ye bağlan",
-            color = Pal.Sub, fontSize = 14.sp
+            "Galeriyi göstermek için telefondaki medyaya erişim izni gerekiyor. " +
+                "Dosyalar yalnızca seçtiğinde ve yalnızca TV'ne gönderilir.",
+            color = Pal.Sub, fontSize = 14.sp, textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            KindButton(AppIcons.Photo, MediaKind.PHOTO.label, Modifier.weight(1f), connected) { onPick(MediaKind.PHOTO) }
-            KindButton(AppIcons.Movie, MediaKind.VIDEO.label, Modifier.weight(1f), connected) { onPick(MediaKind.VIDEO) }
-            KindButton(AppIcons.MusicNote, MediaKind.MUSIC.label, Modifier.weight(1f), connected) { onPick(MediaKind.MUSIC) }
+        PillButton("İzin ver", primary = true, onClick = onAsk)
+        Spacer(Modifier.height(10.dp))
+        PillButton("Dosya seçiciyle seç", primary = false, onClick = onPicker)
+    }
+}
+
+@Composable
+private fun PillButton(label: String, primary: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (primary) Pal.Blue else Pal.Btn)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 12.dp)
+    ) { Text(label, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+}
+
+/** Küçük resim: arka planda yüklenir ve önbelleğe alınır. */
+@Composable
+private fun Thumb(item: MediaItem, library: MediaLibrary, modifier: Modifier, placeholder: ImageVector) {
+    val bmp by produceState<ImageBitmap?>(null, item.kind, item.id) {
+        value = withContext(Dispatchers.IO) { library.thumbnail(item)?.asImageBitmap() }
+    }
+    Box(modifier.background(Pal.Btn), contentAlignment = Alignment.Center) {
+        val b = bmp
+        if (b != null) Image(b, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Icon(placeholder, null, tint = Pal.Sub, modifier = Modifier.size(28.dp))
+    }
+}
+
+private fun placeholderFor(kind: MediaKind) = when (kind) {
+    MediaKind.PHOTO -> AppIcons.Photo
+    MediaKind.VIDEO -> AppIcons.Movie
+    MediaKind.MUSIC -> AppIcons.MusicNote
+}
+
+@Composable
+private fun AlbumGrid(albums: List<MediaAlbum>, library: MediaLibrary, onOpen: (MediaAlbum) -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(albums, key = { it.id }) { a ->
+            Column(Modifier.clip(RoundedCornerShape(16.dp)).clickable { onOpen(a) }) {
+                Thumb(a.cover, library, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)), placeholderFor(a.cover.kind))
+                Spacer(Modifier.height(6.dp))
+                Text(a.name, color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${a.count}", color = Pal.Sub, fontSize = 12.sp)
+            }
         }
-        Spacer(Modifier.weight(1f))
-        if (cast.phase != CastPhase.NONE) {
-            PlayerCard(cast, onToggle, onSeek, onStop)
-            Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun ItemGrid(items: List<MediaItem>, library: MediaLibrary, enabled: Boolean, onCast: (MediaItem) -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(items, key = { it.id }) { item ->
+            Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp)).clickable(enabled = enabled) { onCast(item) }) {
+                Thumb(item, library, Modifier.fillMaxSize(), placeholderFor(item.kind))
+                if (item.kind == MediaKind.VIDEO && item.durationMs > 0) {
+                    Text(
+                        timeText(item.durationMs / 1000.0),
+                        color = Pal.Text, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp)
+                            .clip(RoundedCornerShape(6.dp)).background(Pal.Bg.copy(alpha = 0.7f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackList(items: List<MediaItem>, library: MediaLibrary, enabled: Boolean, onCast: (MediaItem) -> Unit) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+        items(items, key = { it.id }) { item ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(enabled = enabled) { onCast(item) }.padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Thumb(item, library, Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)), AppIcons.MusicNote)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(item.title, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (item.subtitle.isNotBlank()) Text(item.subtitle, color = Pal.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (item.durationMs > 0) Text(timeText(item.durationMs / 1000.0), color = Pal.Sub, fontSize = 12.sp)
+            }
         }
     }
 }
