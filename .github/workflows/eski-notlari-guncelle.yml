@@ -1,7 +1,10 @@
-name: Eski sürüm notlarını güncelle
+name: Eski sürümleri düzenle
 
-# Elle çalıştırılır: Actions sekmesi > "Eski sürüm notlarını güncelle" > Run workflow.
-# .github/release-notes/<etiket>.md dosyalarındaki metni ilgili sürümün notu yapar.
+# Elle çalıştırılır: Actions > "Eski sürümleri düzenle" > Run workflow.
+# 1) v1–v5 etiketlerini v0.1–v0.5 olarak yeniden adlandırır
+# 2) Eski APK dosya adlarına sürüm numarası ekler (TvKumanda.apk -> TvKumanda-0.X.apk)
+# 3) .github/release-notes/<etiket>.md metinlerini sürüm notu yapar
+# Birden fazla kez çalıştırmak güvenlidir.
 on:
   workflow_dispatch:
 
@@ -9,15 +12,43 @@ permissions:
   contents: write
 
 jobs:
-  update:
+  fix:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
-      - name: Notları güncelle
-        env:
-          GH_TOKEN: ${{ github.token }}
+        with:
+          fetch-depth: 0
+
+      - name: v1–v5 -> v0.1–v0.5
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            old="v$i"; new="v0.$i"
+            if gh release view "$old" >/dev/null 2>&1; then
+              sha=$(git rev-list -n1 "$old")
+              git tag -f "$new" "$sha" && git push -f origin "refs/tags/$new"
+              gh release edit "$old" --tag "$new" --title "TV Kumanda 0.$i"
+              git push origin ":refs/tags/$old" || true
+              echo "yeniden adlandırıldı: $old -> $new"
+            fi
+          done
+
+      - name: APK dosya adları ve sürüm notları
         run: |
           for f in .github/release-notes/*.md; do
             tag=$(basename "$f" .md)
-            gh release edit "$tag" --notes-file "$f" && echo "güncellendi: $tag"
+            ver=${tag#v}
+            gh release view "$tag" >/dev/null 2>&1 || { echo "yok: $tag"; continue; }
+            gh release edit "$tag" --title "TV Kumanda $ver" --notes-file "$f"
+            gh api "repos/$REPO/releases/tags/$tag" -q '.assets[] | "\(.id) \(.name)"' | while read id name; do
+              want="TvKumanda-$ver.apk"
+              if [ "$name" != "$want" ]; then
+                gh api -X PATCH "repos/$REPO/releases/assets/$id" -f name="$want" >/dev/null && echo "$tag: $name -> $want"
+              fi
+            done
+            echo "güncellendi: $tag"
           done

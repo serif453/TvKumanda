@@ -12,8 +12,8 @@ android {
         applicationId = "com.serif.tvkumanda"
         minSdk = 26
         targetSdk = 34
-        // Sürüm GitHub'daki derleme numarasından otomatik gelir: 6. derleme -> 0.6
-        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        // Sürüm, derleme akışının hesapladığı sıradaki numaradan gelir (son sürüm 0.16 ise 0.17).
+        val build = System.getenv("APP_VERSION")?.toIntOrNull() ?: 1
         versionCode = build
         versionName = "0.$build"
     }

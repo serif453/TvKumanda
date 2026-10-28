@@ -7,6 +7,11 @@ on:
 permissions:
   contents: write
 
+# Aynı anda iki derleme aynı numarayı almasın
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,6 +19,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sıradaki sürüm numarasını hesapla
+        run: |
+          # Yalnızca başarıyla yayınlanmış sürümler sayılır; hata veren derleme numara tüketmez.
+          last=$(git tag -l 'v0.*' | sed 's/^v0\.//' | grep -E '^[0-9]+$' | sort -n | tail -1)
+          next=$(( ${last:-0} + 1 ))
+          echo "APP_VERSION=$next" >> "$GITHUB_ENV"
+          echo "PREV_TAG=${last:+v0.$last}" >> "$GITHUB_ENV"
+          echo "Sıradaki sürüm: 0.$next (önceki: ${last:+v0.$last})"
 
       - uses: actions/setup-java@v4
         with:
@@ -47,19 +61,18 @@ jobs:
 
       - name: APK'yı yeniden adlandır
         run: |
-          cp app/build/outputs/apk/release/app-release.apk TvKumanda-0.${{ github.run_number }}.apk
+          cp app/build/outputs/apk/release/app-release.apk TvKumanda-0.${{ env.APP_VERSION }}.apk
           rm -f "$RUNNER_TEMP/release.jks"
 
       - name: Artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
-          name: TvKumanda-0.${{ github.run_number }}
-          path: TvKumanda-0.${{ github.run_number }}.apk
+          name: TvKumanda-0.${{ env.APP_VERSION }}
+          path: TvKumanda-0.${{ env.APP_VERSION }}.apk
 
       - name: Sürüm notlarını hazırla
         run: |
-          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
-          range=${prev:+$prev..}HEAD
+          range=${PREV_TAG:+$PREV_TAG..}HEAD
           {
             echo "Değişiklikler:"
             echo
@@ -70,7 +83,7 @@ jobs:
       - name: Release olarak yayınla (telefondan direkt indirilebilir)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.${{ github.run_number }}
-          name: TV Kumanda 0.${{ github.run_number }}
-          files: TvKumanda-0.${{ github.run_number }}.apk
+          tag_name: v0.${{ env.APP_VERSION }}
+          name: TV Kumanda 0.${{ env.APP_VERSION }}
+          files: TvKumanda-0.${{ env.APP_VERSION }}.apk
           body_path: notes.md
