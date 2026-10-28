@@ -56,6 +56,8 @@ data class CastUi(
     val position: Double = 0.0,
     val duration: Double = 0.0,
     val error: String = "",
+    /** Hazırlık aşaması ("TV'ye bağlanılıyor…" vb.). */
+    val stage: String = "",
     /** Klasör/albüm sırasıyla oynatılıyor mu (önceki/sonraki tuşları için). */
     val hasList: Boolean = false
 )
@@ -109,9 +111,12 @@ fun CastScreen(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
+    onWarmup: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    // Sekme açılınca TV'nin Chromecast'ine arka planda (görünmeden) bağlanılır
+    LaunchedEffect(connected) { if (connected) onWarmup() }
     val library = remember { MediaLibrary(context.applicationContext) }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
@@ -361,7 +366,7 @@ private fun PlayerCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     when (cast.phase) {
-                        CastPhase.PREPARING -> "TV'ye gönderiliyor…"
+                        CastPhase.PREPARING -> cast.stage.ifBlank { "TV'ye gönderiliyor…" }
                         CastPhase.BUFFERING -> "Yükleniyor…"
                         CastPhase.PLAYING -> if (cast.kind == MediaKind.PHOTO) "TV'de gösteriliyor" else "Oynatılıyor"
                         CastPhase.PAUSED -> "Duraklatıldı"

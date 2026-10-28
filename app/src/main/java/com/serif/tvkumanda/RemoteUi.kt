@@ -142,7 +142,8 @@ fun RemoteScreen(
     onCastStop: () -> Unit = {},
     onCastPrev: () -> Unit = {},
     onCastNext: () -> Unit = {},
-    onCastSkip: (Double) -> Unit = {}
+    onCastSkip: (Double) -> Unit = {},
+    onCastWarmup: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
@@ -171,7 +172,7 @@ fun RemoteScreen(
             CastScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
-                onCastPrev, onCastNext, onCastSkip,
+                onCastPrev, onCastNext, onCastSkip, onCastWarmup,
                 Modifier.weight(1f)
             )
         } else {

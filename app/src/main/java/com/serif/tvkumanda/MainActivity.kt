@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                     onCastPrev = { castStep(-1) },
                     onCastNext = { castStep(1) },
                     onCastSkip = ::castSkip,
+                    onCastWarmup = ::castWarmup,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -412,7 +413,13 @@ class MainActivity : ComponentActivity() {
             try {
                 withContext(castIo) {
                     val url = mediaServer.publish(uri, mime, ip)
+                    if (!castClient.isConnected) castStage("TV'ye bağlanılıyor…")
                     castClient.connect(ip)
+                    if (!castClient.hasReceiver) {
+                        castStage("TV'de oynatıcı açılıyor…")
+                        castClient.prepareReceiver()
+                    }
+                    castStage("Dosya yükleniyor…")
                     castClient.load(url, mime, title)
                 }
                 CastService.start(this@MainActivity, title)
@@ -421,6 +428,18 @@ class MainActivity : ComponentActivity() {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
             }
         }
+    }
+
+    /** Hazırlık aşamasını karta yazar (yalnızca hâlâ hazırlanıyorsa). */
+    private fun castStage(text: String) = runOnUiThread {
+        if (cast.phase == CastPhase.PREPARING) cast = cast.copy(stage = text)
+    }
+
+    /** Cast sekmesi açılınca: TV'nin Chromecast'ine görünmeden bağlanır (TV ekranı değişmez). */
+    private fun castWarmup() {
+        val ip = currentIp
+        if (state != ConnState.CONNECTED || ip.isBlank()) return
+        scope.launch(castIo) { runCatching { castClient.connect(ip) } }
     }
 
     /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */

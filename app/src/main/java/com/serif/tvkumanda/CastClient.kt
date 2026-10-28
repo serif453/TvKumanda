@@ -50,11 +50,15 @@ class CastClient {
     @Volatile private var lastPong = 0L
 
     val isConnected: Boolean get() = socket?.isClosed == false
+    /** TV'de oynatıcı açık ve bağlı mı (açıksa yükleme anında başlar). */
+    val hasReceiver: Boolean get() = isConnected && transportId != null
+    @Volatile private var connectedIp = ""
 
     /** TV'ye bağlanır (zaten bağlıysa bir şey yapmaz). */
     @Synchronized
     fun connect(ip: String) {
-        if (isConnected) return
+        if (isConnected && connectedIp == ip) return
+        if (isConnected) close()                      // başka bir TV'ye geçildi
         val ctx = SSLContext.getInstance("TLS")
         ctx.init(null, arrayOf(TrustAll), null)   // Chromecast kendinden imzalı sertifika kullanır
         val raw = Socket()
@@ -64,6 +68,7 @@ class CastClient {
         s.soTimeout = 30_000
         s.startHandshake()
         socket = s
+        connectedIp = ip
         out = BufferedOutputStream(s.outputStream)
         transportId = null
         appSessionId = null
@@ -80,7 +85,7 @@ class CastClient {
      * Varsayılan medya alıcısı gerekirse başlatılır.
      */
     fun load(url: String, mime: String, title: String) {
-        val app = ensureReceiver()
+        val app = prepareReceiver()
         val media = JSONObject()
             .put("contentId", url)
             .put("contentType", mime)
@@ -147,12 +152,13 @@ class CastClient {
         send(app, NS_MEDIA, extra.put("requestId", nextId()))
     }
 
-    /** Varsayılan medya alıcısı açık değilse başlatır ve onun bağlantı kimliğini döndürür. */
-    private fun ensureReceiver(): String {
+    /**
+     * Varsayılan medya alıcısını başlatır (açıksa TV hemen cevap verir) ve onun bağlantı
+     * kimliğini döndürür. Önce "açık mı?" diye ayrıca sorulmaz; bir gidiş-dönüş kazanılır.
+     */
+    fun prepareReceiver(): String {
         transportId?.let { return it }
-        val status = request(RECEIVER, NS_RECEIVER, JSONObject().put("type", "GET_STATUS"))
-        val running = findApp(status)
-        val app = running ?: findApp(request(RECEIVER, NS_RECEIVER,
+        val app = findApp(request(RECEIVER, NS_RECEIVER,
             JSONObject().put("type", "LAUNCH").put("appId", APP_ID), timeoutMs = 20_000))
             ?: throw IOException("TV'de oynatıcı başlatılamadı")
         send(app, NS_CONNECTION, JSONObject().put("type", "CONNECT"))
