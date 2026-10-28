@@ -215,6 +215,20 @@ public final class KeyServer {
         Method sys = at.getDeclaredMethod("getSystemContext");
         sys.setAccessible(true);
         context = (Context) sys.invoke(thread);
+        // XML simgeler (uyarlanabilir simge, vektör) çizilirken bazı TV yazılımları
+        // ActivityThread.currentApplication().getResources() çağırıyor; app_process'te
+        // Application olmadığı için NullPointerException oluşuyordu. Sistem bağlamına
+        // bağlı boş bir Application tanımlanır.
+        try {
+            android.app.Application application = new android.app.Application();
+            Method attach = android.content.ContextWrapper.class.getDeclaredMethod("attachBaseContext", Context.class);
+            attach.setAccessible(true);
+            attach.invoke(application, context);
+            Field init = at.getDeclaredField("mInitialApplication");
+            init.setAccessible(true);
+            init.set(thread, application);
+        } catch (Throwable ignored) {
+        }
         return context;
     }
 
