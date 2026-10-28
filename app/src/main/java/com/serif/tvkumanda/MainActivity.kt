@@ -5,6 +5,20 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import java.io.ByteArrayOutputStream
+import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -36,6 +50,15 @@ class MainActivity : ComponentActivity() {
     private var currentIp = ""
     private var savedTvs by mutableStateOf<List<SavedTv>>(emptyList())
     private lateinit var prefs: android.content.SharedPreferences
+
+    // Sesli komut
+    private var micActive by mutableStateOf(false)
+    private var micLevel by mutableStateOf(0f)
+    @Volatile private var micStop = false
+    private var recognizer: SpeechRecognizer? = null
+    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startMic() else toast("Sesli komut için mikrofon izni gerekli")
+    }
     // Tuşlar sırayla gitsin diye tek iş parçacığı
     private val io = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = MainScope()
@@ -64,7 +87,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -82,6 +105,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onPairCode = ::submitPairingCode,
                     onPickSaved = ::connectSaved,
+                    onMic = ::onMic,
                     onForgetSaved = { tv ->
                         savedTvs = savedTvs.filterNot { it.ip == tv.ip && it.method == tv.method }
                         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
@@ -273,6 +297,158 @@ class MainActivity : ComponentActivity() {
         run { this.text(value) }
     }
 
+    // ---------- Sesli komut ----------
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    private fun onMic() {
+        if (micActive) { stopMic(); return }
+        if (state != ConnState.CONNECTED) { toast("Önce TV'ye bağlan"); return }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else startMic()
+    }
+
+    private fun startMic() {
+        // Standart bağlantıda ses doğrudan TV'nin sesli aramasına akar; desteklenmiyorsa
+        // ya da ADB'de, ses telefonda yazıya çevrilip TV'ye arama olarak gönderilir.
+        if (method == ConnMethod.STANDARD && atv.supportsVoice) startVoiceStream() else startPhoneRecognition()
+    }
+
+    private fun stopMic() {
+        micStop = true
+        recognizer?.stopListening()
+    }
+
+    /** Standart: mikrofon → 8 kHz PCM → TV (referans: androidtvremote2 voice). */
+    @SuppressLint("MissingPermission")
+    private fun startVoiceStream() {
+        micStop = false
+        micActive = true
+        Thread({
+            var rec: AudioRecord? = null
+            try {
+                val sid = atv.startVoice()
+                val rate = RemoteMsg.VOICE_SAMPLE_RATE
+                val minBuf = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                rec = AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, 8192)
+                )
+                rec.startRecording()
+                val buf = ByteArray(1600)               // 100 ms
+                val pending = ByteArrayOutputStream()
+                val start = System.currentTimeMillis()
+                var heard = false
+                var lastLoud = start
+                while (!micStop) {
+                    val n = rec.read(buf, 0, buf.size)
+                    if (n <= 0) break
+                    pending.write(buf, 0, n)
+                    val level = pcmLevel(buf, n)
+                    runOnUiThread { micLevel = level }
+                    val now = System.currentTimeMillis()
+                    if (level > 0.08f) { heard = true; lastLoud = now }
+                    if (pending.size() >= RemoteMsg.VOICE_CHUNK_MIN) {
+                        atv.sendVoice(sid, pending.toByteArray())
+                        pending.reset()
+                    }
+                    // Konuşma bitince (1,5 sn sessizlik) ya da hiç konuşulmazsa kendiliğinden dur
+                    if (heard && now - lastLoud > 1500) break
+                    if (!heard && now - start > 6000) break
+                    if (now - start > 15000) break
+                }
+                if (pending.size() > 0) atv.sendVoice(sid, pending.toByteArray())
+                atv.endVoice(sid)
+            } catch (e: Exception) {
+                runOnUiThread { toast("Sesli komut: ${e.message ?: "başlatılamadı"}") }
+            } finally {
+                runCatching { rec?.stop() }
+                runCatching { rec?.release() }
+                runOnUiThread { micActive = false; micLevel = 0f }
+            }
+        }, "voice").start()
+    }
+
+    /** 16 bit PCM'den 0..1 arası ses seviyesi (animasyon ve sessizlik algılama için). */
+    private fun pcmLevel(b: ByteArray, n: Int): Float {
+        var sum = 0.0
+        var count = 0
+        var i = 0
+        while (i + 1 < n) {
+            val v = ((b[i + 1].toInt() shl 8) or (b[i].toInt() and 0xFF)).toShort().toDouble() / 32768.0
+            sum += v * v; count++; i += 2
+        }
+        if (count == 0) return 0f
+        return (kotlin.math.sqrt(sum / count) * 4).toFloat().coerceIn(0f, 1f)
+    }
+
+    /** ADB (ve sesi desteklemeyen TV'ler): telefonda yazıya çevir, TV'de ara. */
+    private fun startPhoneRecognition() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            toast("Bu telefonda konuşma tanıma bulunamadı")
+            return
+        }
+        val r = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = r
+        micStop = false
+        micActive = true
+        r.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) { micLevel = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f) }
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    toast("Ses anlaşılamadı, tekrar dene")
+                } else if (error != SpeechRecognizer.ERROR_CLIENT) {
+                    toast("Konuşma tanıma hatası ($error)")
+                }
+                finishRecognition()
+            }
+            override fun onResults(results: Bundle?) {
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!text.isNullOrBlank()) {
+                    toast("“$text”")
+                    sendRecognized(text)
+                }
+                finishRecognition()
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        r.startListening(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+        )
+    }
+
+    private fun finishRecognition() {
+        recognizer?.destroy()
+        recognizer = null
+        micActive = false
+        micLevel = 0f
+    }
+
+    private fun sendRecognized(text: String) {
+        if (method == ConnMethod.ADB) {
+            run { (this as? TvRemote)?.voiceSearch(text) }
+        } else {
+            // Ses aktarımı olmayan Standart TV: arama ekranını aç, metni yaz
+            scope.launch {
+                try {
+                    withContext(io) { atv.key(RemoteMsg.KEYCODE_SEARCH) }
+                    delay(1500)
+                    withContext(io) { atv.text(text) }
+                } catch (e: Exception) {
+                    toast("Gönderilemedi: ${e.message}")
+                }
+            }
+        }
+    }
+
     // Telefonun ses tuşları TV'nin sesini kontrol eder
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
@@ -289,6 +465,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        micStop = true
+        recognizer?.destroy()
         scope.cancel()
         Thread { adb.close(); atv.close(); io.close() }.start()
     }
@@ -306,7 +484,9 @@ data class UiState(
     val method: ConnMethod,
     val pairing: Boolean,
     val pairingError: String,
-    val savedTvs: List<SavedTv>
+    val savedTvs: List<SavedTv>,
+    val micActive: Boolean,
+    val micLevel: Float
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */

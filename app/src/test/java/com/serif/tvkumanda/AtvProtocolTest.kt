@@ -25,7 +25,8 @@ class AtvProtocolTest {
 
     @Test fun remoteMessagesMatchReference() {
         assertArrayEquals(hex("0a1c08e704121718012201312a0961747672656d6f74653205312e302e30"), RemoteMsg.configureReply(615))
-        assertEquals(615, RemoteMsg.FEATURES)
+        assertEquals(623, RemoteMsg.FEATURES)   // ses (VOICE=8) dahil
+        assertArrayEquals(hex("0a1c08ef04121718012201312a0961747672656d6f74653205312e302e30"), RemoteMsg.configureReply(RemoteMsg.FEATURES))
         assertArrayEquals(hex("120308e704"), RemoteMsg.setActive(615))
         assertArrayEquals(hex("4a020807"), RemoteMsg.pong(7))
         assertArrayEquals(hex("520408131003"), RemoteMsg.key(19))
@@ -71,5 +72,15 @@ class AtvProtocolTest {
         assertEquals(3, cert.version)
         assertTrue(cert.subjectX500Principal.name.contains("CN=TV Kumanda"))
         assertEquals(kp.public, cert.publicKey)
+    }
+
+    @Test fun voiceMessagesMatchReference() {
+        assertArrayEquals(hex("f201020805"), RemoteMsg.voiceBegin(5))
+        assertArrayEquals(hex("fa011408051210000102030405060708090a0b0c0d0e0f"), RemoteMsg.voicePayload(5, ByteArray(16) { it.toByte() }))
+        assertArrayEquals(hex("8202020805"), RemoteMsg.voiceEnd(5))
+        // TV'den gelen oturum açılışı çözülebilmeli
+        val tv = PbMsg.parse(hex("f2011e0807121a636f6d2e676f6f676c652e616e64726f69642e6b61746e697373"))
+        assertTrue(tv.has(30))
+        assertEquals(7, tv.msg(30)!!.int(1))
     }
 }

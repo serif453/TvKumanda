@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -115,7 +116,8 @@ fun RemoteScreen(
     onPairCode: (String) -> Unit,
     onPairCancel: () -> Unit,
     onPickSaved: (SavedTv) -> Unit,
-    onForgetSaved: (SavedTv) -> Unit
+    onForgetSaved: (SavedTv) -> Unit,
+    onMic: () -> Unit
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     val pager = rememberPagerState(pageCount = { 3 })
@@ -159,7 +161,7 @@ fun RemoteScreen(
         PageDots(pager.currentPage) { i -> scope.launch { pager.animateScrollToPage(i) } }
         Spacer(Modifier.height(10.dp))
 
-        BottomControls(ui, onKey,
+        BottomControls(ui, onKey, onMic,
             onKeyboard = { sheet = Sheet.KEYBOARD },
             onNumpad = { sheet = Sheet.NUMPAD }
         )
@@ -797,6 +799,7 @@ private fun PageDots(page: Int, onSelect: (Int) -> Unit) {
 private fun BottomControls(
     ui: UiState,
     onKey: (Int) -> Unit,
+    onMic: () -> Unit,
     onKeyboard: () -> Unit,
     onNumpad: () -> Unit
 ) {
@@ -826,7 +829,7 @@ private fun BottomControls(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     CircleBtn(b, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
-                    CircleBtn(b, { Icon(AppIcons.Mic, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.ASSIST) }
+                    MicButton(b, icon, ui.micActive, ui.micLevel, onMic)
                     CircleBtn(b, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
                 }
             }
@@ -857,6 +860,53 @@ private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> 
             .pressable(inter, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+/** Mikrofon düğmesi: dinlerken kırmızıya döner, etrafında genişleyen halkalar ve sese göre büyüyen ışık. */
+@Composable
+private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, onClick: () -> Unit) {
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pulse = rememberInfiniteTransition(label = "mic")
+    val p by pulse.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "ring"
+    )
+    val lvl by animateFloatAsState(if (active) level else 0f, tween(120), label = "lvl")
+    val bg by animateColorAsState(if (active) Color(0xFF4A2327) else Pal.Btn, tween(200), label = "bg")
+    val tint by animateColorAsState(if (active) Pal.Red else Pal.Text, tween(200), label = "tint")
+    Box(
+        Modifier
+            .size(btnSize)
+            .drawBehind {
+                if (active) {
+                    val r = size.minDimension / 2
+                    // Sese göre büyüyen yumuşak ışık
+                    drawCircle(Pal.Red.copy(alpha = 0.22f), radius = r * (1f + 0.35f * lvl))
+                    // Sürekli dışa doğru yayılan iki halka
+                    for (k in 0..1) {
+                        val f = (p + k * 0.5f) % 1f
+                        drawCircle(
+                            Pal.Red.copy(alpha = 0.45f * (1f - f)),
+                            radius = r * (1f + 0.55f * f),
+                            style = Stroke(width = 2.dp.toPx())
+                        )
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(CircleShape)
+                .background(bg)
+                .pressable(inter, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(AppIcons.Mic, null, tint = tint, modifier = Modifier.size(iconSize))
+        }
+    }
 }
 
 /** Sayı tuş takımı simgesi (3x3 + 1 nokta). */

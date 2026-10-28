@@ -112,6 +112,17 @@ class TvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    /**
+     * Telefonda tanınan sesli komutu TV'de arama olarak açar.
+     * Önce Android TV'nin genel arama ekranı denenir; açılamazsa metin odaktaki alana yazılır.
+     */
+    @Synchronized
+    fun voiceSearch(query: String) {
+        val q = query.replace("'", "'\\''")
+        val out = runCatching { shell("am start -a android.search.action.GLOBAL_SEARCH --es query '$q'") }.getOrDefault("Error")
+        if (out.contains("Error", ignoreCase = true)) text(query)
+    }
+
     /** Komut gönderir; bağlantı kopmuşsa bir kez yeniden bağlanmayı dener. */
     @Synchronized
     fun shell(command: String): String {

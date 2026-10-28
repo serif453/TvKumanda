@@ -180,8 +180,14 @@ object Polo {
 // ---------------- Kumanda kanalı (remotemessage.proto / remote.py) ----------------
 
 object RemoteMsg {
-    // Özellik bayrakları: PING=1, KEY=2, IME=4, POWER=32, VOLUME=64, APP_LINK=512
-    const val FEATURES = 1 or 2 or 4 or 32 or 64 or 512
+    // Özellik bayrakları: PING=1, KEY=2, IME=4, VOICE=8, POWER=32, VOLUME=64, APP_LINK=512
+    const val VOICE = 8
+    const val FEATURES = 1 or 2 or 4 or VOICE or 32 or 64 or 512
+    const val KEYCODE_SEARCH = 84
+    // Ses: 16 bit PCM, 8 kHz, mono. Parça en fazla 20 KB, en az 8 KB (eksik kısım sessizlikle doldurulur)
+    const val VOICE_SAMPLE_RATE = 8000
+    const val VOICE_CHUNK_MAX = 20 * 1024
+    const val VOICE_CHUNK_MIN = 8 * 1024
     const val SHORT = 3
 
     /** remote_configure=1 { code1=1, device_info=2 { unknown1=3:1, unknown2=4:"1", package_name=5, app_version=6 } } */
@@ -209,6 +215,15 @@ object RemoteMsg {
             )
         ).build()
     }
+
+    /** remote_voice_begin=30 { session_id=1 } — TV'nin açtığı oturumu onaylar */
+    fun voiceBegin(sessionId: Int) = Pb().msg(30, Pb().int(1, sessionId)).build()
+
+    /** remote_voice_payload=31 { session_id=1, samples=2 } */
+    fun voicePayload(sessionId: Int, samples: ByteArray) = Pb().msg(31, Pb().int(1, sessionId).bytes(2, samples)).build()
+
+    /** remote_voice_end=32 { session_id=1 } */
+    fun voiceEnd(sessionId: Int) = Pb().msg(32, Pb().int(1, sessionId)).build()
 
     /** remote_app_link_launch_request=90 { app_link=1 } */
     fun appLink(link: String) = Pb().msg(90, Pb().str(1, link)).build()

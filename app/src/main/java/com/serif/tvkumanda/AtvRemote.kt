@@ -153,6 +153,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 imeCounter = b?.int(1) ?: 0
                 imeField = b?.int(2) ?: 0
             }
+            m.has(30) -> {                                                       // remote_voice_begin
+                val sid = m.msg(30)?.int(1) ?: 0
+                voiceWaiter?.let { if (!it.isDone) it.complete(sid) }
+            }
             m.has(50) -> {                                                       // remote_set_volume_level
                 val v = m.msg(50) ?: return
                 val max = v.int(6)
@@ -188,6 +192,50 @@ class AtvRemote(private val context: Context) : RemoteLink {
     }
 
     override fun key(code: Int) = send(RemoteMsg.key(code))
+
+    // ---------------- Sesli komut ----------------
+
+    @Volatile private var voiceWaiter: java.util.concurrent.CompletableFuture<Int>? = null
+
+    /** TV ses oturumunu destekliyor mu (eşleşme sırasında TV bildirir). */
+    val supportsVoice: Boolean get() = activeFeatures and RemoteMsg.VOICE != 0
+
+    /**
+     * TV'de sesli aramayı başlatır ve oturum numarasını döndürür.
+     * Akış (referans: remote.py start_voice): KEYCODE_SEARCH gönder → TV remote_voice_begin
+     * ile oturum açar → aynı oturum numarasıyla remote_voice_begin geri gönderilir.
+     */
+    fun startVoice(): Int {
+        if (!supportsVoice) throw IOException("Bu TV ses aktarımını desteklemiyor")
+        val waiter = java.util.concurrent.CompletableFuture<Int>()
+        voiceWaiter = waiter
+        try {
+            send(RemoteMsg.key(RemoteMsg.KEYCODE_SEARCH))
+            val sid = try {
+                waiter.get(3, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: java.util.concurrent.TimeoutException) {
+                throw IOException("TV sesli aramayı başlatmadı")
+            }
+            send(RemoteMsg.voiceBegin(sid))
+            return sid
+        } finally {
+            voiceWaiter = null
+        }
+    }
+
+    /** PCM ses parçası gönderir (en fazla 20 KB'lık parçalara bölünür, kısa parça sessizlikle tamamlanır). */
+    fun sendVoice(sessionId: Int, pcm: ByteArray) {
+        var i = 0
+        while (i < pcm.size) {
+            val end = minOf(i + RemoteMsg.VOICE_CHUNK_MAX, pcm.size)
+            var part = pcm.copyOfRange(i, end)
+            if (part.size < RemoteMsg.VOICE_CHUNK_MIN) part = part.copyOf(RemoteMsg.VOICE_CHUNK_MIN)
+            send(RemoteMsg.voicePayload(sessionId, part))
+            i = end
+        }
+    }
+
+    fun endVoice(sessionId: Int) = send(RemoteMsg.voiceEnd(sessionId))
 
     override fun text(raw: String) {
         val t = normalizeText(raw)
