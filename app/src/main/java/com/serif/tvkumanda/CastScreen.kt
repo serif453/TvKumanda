@@ -68,7 +68,11 @@ data class CastUi(
     /** Oynatmanın başlatıldığı klasör/albüm. */
     val albumId: Long? = null,
     /** Önceki/sonraki/otomatik geçişte artar: liste oynatılanı takip etsin. */
-    val stepTick: Int = 0
+    val stepTick: Int = 0,
+    /** Oynatılan dosya (tam ekran oynatıcıdaki görsel ve alt başlık için). */
+    val item: MediaItem? = null,
+    /** Chromecast ses düzeyi 0..1 (bilinmiyorsa -1). */
+    val volume: Float = -1f
 )
 
 enum class Tab { REMOTE, CAST }
@@ -121,12 +125,13 @@ fun CastScreen(
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
     onWarmup: () -> Unit,
+    library: MediaLibrary,
+    showInFolderTick: Int,
+    onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     // Sekme açılınca TV'nin Chromecast'ine arka planda (görünmeden) bağlanılır
     LaunchedEffect(connected) { if (connected) onWarmup() }
-    val library = remember { MediaLibrary(context.applicationContext) }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
@@ -140,6 +145,14 @@ fun CastScreen(
         val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) permTick++ }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
+    }
+
+    // Tam ekran oynatıcıdaki "Klasörde göster": oynatmanın başladığı klasöre dön, öğeyi göster
+    LaunchedEffect(showInFolderTick) {
+        if (showInFolderTick == 0) return@LaunchedEffect
+        val target = cast.albumId ?: return@LaunchedEffect
+        if (browse == cast.kind && album?.id == target) jumpTick++
+        else { browse = cast.kind; album = null; jumpAlbum = target }
     }
 
     BackHandler(enabled = browse != null) {
@@ -219,14 +232,8 @@ fun CastScreen(
         }
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
-            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, onTitle = {
-                // Oynatmanın başladığı klasöre dön ve oynatılan öğeyi göster
-                val target = cast.albumId
-                if (target != null) {
-                    if (browse == cast.kind && album?.id == target) jumpTick++
-                    else { browse = cast.kind; album = null; jumpAlbum = target }
-                }
-            })
+            // Kart başlığına dokununca tam ekran oynatıcı açılır
+            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, onTitle = onOpenPlayer)
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -271,18 +278,21 @@ private fun PillButton(label: String, primary: Boolean, onClick: () -> Unit) {
 
 /** Küçük resim: arka planda yüklenir ve önbelleğe alınır. */
 @Composable
-private fun Thumb(item: MediaItem, library: MediaLibrary, modifier: Modifier, placeholder: ImageVector) {
-    val bmp by produceState<ImageBitmap?>(null, item.kind, item.id) {
-        value = withContext(Dispatchers.IO) { library.thumbnail(item)?.asImageBitmap() }
+internal fun Thumb(
+    item: MediaItem, library: MediaLibrary, modifier: Modifier, placeholder: ImageVector,
+    px: Int = 320, placeholderSize: Dp = 28.dp, scale: ContentScale = ContentScale.Crop
+) {
+    val bmp by produceState<ImageBitmap?>(null, item.kind, item.id, px) {
+        value = withContext(Dispatchers.IO) { library.thumbnail(item, px)?.asImageBitmap() }
     }
     Box(modifier.background(Pal.Btn), contentAlignment = Alignment.Center) {
         val b = bmp
-        if (b != null) Image(b, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        else Icon(placeholder, null, tint = Pal.Sub, modifier = Modifier.size(28.dp))
+        if (b != null) Image(b, null, contentScale = scale, modifier = Modifier.fillMaxSize())
+        else Icon(placeholder, null, tint = Pal.Sub, modifier = Modifier.size(placeholderSize))
     }
 }
 
-private fun placeholderFor(kind: MediaKind) = when (kind) {
+internal fun placeholderFor(kind: MediaKind) = when (kind) {
     MediaKind.PHOTO -> AppIcons.Photo
     MediaKind.VIDEO -> AppIcons.Movie
     MediaKind.MUSIC -> AppIcons.MusicNote
@@ -449,10 +459,10 @@ private fun PlayerCard(
     ) {
         // Başlık satırı: dosya adı + durum, sağ üstte küçük durdur tuşu
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Dosya adına dokununca oynatmanın başladığı klasöre dönülür
+            // Dosya adına dokununca tam ekran oynatıcı açılır
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
-                    .clickable(enabled = cast.albumId != null, onClick = onTitle)
+                    .clickable(onClick = onTitle)
             ) {
                 Text(
                     cast.title.ifBlank { cast.kind.label },
@@ -522,7 +532,7 @@ private fun PlayerCard(
 }
 
 @Composable
-private fun RoundAction(
+internal fun RoundAction(
     icon: ImageVector,
     desc: String,
     size: Dp = 48.dp,
@@ -541,7 +551,7 @@ private fun RoundAction(
     }
 }
 
-private fun timeText(sec: Double): String {
+internal fun timeText(sec: Double): String {
     val s = sec.toLong().coerceAtLeast(0)
     val h = s / 3600; val m = (s % 3600) / 60; val r = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)

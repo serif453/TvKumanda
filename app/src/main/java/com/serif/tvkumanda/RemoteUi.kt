@@ -143,10 +143,17 @@ fun RemoteScreen(
     onCastPrev: () -> Unit = {},
     onCastNext: () -> Unit = {},
     onCastSkip: (Double) -> Unit = {},
-    onCastWarmup: () -> Unit = {}
+    onCastWarmup: () -> Unit = {},
+    onCastVolume: (Float) -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
+    // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
+    val context = LocalContext.current
+    val mediaLibrary = remember { MediaLibrary(context.applicationContext) }
+    var playerOpen by remember { mutableStateOf(false) }
+    var showInFolderTick by remember { mutableStateOf(0) }
+    if (cast.phase == CastPhase.NONE && playerOpen) playerOpen = false
     val pager = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
 
@@ -173,7 +180,8 @@ fun RemoteScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 onCastPrev, onCastNext, onCastSkip, onCastWarmup,
-                Modifier.weight(1f)
+                mediaLibrary, showInFolderTick, onOpenPlayer = { playerOpen = true },
+                modifier = Modifier.weight(1f)
             )
         } else {
         Spacer(Modifier.height(12.dp))
@@ -208,6 +216,23 @@ fun RemoteScreen(
         }
         // Alt menü: Kumanda / Cast
         BottomNav(tab) { tab = it }
+    }
+
+    // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
+    androidx.compose.animation.AnimatedVisibility(
+        visible = playerOpen && tab == Tab.CAST,
+        enter = androidx.compose.animation.slideInVertically { it },
+        exit = androidx.compose.animation.slideOutVertically { it }
+    ) {
+        FullPlayer(
+            cast, ui.tvName, mediaLibrary,
+            onClose = { playerOpen = false },
+            onToggle = onCastToggle, onSeek = onCastSeek,
+            onStop = { playerOpen = false; onCastStop() },
+            onPrev = onCastPrev, onNext = onCastNext, onSkip = onCastSkip,
+            onVolume = onCastVolume,
+            onShowInFolder = { playerOpen = false; showInFolderTick++ }
+        )
     }
 
     if (typingOpen) {

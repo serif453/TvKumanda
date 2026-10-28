@@ -38,6 +38,8 @@ class CastClient {
 
     @Volatile var onStatus: ((Status) -> Unit)? = null
     @Volatile var onClosed: ((String) -> Unit)? = null
+    /** Chromecast ses düzeyi (0..1) değiştiğinde çağrılır. */
+    @Volatile var onVolume: ((Float) -> Unit)? = null
 
     private var socket: SSLSocket? = null
     private var out: OutputStream? = null
@@ -123,6 +125,14 @@ class CastClient {
         mediaSessionId = 0
     }
     fun seek(seconds: Double) = mediaCommand("SEEK", JSONObject().put("currentTime", seconds))
+
+    /** TV'nin (Chromecast'in) ses düzeyi, 0..1. */
+    fun setVolume(level: Float) {
+        send(RECEIVER, NS_RECEIVER, JSONObject()
+            .put("type", "SET_VOLUME")
+            .put("volume", JSONObject().put("level", level.coerceIn(0f, 1f).toDouble()))
+            .put("requestId", nextId()))
+    }
 
     /** Oynatıcı durumunu ister (cevap [onStatus] ile gelir). */
     fun refresh() {
@@ -244,6 +254,11 @@ class CastClient {
         }
         lastPong = System.currentTimeMillis()
         if (ns == NS_MEDIA && json.optString("type") == "MEDIA_STATUS") handleMediaStatus(json)
+        if (json.optString("type") == "RECEIVER_STATUS") {
+            json.optJSONObject("status")?.optJSONObject("volume")?.let { v ->
+                if (v.has("level")) onVolume?.invoke(v.optDouble("level", 0.0).toFloat())
+            }
+        }
         val id = json.optInt("requestId", 0)
         if (id != 0) synchronized(waiters) { waiters[id] }?.complete(json)
     }

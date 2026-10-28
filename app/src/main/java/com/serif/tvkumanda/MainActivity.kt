@@ -93,6 +93,9 @@ class MainActivity : ComponentActivity() {
     private var playIndex = -1
     private var playAlbumId: Long? = null
     private var castStepTick = 0
+    private var castVolumeKnown = -1f
+    @Volatile private var pendingVolume: Float? = null
+    private var volumeSendJob: Job? = null
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) { playlist = emptyList(); playIndex = -1; playAlbumId = null; castMedia(uri, pendingKind) }
     }
@@ -109,6 +112,7 @@ class MainActivity : ComponentActivity() {
         mediaServer = MediaServer(applicationContext)
         castClient.onStatus = { st -> runOnUiThread { onCastStatus(st) } }
         castClient.onClosed = { reason -> runOnUiThread { onCastClosed(reason) } }
+        castClient.onVolume = { v -> runOnUiThread { castVolumeKnown = v; if (cast.phase != CastPhase.NONE) cast = cast.copy(volume = v) } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -154,6 +158,7 @@ class MainActivity : ComponentActivity() {
                     onCastNext = { castStep(1) },
                     onCastSkip = ::castSkip,
                     onCastWarmup = ::castWarmup,
+                    onCastVolume = ::castVolume,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -413,7 +418,9 @@ class MainActivity : ComponentActivity() {
             CastPhase.PREPARING, title, kind, hasList = playlist.size > 1,
             currentId = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri }?.id,
             albumId = if (playlist.isNotEmpty()) playAlbumId else null,
-            stepTick = castStepTick
+            stepTick = castStepTick,
+            item = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri },
+            volume = castVolumeKnown
         )
         castPollJob?.cancel()
         scope.launch {
@@ -433,6 +440,22 @@ class MainActivity : ComponentActivity() {
                 startCastPolling()
             } catch (e: Exception) {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
+            }
+        }
+    }
+
+    /** Tam ekran oynatıcıdaki ses çubuğu: sürüklerken en fazla saniyede ~6 kez gönderilir. */
+    private fun castVolume(level: Float) {
+        pendingVolume = level
+        castVolumeKnown = level
+        cast = cast.copy(volume = level)
+        if (volumeSendJob?.isActive == true) return
+        volumeSendJob = scope.launch {
+            while (true) {
+                val v = pendingVolume ?: break
+                pendingVolume = null
+                withContext(castIo) { runCatching { castClient.setVolume(v) } }
+                delay(150)
             }
         }
     }
