@@ -138,7 +138,7 @@ fun CastScreen(
                     KindButton(icon, k.label, Modifier.weight(1f), connected) {
                         browse = k
                         album = null
-                        if (!library.hasPermission(k)) permLauncher.launch(library.permissionsFor(k))
+                        if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
                     }
                 }
             }
@@ -163,7 +163,7 @@ fun CastScreen(
                 val granted = remember(kind, permTick) { library.hasPermission(kind) }
                 if (!granted) {
                     PermissionNeeded(
-                        onAsk = { permLauncher.launch(library.permissionsFor(kind)) },
+                        onAsk = { library.markAsked(kind); permLauncher.launch(library.permissionsFor(kind)) },
                         onPicker = { onPick(kind) }
                     )
                 } else {

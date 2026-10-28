@@ -455,6 +455,11 @@ class MainActivity : ComponentActivity() {
 
     private fun onCastStatus(st: CastClient.Status) {
         if (cast.phase == CastPhase.NONE) return
+        // Fotoğraf gösterilirken alıcı durumu "duraklatılmış" ya da "boşta" bildirebilir
+        if (cast.kind == MediaKind.PHOTO && st.idleReason != "ERROR") {
+            cast = cast.copy(phase = CastPhase.PLAYING)
+            return
+        }
         val phase = when (st.playerState) {
             "PLAYING" -> CastPhase.PLAYING
             "PAUSED" -> CastPhase.PAUSED

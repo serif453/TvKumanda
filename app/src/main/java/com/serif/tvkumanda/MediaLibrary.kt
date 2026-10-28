@@ -44,25 +44,47 @@ data class MediaAlbum(
  */
 class MediaLibrary(private val context: Context) {
 
-    /** Bu tür için gereken okuma izinleri (Android sürümüne göre). */
+    private val prefs = context.getSharedPreferences("medya", Context.MODE_PRIVATE)
+
+    /**
+     * Bu tür için istenecek izinler. Fotoğraf ve video kullanıcıya tek izin olarak
+     * görünür ("Fotoğraflar ve videolar"); ikisi her zaman birlikte istenir, yoksa önce
+     * fotoğrafa izin verilince video izni hiç istenmemiş olur.
+     */
     fun permissionsFor(kind: MediaKind): Array<String> = when {
-        Build.VERSION.SDK_INT >= 34 && kind != MediaKind.MUSIC -> arrayOf(
-            if (kind == MediaKind.PHOTO) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_MEDIA_VIDEO,
+        Build.VERSION.SDK_INT >= 33 && kind == MediaKind.MUSIC -> arrayOf(Manifest.permission.READ_MEDIA_AUDIO)
+        Build.VERSION.SDK_INT >= 34 -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
             Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         )
-        Build.VERSION.SDK_INT >= 33 -> arrayOf(
-            when (kind) {
-                MediaKind.PHOTO -> Manifest.permission.READ_MEDIA_IMAGES
-                MediaKind.VIDEO -> Manifest.permission.READ_MEDIA_VIDEO
-                MediaKind.MUSIC -> Manifest.permission.READ_MEDIA_AUDIO
-            }
-        )
+        Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
-    /** İzin verildi mi (Android 14'te "yalnızca seçilenler" de sayılır). */
-    fun hasPermission(kind: MediaKind): Boolean =
-        permissionsFor(kind).any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    /** İzin penceresi açılmadan önce çağrılır ("yalnızca seçilenler" cevabını tanımak için). */
+    fun markAsked(kind: MediaKind) {
+        if (kind != MediaKind.MUSIC) prefs.edit().putBoolean("gorsel_soruldu", true).apply()
+    }
+
+    private fun granted(p: String) = context.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Bu tür okunabilir mi: önce türün kendi izni kontrol edilir. Android 14'teki
+     * "yalnızca seçilenler" izni ancak kullanıcı o pencerede bunu seçtiyse sayılır.
+     */
+    fun hasPermission(kind: MediaKind): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return granted(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val own = when (kind) {
+            MediaKind.PHOTO -> Manifest.permission.READ_MEDIA_IMAGES
+            MediaKind.VIDEO -> Manifest.permission.READ_MEDIA_VIDEO
+            MediaKind.MUSIC -> Manifest.permission.READ_MEDIA_AUDIO
+        }
+        if (granted(own)) return true
+        return Build.VERSION.SDK_INT >= 34 && kind != MediaKind.MUSIC &&
+            prefs.getBoolean("gorsel_soruldu", false) &&
+            granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+    }
 
     fun albums(kind: MediaKind): List<MediaAlbum> = when (kind) {
         MediaKind.PHOTO -> visual(kind, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
