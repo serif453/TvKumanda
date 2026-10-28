@@ -237,31 +237,24 @@ public final class KeyServer {
     }
 
     /**
-     * Drawable'ı PNG'ye çevirir. Geniş görseller (afiş) oranı korunarak, telefonda
-     * kutucuğu doldurmak üzere kırpılabilecek kadar yüksek çözünürlükte çizilir.
-     * Hata olursa ya da görsel tamamen boşsa "" döner (sıradaki kaynak denenir).
+     * Drawable'ı PNG'ye çevirir; görselin kendi en-boy oranı korunur (kare simge kare,
+     * geniş afiş geniş kalır). Hata olursa ya da görsel tamamen boşsa "" döner.
      */
-    private static String lastErr = "";
-
     private static String iconPng(Drawable d) {
-        lastErr = "";
         if (d == null) return "";
         try {
             int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
-            // Görselin kendi en-boy oranı korunur (kare simge kare, geniş afiş geniş kalır)
             int w = 160, h = 160;
             if (iw > 0 && ih > 0 && iw != ih) w = Math.max(80, Math.min(400, Math.round(160f * iw / ih)));
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            Canvas c = new Canvas(bmp);
             d.setBounds(0, 0, w, h);
-            d.draw(c);
-            if (isBlank(bmp)) { bmp.recycle(); lastErr = "(boş)"; return ""; }
+            d.draw(new Canvas(bmp));
+            if (isBlank(bmp)) { bmp.recycle(); return ""; }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
             bmp.recycle();
             return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
         } catch (Throwable t) {
-            lastErr = "(" + t.getClass().getSimpleName() + ")";
             return "";
         }
     }
@@ -275,151 +268,44 @@ public final class KeyServer {
         return true;
     }
 
-    /**
-     * Simgeyi uygulamanın kendi teması uygulanmış bağlamından yükler. Bazı uygulamaların
-     * (ör. Stremio) simgesi temadaki renklere başvurur; tema olmadan çizilemez.
-     */
-    private static Drawable themed(ActivityInfo ai, int resId, int density) throws Throwable {
+    /** Simgeyi uygulamanın kendi teması uygulanmış bağlamından yükler (temaya bağlı simgeler için). */
+    private static Drawable themed(ActivityInfo ai, int resId) throws Throwable {
         if (resId == 0) return null;
         Context app = context().createPackageContext(ai.packageName, Context.CONTEXT_IGNORE_SECURITY);
         int theme = ai.getThemeResource();
         if (theme == 0 && ai.applicationInfo != null) theme = ai.applicationInfo.theme;
         if (theme != 0) app.setTheme(theme);
-        return density > 0
-                ? app.getResources().getDrawableForDensity(resId, density, app.getTheme())
-                : app.getResources().getDrawable(resId, app.getTheme());
+        return app.getResources().getDrawable(resId, app.getTheme());
     }
-
-    /**
-     * Simgeyi sistemin hazır kaynak yükleyicisini atlayıp doğrudan uygulamanın APK
-     * dosyalarından (ana APK + parçalı "split" APK'lar) okur. Bazı uygulamalarda
-     * (Play'den parça parça yüklenenler) simge yalnızca yoğunluk parçasındadır ve
-     * sistem bağlamı onu bulamaz (NotFoundException). Ekran yoğunluğu da açıkça verilir.
-     */
-    private static Drawable fromApk(ActivityInfo ai, int resId) throws Throwable {
-        if (resId == 0 || ai.applicationInfo == null) return null;
-        android.content.pm.ApplicationInfo app = ai.applicationInfo;
-        android.content.res.Resources r = apkResources.get(app.packageName);
-        if (r == null) {
-            android.content.res.AssetManager am = android.content.res.AssetManager.class
-                    .getDeclaredConstructor().newInstance();
-            Method add = android.content.res.AssetManager.class.getDeclaredMethod("addAssetPath", String.class);
-            add.setAccessible(true);
-            lastCookies = "c=" + add.invoke(am, app.sourceDir);
-            if (app.splitSourceDirs != null) for (String sp : app.splitSourceDirs) lastCookies += "," + add.invoke(am, sp);
-            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
-            dm.setToDefaults();
-            dm.densityDpi = 320; dm.density = 2f; dm.scaledDensity = 2f;
-            dm.widthPixels = 1920; dm.heightPixels = 1080;
-            android.content.res.Configuration cfg = new android.content.res.Configuration();
-            cfg.setToDefaults();
-            cfg.densityDpi = 320;
-            cfg.screenWidthDp = 960; cfg.screenHeightDp = 540; cfg.smallestScreenWidthDp = 540;
-            cfg.uiMode = android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
-                    | android.content.res.Configuration.UI_MODE_NIGHT_YES;
-            r = new android.content.res.Resources(am, dm, cfg);
-            apkResources.put(app.packageName, r);
-        }
-        android.content.res.Resources.Theme t = r.newTheme();
-        int theme = ai.getThemeResource();
-        if (theme == 0) theme = app.theme;
-        if (theme != 0) try { t.applyStyle(theme, true); } catch (Throwable ignored) { }
-        try {
-            return r.getDrawableForDensity(resId, 320, t);
-        } catch (Throwable e) {
-            return r.getDrawable(resId, t);
-        }
-    }
-
-    private static String lastCookies = "";
-
-    /** Hata ve nedenlerinin kısa metni. */
-    private static String describe(Throwable t) {
-        StringBuilder b = new StringBuilder();
-        for (int depth = 0; t != null && depth < 3; depth++, t = t.getCause()) {
-            if (depth > 0) b.append(" <- ");
-            String m = t.getMessage();
-            b.append(t.getClass().getSimpleName()).append(": ").append(m == null ? "" : m.length() > 140 ? m.substring(0, 140) : m);
-        }
-        return b.toString();
-    }
-
-    /** APK dosyalarının yeri ve okunabilirliği (teşhis). */
-    private static String fileInfo(android.content.pm.ApplicationInfo app) {
-        if (app == null) return "appInfo yok";
-        StringBuilder b = new StringBuilder();
-        java.util.List<String> files = new java.util.ArrayList<>();
-        files.add(app.sourceDir);
-        if (app.splitSourceDirs != null) java.util.Collections.addAll(files, app.splitSourceDirs);
-        for (String f : files) {
-            java.io.File file = new java.io.File(f == null ? "" : f);
-            b.append(f).append(" okunur=").append(file.canRead()).append(" boyut=").append(file.length()).append("; ");
-        }
-        b.append(lastCookies).append(" flags=").append(Integer.toHexString(app.flags));
-        return b.toString();
-    }
-
-    private static final java.util.HashMap<String, android.content.res.Resources> apkResources = new java.util.HashMap<>();
 
     private interface IconSource { Drawable load() throws Throwable; }
 
     /**
      * Simgeyi sırayla birkaç kaynaktan dener: etkinlik simgesi, uygulama simgesi,
-     * TV afişi (banner), logo; en son sistemin varsayılan simgesi. İlk başarıyla
-     * çizilen kullanılır. Bazı TV uygulamalarında kare simge yoktur, yalnızca afiş vardır.
+     * TV afişi (banner), logo, temalı simge; en son sistemin varsayılan simgesi.
+     * İlk başarıyla çizilen kullanılır.
      */
-    /**
-     * Dönüş: {png, hataÖzeti}. png boşsa hataÖzeti her denemenin neden başarısız
-     * olduğunu kısaca anlatır (teşhis için telefona gönderilir).
-     */
-    private static String[] bestIcon(final PackageManager pm, final ResolveInfo ri) {
+    private static String bestIcon(final PackageManager pm, final ResolveInfo ri) {
         final ActivityInfo ai = ri.activityInfo;
         final android.content.pm.ApplicationInfo app = ai.applicationInfo;
         final boolean hasOwnIcon = ai.getIconResource() != 0 || (app != null && app.icon != 0);
-        final android.content.ComponentName cn = new android.content.ComponentName(ai.packageName, ai.name);
-        final String[] names = {"ri", "app", "banner", "appBanner", "logo", "pmApp", "pmAct", "pmBanner",
-                "tIcon", "tAppIcon", "tBanner", "tAppBanner", "dIcon", "dAppIcon",
-                "apkIcon", "apkAppIcon", "apkBanner", "apkAppBanner", "default"};
         IconSource[] sources = new IconSource[] {
                 () -> hasOwnIcon ? ri.loadIcon(pm) : null,
                 () -> app != null && app.icon != 0 ? app.loadIcon(pm) : null,
                 () -> ai.loadBanner(pm),
                 () -> app != null ? app.loadBanner(pm) : null,
                 () -> ai.loadLogo(pm),
-                () -> pm.getApplicationIcon(ai.packageName),
-                () -> pm.getActivityIcon(cn),
-                () -> pm.getActivityBanner(cn),
-                () -> themed(ai, ai.getIconResource(), 0),
-                () -> themed(ai, app != null ? app.icon : 0, 0),
-                () -> themed(ai, ai.getBannerResource(), 0),
-                () -> themed(ai, app != null ? app.banner : 0, 0),
-                () -> themed(ai, ai.getIconResource(), 480),
-                () -> themed(ai, app != null ? app.icon : 0, 480),
-                () -> fromApk(ai, ai.getIconResource()),
-                () -> fromApk(ai, app != null ? app.icon : 0),
-                () -> fromApk(ai, ai.getBannerResource()),
-                () -> fromApk(ai, app != null ? app.banner : 0),
+                () -> themed(ai, ai.getIconResource()),
                 () -> ri.loadIcon(pm)
         };
-        StringBuilder why = new StringBuilder("res=").append(ai.getIconResource())
-                .append('/').append(app != null ? app.icon : -1)
-                .append(" b=").append(ai.getBannerResource()).append('/').append(app != null ? app.banner : -1);
-        for (int i = 0; i < sources.length; i++) {
+        for (IconSource src : sources) {
             try {
-                Drawable d = sources[i].load();
-                if (d == null) { why.append(' ').append(names[i]).append(":null"); continue; }
-                String png = iconPng(d);
-                if (!png.isEmpty()) return new String[]{png, ""};
-                why.append(' ').append(names[i]).append(":").append(d.getClass().getSimpleName())
-                   .append(d.getIntrinsicWidth()).append('x').append(d.getIntrinsicHeight()).append(lastErr);
-            } catch (Throwable t) {
-                why.append(' ').append(names[i]).append(":").append(t.getClass().getSimpleName());
-                // Ayrıntılı neden yalnızca birkaç temsilci deneme için (metin kısa kalsın)
-                if (i == 0 || names[i].equals("apkIcon")) why.append(" {").append(describe(t)).append('}');
+                String png = iconPng(src.load());
+                if (!png.isEmpty()) return png;
+            } catch (Throwable ignored) {
             }
         }
-        why.append(" | ").append(fileInfo(app));
-        return new String[]{"", clean(why)};
+        return "";
     }
 
     private static void listApps() {
@@ -433,9 +319,8 @@ public final class KeyServer {
                 String pkg = ri.activityInfo.packageName;
                 String act = ri.activityInfo.name;
                 String label = clean(ri.loadLabel(pm));
-                String[] icon = bestIcon(pm, ri);
                 sb.append("APP\t").append(pkg).append('\t').append(act).append('\t')
-                  .append(label).append('\t').append(icon[0]).append('\t').append(icon[1]).append('\n');
+                  .append(label).append('\t').append(bestIcon(pm, ri)).append('\n');
             }
         } catch (Throwable ignored) {
             // Liste alınamazsa telefon eski yönteme geri döner

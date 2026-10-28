@@ -36,7 +36,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Kod küçültme ve optimizasyon (R8): APK küçülür, arayüz daha akıcı çalışır,
+            // TV'ye ilk bağlantıda kopyalanan dosya da küçüldüğü için bağlantı hızlanır.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isDebuggable = false
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }

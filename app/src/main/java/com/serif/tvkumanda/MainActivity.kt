@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
         state = ConnState.CONNECTED
         message = ip
         apps = emptyList()
-        loadApps()
+        loadApps(ip)
         refreshVolume(0)
     }
 
@@ -236,10 +236,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadApps() {
+    private fun loadApps(ip: String) {
+        val link = remote
         scope.launch {
-            val link = remote
-            apps = withContext(Dispatchers.IO) { runCatching { link.listApps() }.getOrDefault(emptyList()) }
+            // Bu TV'nin son listesi önbellekten anında gösterilir, güncel liste arkadan gelir
+            if (link === adb) {
+                val cached = withContext(Dispatchers.IO) { adb.cachedApps(ip) }
+                if (cached.isNotEmpty() && apps.isEmpty() && remote === link) apps = cached
+            }
+            val fresh = withContext(Dispatchers.IO) { runCatching { link.listApps() }.getOrDefault(emptyList()) }
+            if (remote === link && (fresh.isNotEmpty() || apps.isEmpty())) apps = fresh
         }
     }
 

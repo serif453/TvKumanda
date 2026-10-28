@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -299,16 +298,16 @@ fun StatusDot(state: ConnState) {
         ConnState.ERROR -> Pal.Red
         ConnState.IDLE -> Pal.Sub
     }
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val a by pulse.animateFloat(
-        0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "alpha"
-    )
-    Box(
-        Modifier
-            .size(10.dp)
-            .clip(CircleShape)
-            .background(color.copy(alpha = if (state == ConnState.CONNECTING) a else 1f))
-    )
+    // Yanıp sönme yalnızca bağlanırken çalışır; diğer durumlarda sürekli kare çizilmez
+    if (state == ConnState.CONNECTING) {
+        val pulse = rememberInfiniteTransition(label = "pulse")
+        val a by pulse.animateFloat(
+            0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "alpha"
+        )
+        Box(Modifier.size(10.dp).graphicsLayer { alpha = a }.clip(CircleShape).background(color))
+    } else {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+    }
 }
 
 // ---------- Uygulamalar ----------
@@ -355,10 +354,8 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val base = tileColors[abs(app.pkg.hashCode()) % tileColors.size]
-    // TV'den gelen gerçek simge (ADB); yoksa renkli baş harf
-    val iconBitmap = remember(app.pkg, app.icon) {
-        app.icon?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
-    }
+    // TV'den gelen gerçek simge (ADB, arka planda hazırlanmış); yoksa renkli baş harf
+    val iconBitmap = app.icon
     // Serbest düzen: simge kendi biçiminde gösterilir (kare kare, geniş afiş geniş);
     // yükseklik sabit, genişlik görselin oranına göre
     val tileH = 72.dp
@@ -894,10 +891,11 @@ private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> 
 private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
-    val pulse = rememberInfiniteTransition(label = "mic")
-    val p by pulse.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "ring"
-    )
+    // Halka animasyonu yalnızca dinlerken çalışır; boşta pil ve işlemci harcanmaz
+    val p = if (active) {
+        val pulse = rememberInfiniteTransition(label = "mic")
+        pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "ring")
+    } else null
     val lvl by animateFloatAsState(if (active) level else 0f, tween(120), label = "lvl")
     val bg by animateColorAsState(if (active) Color(0xFF4A2327) else Pal.Btn, tween(200), label = "bg")
     val tint by animateColorAsState(if (active) Pal.Red else Pal.Text, tween(200), label = "tint")
@@ -911,7 +909,7 @@ private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, 
                     drawCircle(Pal.Red.copy(alpha = 0.22f), radius = r * (1f + 0.35f * lvl))
                     // Sürekli dışa doğru yayılan iki halka
                     for (k in 0..1) {
-                        val f = (p + k * 0.5f) % 1f
+                        val f = ((p?.value ?: 0f) + k * 0.5f) % 1f
                         drawCircle(
                             Pal.Red.copy(alpha = 0.45f * (1f - f)),
                             radius = r * (1f + 0.55f * f),

@@ -378,7 +378,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
         clientKey = java.security.KeyFactory.getInstance("RSA")
             .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(keyFile.readBytes()))
         clientCert = java.security.cert.CertificateFactory.getInstance("X.509")
-            .generateCertificate(certFile.inputStream()) as X509Certificate
+            .generateCertificate(certFile.inputStream().use { java.io.ByteArrayInputStream(it.readBytes()) }) as X509Certificate
     }
 
     private fun clientCertificate(): X509Certificate {

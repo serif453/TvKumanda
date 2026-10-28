@@ -4,6 +4,8 @@ import android.content.Context
 import dadb.AdbKeyPair
 import dadb.AdbStream
 import dadb.Dadb
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -43,22 +45,29 @@ class TvRemote(private val context: Context) : RemoteLink {
         host = ip
         this.port = port
         val d = Dadb.create(ip, port, keyPair)
-        val model = d.shell("getprop ro.product.model").output.trim()
+        // Model adı ve tuş sunucusunun TV'de hazır olup olmadığı tek komutta öğrenilir
+        val out = d.shell("getprop ro.product.model; [ -f $serverPath ] && echo SERVER_OK").output
+        val model = out.lineSequence().firstOrNull()?.trim().orEmpty()
         dadb = d
-        startFastMode(d)
+        startFastMode(d, out.contains("SERVER_OK"))
         return model.ifEmpty { ip }
     }
 
-    private fun startFastMode(d: Dadb) {
+    /** TV'deki sunucu dosyası; uygulama güncellenince adı değişir ve yeniden kopyalanır. */
+    private val serverPath: String by lazy {
+        @Suppress("DEPRECATION")
+        val stamp = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        "/data/local/tmp/tvkumanda-$stamp.apk"
+    }
+
+    private fun startFastMode(d: Dadb, exists: Boolean? = null) {
         fast = runCatching {
             val apk = File(context.applicationInfo.sourceDir)
-            @Suppress("DEPRECATION")
-            val stamp = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
-            val remotePath = "/data/local/tmp/tvkumanda-$stamp.apk"
+            val remotePath = serverPath
 
             // APK yalnızca uygulama güncellendiğinde yeniden kopyalanır
-            val exists = d.shell("[ -f $remotePath ] && echo yes").output.trim() == "yes"
-            if (!exists) {
+            val present = exists ?: (d.shell("[ -f $remotePath ] && echo yes").output.trim() == "yes")
+            if (!present) {
                 d.shell("rm -f /data/local/tmp/tvkumanda-*.apk")
                 d.push(apk, remotePath)
             }
@@ -155,24 +164,33 @@ class TvRemote(private val context: Context) : RemoteLink {
             }
             out
         }.get(20, TimeUnit.SECONDS)
-        return lines.mapNotNull { l ->
+        runCatching { cacheFile(host).writeText(lines.joinToString("\n")) }
+        return parseServerApps(lines)
+    }
+
+    /** Bu TV için en son alınan uygulama listesi (bağlanınca anında göstermek için). */
+    fun cachedApps(ip: String): List<TvApp> =
+        runCatching { parseServerApps(cacheFile(ip).readLines()) }.getOrDefault(emptyList())
+
+    private fun cacheFile(ip: String) = File(context.cacheDir, "apps_${ip.replace(Regex("[^0-9A-Za-z.]"), "_")}.txt")
+
+    private fun parseServerApps(lines: List<String>): List<TvApp> =
+        lines.mapNotNull { l ->
             val p = l.split('\t')
             if (p.size < 4 || p[0] != "APP") return@mapNotNull null
             val pkg = p[1]
             if (pkg == context.packageName) return@mapNotNull null
-            val icon = p.getOrNull(4)?.takeIf { it.isNotEmpty() }
-                ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
-            val ok = icon != null && android.graphics.BitmapFactory.decodeByteArray(icon, 0, icon.size) != null
-            val why = when {
-                ok -> null
-                icon != null -> "telefon çözemedi (${icon.size} bayt)"
-                else -> p.getOrNull(5)?.takeIf { it.isNotBlank() } ?: "TV simge göndermedi"
+            // Simge burada (arka planda) bir kez çözülür; arayüz hazır görüntüyü kullanır
+            val icon = p.getOrNull(4)?.takeIf { it.isNotEmpty() }?.let {
+                runCatching {
+                    val b = android.util.Base64.decode(it, android.util.Base64.DEFAULT)
+                    android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
+                }.getOrNull()
             }
-            TvApp(pkg, p[2], p[3].ifBlank { appName(pkg) }, icon.takeIf { ok }, why)
+            TvApp(pkg, p[2], p[3].ifBlank { appName(pkg) }, icon)
         }
             .distinctBy { it.pkg }
             .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
-    }
 
     private fun listAppsFromShell(): List<TvApp> {
         val d = dadb ?: return emptyList()
@@ -218,29 +236,34 @@ class TvRemote(private val context: Context) : RemoteLink {
             r.output + "\n" + r.errorOutput
         }.getOrDefault("")
 
-        // 1) cmd media_session (hızlı)
-        val re = Regex("""volume is (\d+) in range \[(\d+)\.\.(\d+)]""")
-        re.find(run("cmd media_session volume --stream 3 --get"))?.let {
-            return it.groupValues[1].toInt() to it.groupValues[3].toInt()
-        }
-
-        // 2) dumpsys audio içindeki STREAM_MUSIC bölümü
-        val dump = run("dumpsys audio")
-        val start = dump.indexOf("STREAM_MUSIC:")
-        if (start >= 0) {
-            val sec = dump.substring(start, minOf(dump.length, start + 1500))
-            val max = Regex("""Max:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
-            val cur = Regex("""streamVolume:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
-                ?: Regex("""Current:[^\n]*?\):\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
-            if (max != null && cur != null) return cur to max
-        }
-
-        // 3) eski "media" komutu (yavaş)
-        re.find(run("media volume --stream 3 --get"))?.let {
-            return it.groupValues[1].toInt() to it.groupValues[3].toInt()
+        val methods: List<() -> Pair<Int, Int>?> = listOf(
+            // 1) cmd media_session (hızlı)
+            { VOLUME_RE.find(run("cmd media_session volume --stream 3 --get"))?.let { it.groupValues[1].toInt() to it.groupValues[3].toInt() } },
+            // 2) dumpsys audio içindeki STREAM_MUSIC bölümü
+            {
+                val dump = run("dumpsys audio")
+                val start = dump.indexOf("STREAM_MUSIC:")
+                if (start < 0) null else {
+                    val sec = dump.substring(start, minOf(dump.length, start + 1500))
+                    val max = Regex("""Max:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+                    val cur = Regex("""streamVolume:\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: Regex("""Current:[^\n]*?\):\s*(\d+)""").find(sec)?.groupValues?.get(1)?.toIntOrNull()
+                    if (max != null && cur != null) cur to max else null
+                }
+            },
+            // 3) eski "media" komutu (yavaş)
+            { VOLUME_RE.find(run("media volume --stream 3 --get"))?.let { it.groupValues[1].toInt() to it.groupValues[3].toInt() } }
+        )
+        // Bu TV'de çalıştığı görülen yöntem önce denenir; her ses tuşunda tüm yöntemler sırayla çalışmaz
+        volumeMethod?.let { i -> methods[i]()?.let { return it } }
+        for (i in methods.indices) {
+            if (i == volumeMethod) continue
+            methods[i]()?.let { volumeMethod = i; return it }
         }
         return null
     }
+
+    @Volatile private var volumeMethod: Int? = null
 
     private fun reconnect() {
         runCatching { fast?.close() }
@@ -253,6 +276,7 @@ class TvRemote(private val context: Context) : RemoteLink {
 
     @Synchronized
     override fun close() {
+        volumeMethod = null
         runCatching { fast?.close() }
         fast = null
         runCatching { dadb?.close() }
@@ -261,13 +285,13 @@ class TvRemote(private val context: Context) : RemoteLink {
 }
 
 /** Türkçe harfleri sadeleştirir (TV klavye haritasında karşılığı olmayabilir). */
-fun normalizeText(text: String): String {
-    val tr = mapOf(
-        'ı' to 'i', 'İ' to 'I', 'ğ' to 'g', 'Ğ' to 'G', 'ü' to 'u', 'Ü' to 'U',
-        'ş' to 's', 'Ş' to 'S', 'ö' to 'o', 'Ö' to 'O', 'ç' to 'c', 'Ç' to 'C'
-    )
-    return text.map { tr[it] ?: it }.joinToString("").replace("\n", " ")
-}
+private val TR_PLAIN = mapOf(
+    'ı' to 'i', 'İ' to 'I', 'ğ' to 'g', 'Ğ' to 'G', 'ü' to 'u', 'Ü' to 'U',
+    'ş' to 's', 'Ş' to 'S', 'ö' to 'o', 'Ö' to 'O', 'ç' to 'c', 'Ç' to 'C'
+)
+
+fun normalizeText(text: String): String =
+    buildString(text.length) { for (c in text) append(if (c == '\n') ' ' else TR_PLAIN[c] ?: c) }
 
 /** Yedek yöntem: "input text" komutu (boşluk ve tırnakları kaçırır). */
 fun buildTextCommand(text: String): String {
@@ -282,14 +306,12 @@ fun buildTextCommand(text: String): String {
     return "input text '$sb'"
 }
 
-data class TvApp(
-    val pkg: String, val activity: String, val name: String, val icon: ByteArray? = null,
-    /** Geçici teşhis: simge alınamadıysa nedeni */
-    val iconError: String? = null
-) {
+data class TvApp(val pkg: String, val activity: String, val name: String, val icon: ImageBitmap? = null) {
     override fun equals(other: Any?) = other is TvApp && other.pkg == pkg && other.activity == activity && other.name == name
     override fun hashCode() = pkg.hashCode()
 }
+
+private val VOLUME_RE = Regex("""volume is (\d+) in range \[(\d+)\.\.(\d+)]""")
 
 private val knownApps = linkedMapOf(
     "com.netflix.ninja" to "Netflix",
@@ -314,7 +336,8 @@ private fun knownRank(pkg: String): Int {
 /** Bilinen paketlere güzel isim, diğerlerine paket adından türetilmiş isim. */
 fun appName(pkg: String): String {
     knownApps[pkg]?.let { return it }
-    val skip = setOf("com", "tv", "android", "app", "apps", "mobile", "atv", "androidtv", "ninja", "tr", "net", "org", "www", "player", "leanback")
-    val part = pkg.split('.').lastOrNull { it.lowercase() !in skip && it.length > 1 } ?: pkg.substringAfterLast('.')
+    val part = pkg.split('.').lastOrNull { it.lowercase() !in NAME_SKIP && it.length > 1 } ?: pkg.substringAfterLast('.')
     return part.replaceFirstChar { it.uppercase() }
 }
+
+private val NAME_SKIP = setOf("com", "tv", "android", "app", "apps", "mobile", "atv", "androidtv", "ninja", "tr", "net", "org", "www", "player", "leanback")
