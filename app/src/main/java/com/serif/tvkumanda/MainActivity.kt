@@ -82,8 +82,6 @@ class MainActivity : ComponentActivity() {
     private var typingDiag by mutableStateOf("")   // geçici teşhis
     private var diagJob: Job? = null
     @Volatile private var liveText = ""
-    private var liveSent: String? = null
-    private var liveJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,6 +90,7 @@ class MainActivity : ComponentActivity() {
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
+        atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -130,12 +129,7 @@ class MainActivity : ComponentActivity() {
                     onLiveText = ::onLiveText,
                     onTypingSubmit = ::submitTyping,
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
-                    onTypingTest = { k ->
-                        scope.launch {
-                            val r = withContext(io) { runCatching { atv.testSend(k) }.getOrElse { "hata: ${it.message}" } }
-                            toast("Gönderildi: $r")
-                        }
-                    }
+                    onTypingTest = {}
                 )
             }
         }
@@ -336,11 +330,8 @@ class MainActivity : ComponentActivity() {
     /** TV'de yazı kutusu açıldı: ekran kapalıysa kutudaki metinle açılır. */
     private fun onTvKeyboard(value: String) {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
-        imeReady = true
         typingHint = atv.imeHint
-        // Kendiliğinden açılma şimdilik kapalı: TV bu bildirimi uygulama açılırken ve ana
-        // ekrana dönerken de gönderiyor. Doğru işaret bulunana kadar ekran yalnızca klavye
-        // tuşuyla açılır.
+        // Yalnızca gerçek kutu seçiminde çağrılır (kutu bilgisi içeren mesaj)
         if (AUTO_OPEN_TYPING && !typing && System.currentTimeMillis() - typingClosedAt > 2000) openTyping(value)
     }
 
@@ -350,10 +341,11 @@ class MainActivity : ComponentActivity() {
         typingHint = atv.imeHint
         typingSeedTick++
         liveText = seed
-        liveSent = seed
         typing = true
         diagJob?.cancel()
-        diagJob = scope.launch { while (typing) { typingDiag = atv.diagnostics(); delay(500) } }
+        diagJob = scope.launch {
+            while (typing) { typingDiag = atv.diagnostics(); imeReady = atv.hasTextField; delay(300) }
+        }
     }
 
     private var typingClosedAt = 0L
@@ -364,44 +356,15 @@ class MainActivity : ComponentActivity() {
         imeReady = false
     }
 
-    /**
-     * Canlı yazma: değişiklikler kısa aralıklarla toplanıp TV'ye gönderilir; her harf için
-     * ayrı mesaj atılmaz, ama yazarken gecikme hissedilmez. Her zaman en güncel metin gider.
-     */
+    /** Canlı yazma: her değişiklik TV'ye gider (TV tarafında sırayla, cevap beklenerek uygulanır). */
     private fun onLiveText(value: String) {
         liveText = value
-        if (liveJob?.isActive == true) return
-        liveJob = scope.launch {
-            while (true) {
-                delay(LIVE_TEXT_MS)
-                val cur = liveText
-                if (cur == liveSent) break
-                try {
-                    withContext(io) { atv.setTextVerified(cur) }
-                    liveSent = cur
-                } catch (e: Exception) {
-                    toast("Yazı gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
-                    break
-                }
-            }
-        }
+        if (state == ConnState.CONNECTED) atv.type(value)
     }
 
-    /** Telefon klavyesindeki Ara/Git: son metni gönderir, TV'ye Enter basar, ekranı kapatır. */
+    /** Telefon klavyesindeki Ara/Git: son metni uygular, TV'ye Enter basar, ekranı kapatır. */
     private fun submitTyping() {
-        val pending = liveJob
-        scope.launch {
-            pending?.join()
-            val cur = liveText
-            try {
-                withContext(io) {
-                    if (cur != liveSent) { atv.setTextVerified(cur); liveSent = cur }
-                    atv.key(Keys.ENTER)
-                }
-            } catch (e: Exception) {
-                toast("Gönderilemedi: ${e.message ?: e.javaClass.simpleName}")
-            }
-        }
+        atv.typeAndEnter(liveText)
         closeTyping()
     }
 
@@ -453,8 +416,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val VOICE_BLOCK = 16 * 1024
-    private val LIVE_TEXT_MS = 120L
-    private val AUTO_OPEN_TYPING = false
+    private val AUTO_OPEN_TYPING = true
 
     private fun startVoiceStream() {
         micStop = false
