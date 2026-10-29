@@ -12,7 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -25,23 +25,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Araçlar sekmesindeki tek bir araç (şimdilik yalnızca görünüm). */
+/** Araçlar sekmesindeki tek bir araç; [id] doluysa işlevi hazırdır. */
 private data class Tool(
     val name: String,
     val icon: ImageVector,
     val adb: Boolean = false,
     val experimental: Boolean = false,
-    val warning: Boolean = false
+    val warning: Boolean = false,
+    val id: ToolId? = null
 )
 
 private data class ToolGroup(val title: String, val tools: List<Tool>)
 
 private val toolGroups = listOf(
     ToolGroup("Sistem", listOf(
-        Tool("Sistem bilgisi", Icons.Outlined.Info, adb = true),
-        Tool("RAM boşalt", Icons.Outlined.Memory, adb = true),
-        Tool("Önbellek temizle", Icons.Outlined.CleaningServices, adb = true),
-        Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true)
+        Tool("Sistem bilgisi", Icons.Outlined.Info, adb = true, id = ToolId.SYSTEM_INFO),
+        Tool("RAM boşalt", Icons.Outlined.Memory, adb = true, id = ToolId.FREE_RAM),
+        Tool("Önbellek temizle", Icons.Outlined.CleaningServices, adb = true, id = ToolId.CLEAR_CACHE),
+        Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true, id = ToolId.REBOOT)
     )),
     ToolGroup("Uygulamalar", listOf(
         Tool("Uygulama yöneticisi", Icons.Outlined.Apps, adb = true),
@@ -55,9 +56,9 @@ private val toolGroups = listOf(
         Tool("TV oynatıcısında aç", Icons.Outlined.OndemandVideo, adb = true, experimental = true)
     )),
     ToolGroup("Ekran", listOf(
-        Tool("Ekran görüntüsü", Icons.Outlined.Screenshot, adb = true),
+        Tool("Ekran görüntüsü", Icons.Outlined.Screenshot, adb = true, id = ToolId.SCREENSHOT),
         Tool("Ekran kaydı", Icons.Outlined.Videocam, adb = true, experimental = true),
-        Tool("Animasyon hızı", Icons.Outlined.Animation, adb = true, warning = true)
+        Tool("Animasyon hızı", Icons.Outlined.Animation, adb = true, warning = true, id = ToolId.ANIMATION)
     )),
     ToolGroup("Gelişmiş", listOf(
         Tool("Özel DNS", Icons.Outlined.Dns, adb = true, warning = true),
@@ -96,6 +97,10 @@ private val toolGroups = listOf(
 fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val adbReady = method == ConnMethod.ADB && connected
+    var open by remember { mutableStateOf<Tool?>(null) }
+    open?.let { t -> ToolSheet(t.id!!, t.name, t.icon) { open = null } }
+    // Bağlantı koparsa açık araç penceresi kapanır
+    LaunchedEffect(adbReady) { if (!adbReady) open = null }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(10.dp))
         Text("Araçlar", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -125,8 +130,13 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
                     for (tool in row) {
                         val dimmed = tool.adb && !adbReady && connected
                         ToolTile(tool, dimmed, Modifier.weight(1f)) {
-                            val msg = if (tool.adb && method != ConnMethod.ADB) "Bu araç ADB bağlantısı gerektirir" else "Yakında"
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            val msg = when {
+                                tool.adb && method != ConnMethod.ADB -> "Bu araç ADB bağlantısı gerektirir"
+                                tool.id == null -> "Yakında"
+                                tool.adb && !connected -> "Önce TV'ye bağlan"
+                                else -> null
+                            }
+                            if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() else open = tool
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

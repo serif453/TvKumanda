@@ -136,6 +136,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
+        TvTools.adb = adb
+        TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
@@ -253,6 +255,29 @@ class MainActivity : ComponentActivity() {
         loadApps(ip)
         refreshVolume(0)
         pendingShare?.let { list -> pendingShare = null; playShared(list) }
+    }
+
+    /** Yeniden başlatılan TV açılana kadar bekler, sonra kendiliğinden yeniden bağlanır (en fazla ~3 dk). */
+    private fun reconnectAfterReboot() {
+        val ip = currentIp
+        val link = remote
+        state = ConnState.CONNECTING
+        message = "TV yeniden başlıyor…"
+        scope.launch {
+            delay(25_000)
+            repeat(32) {
+                if (state != ConnState.CONNECTING || currentIp != ip) return@launch
+                try {
+                    val model = withContext(io) { link.connectTo(ip) }
+                    onConnected(model, ip)
+                    return@launch
+                } catch (_: Exception) {
+                    delay(5_000)
+                }
+            }
+            state = ConnState.ERROR
+            message = "TV yeniden başladıktan sonra bağlanamadı"
+        }
     }
 
     /** Kayıtlı bir TV'ye, en son çalışan yöntemiyle bağlanır. */

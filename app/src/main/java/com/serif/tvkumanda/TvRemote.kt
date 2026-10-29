@@ -110,6 +110,13 @@ class TvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    /** TV'deki bir dosyayı telefona indirir. */
+    @Synchronized
+    fun pull(remotePath: String, dst: java.io.File) {
+        val d = dadb ?: throw IllegalStateException("Önce TV'ye bağlan")
+        d.pull(dst, remotePath)
+    }
+
     /** Fare komutu (yalnızca hızlı modda çalışır). */
     @Synchronized
     override fun mouse(line: String) {

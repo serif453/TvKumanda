@@ -1,0 +1,186 @@
+package com.serif.tvkumanda
+
+import java.io.File
+
+/**
+ * Araçlar sekmesinin TV tarafı: ADB kabuk komutlarıyla çalışan işlevler.
+ * Tüm işlevler bloklayıcıdır; arka plan iş parçacığından çağrılmalıdır.
+ */
+object TvTools {
+    /** MainActivity bağlanınca atanır. */
+    var adb: TvRemote? = null
+    /** Yeniden başlatma komutu gönderildikten sonra çağrılır (yeniden bağlanmayı başlatır). */
+    var onRebooting: () -> Unit = {}
+
+    private fun sh(cmd: String): String = (adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")).shell(cmd)
+
+    // ---------------- Sistem bilgisi ----------------
+
+    data class MemInfo(val totalKb: Long, val availKb: Long) {
+        val usedKb get() = (totalKb - availKb).coerceAtLeast(0)
+    }
+
+    data class DiskInfo(val totalKb: Long, val freeKb: Long) {
+        val usedKb get() = (totalKb - freeKb).coerceAtLeast(0)
+    }
+
+    data class SystemInfo(
+        val rows: List<Pair<String, String>>,
+        val mem: MemInfo?,
+        val disk: DiskInfo?
+    )
+
+    fun memInfo(): MemInfo? = parseMem(sh("cat /proc/meminfo"))
+
+    private fun parseMem(text: String): MemInfo? {
+        fun kb(key: String) = Regex("""(?m)^$key:\s+(\d+)""").find(text)?.groupValues?.get(1)?.toLongOrNull()
+        val total = kb("MemTotal") ?: return null
+        val avail = kb("MemAvailable") ?: kb("MemFree") ?: return null
+        return MemInfo(total, avail)
+    }
+
+    fun diskInfo(): DiskInfo? = parseDisk(sh("df -k /data"))
+
+    private fun parseDisk(text: String): DiskInfo? {
+        // Filesystem 1K-blocks Used Available Use% Mounted on
+        val line = text.lines().lastOrNull { it.trim().endsWith("/data") } ?: return null
+        val nums = line.trim().split(Regex("\\s+")).mapNotNull { it.toLongOrNull() }
+        if (nums.size < 3) return null
+        return DiskInfo(nums[0], nums[2])
+    }
+
+    fun systemInfo(): SystemInfo {
+        // Tek komutta tüm bilgiler; bölümler işaretlerle ayrılır
+        val out = sh(
+            "echo '##P'; getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; " +
+                "getprop ro.build.version.sdk; getprop ro.build.version.security_patch; getprop ro.soc.model; getprop ro.board.platform; " +
+                "echo '##C'; grep -m1 -i -E 'Hardware|model name' /proc/cpuinfo; nproc; " +
+                "echo '##M'; cat /proc/meminfo; " +
+                "echo '##D'; df -k /data; " +
+                "echo '##W'; wm size; " +
+                "echo '##N'; ip -4 -o addr show 2>/dev/null; " +
+                "echo '##S'; dumpsys wifi 2>/dev/null | grep -m1 'mWifiInfo'; " +
+                "echo '##U'; cat /proc/uptime"
+        )
+        val sections = HashMap<String, StringBuilder>()
+        var cur = ""
+        for (line in out.lines()) {
+            if (line.startsWith("##")) { cur = line.removePrefix("##").trim(); sections.getOrPut(cur) { StringBuilder() } }
+            else sections[cur]?.append(line)?.append('\n')
+        }
+        fun section(tag: String): String = sections[tag]?.toString()?.trim().orEmpty()
+        val p = section("P").lines().map { it.trim() }
+        fun prop(i: Int) = p.getOrNull(i).orEmpty()
+        val rows = ArrayList<Pair<String, String>>()
+
+        val maker = prop(0).replaceFirstChar { it.uppercase() }
+        rows += "Marka ve model" to listOf(maker, prop(1)).filter { it.isNotBlank() }.joinToString(" ")
+        rows += "Android sürümü" to "Android ${prop(2)} (API ${prop(3)})"
+        if (prop(4).isNotBlank()) rows += "Güvenlik yaması" to prop(4)
+
+        val cpuLines = section("C").lines()
+        val cpuName = cpuLines.firstOrNull { it.contains(":") }?.substringAfter(":")?.trim().orEmpty()
+        val cores = cpuLines.lastOrNull()?.trim()?.toIntOrNull()
+        val chip = listOf(prop(5), cpuName, prop(6)).firstOrNull { it.isNotBlank() }.orEmpty()
+        rows += "İşlemci" to listOfNotNull(chip.ifBlank { null }, cores?.let { "$it çekirdek" }).joinToString(" · ").ifBlank { "Bilinmiyor" }
+
+        val mem = parseMem(section("M"))
+        mem?.let { rows += "RAM" to "${mb(it.usedKb)} / ${mb(it.totalKb)} kullanılıyor" }
+        val disk = parseDisk(section("D"))
+        disk?.let { rows += "Depolama" to "${gb(it.usedKb)} / ${gb(it.totalKb)} dolu" }
+
+        Regex("""(\d+)x(\d+)""").findAll(section("W")).lastOrNull()?.let { rows += "Ekran çözünürlüğü" to "${it.groupValues[1]} × ${it.groupValues[2]}" }
+
+        val net = section("N").lines().filter { !it.contains(" lo ") && it.contains("inet ") }
+        val ipLine = net.firstOrNull { it.contains("wlan") } ?: net.firstOrNull()
+        val ip = ipLine?.let { Regex("""inet (\d+\.\d+\.\d+\.\d+)""").find(it)?.groupValues?.get(1) }
+        val iface = ipLine?.trim()?.split(Regex("\\s+"))?.getOrNull(1)
+        val ssid = Regex("""SSID: "?([^",]+)"?""").find(section("S"))?.groupValues?.get(1)?.trim()
+            ?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+        when {
+            iface?.startsWith("eth") == true -> rows += "Ağ" to "Kablolu (Ethernet)${ip?.let { " · $it" } ?: ""}"
+            ip != null -> rows += "Ağ" to listOfNotNull(ssid?.let { "Wi-Fi: $it" } ?: "Wi-Fi", ip).joinToString(" · ")
+        }
+
+        section("U").split(' ').firstOrNull()?.toDoubleOrNull()?.let { rows += "Açık kalma süresi" to duration(it.toLong()) }
+        return SystemInfo(rows, mem, disk)
+    }
+
+    // ---------------- RAM ----------------
+
+    /** Arka plandaki uygulamaları kapatır; boşalan miktarı (KB) döndürür. */
+    fun freeRam(): Pair<MemInfo?, Long> {
+        val before = memInfo()
+        sh("am kill-all")
+        Thread.sleep(1500)
+        val after = memInfo()
+        val freed = if (before != null && after != null) (after.availKb - before.availKb).coerceAtLeast(0) else 0
+        return after to freed
+    }
+
+    // ---------------- Önbellek ----------------
+
+    /** Uygulamaların toplam önbelleği (bayt, sistemin son ölçümü; bilinmiyorsa null). */
+    fun cacheSize(): Long? =
+        Regex("""App Cache Size:\s*(\d+)""").find(sh("dumpsys diskstats"))?.groupValues?.get(1)?.toLongOrNull()
+
+    /** Tüm uygulamaların önbelleğini siler; boşalan alanı (KB) döndürür. */
+    fun clearCache(): Long {
+        val before = diskInfo()
+        sh("pm trim-caches 999G")
+        Thread.sleep(1000)
+        val after = diskInfo()
+        return if (before != null && after != null) (after.freeKb - before.freeKb).coerceAtLeast(0) else 0
+    }
+
+    // ---------------- Yeniden başlat ----------------
+
+    fun reboot() {
+        // Komut gönderildikten sonra bağlantı kopar; hata beklenir
+        runCatching { sh("reboot") }
+        onRebooting()
+    }
+
+    // ---------------- Ekran görüntüsü ----------------
+
+    /** TV ekranının görüntüsünü [dst] dosyasına kaydeder. */
+    fun screenshot(dst: File) {
+        val d = adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
+        val remote = "/data/local/tmp/tvk_shot.png"
+        sh("screencap -p $remote")
+        try {
+            d.pull(remote, dst)
+        } finally {
+            runCatching { sh("rm -f $remote") }
+        }
+        if (!dst.exists() || dst.length() == 0L) throw java.io.IOException("Ekran görüntüsü alınamadı")
+    }
+
+    // ---------------- Animasyon hızı ----------------
+
+    private val animKeys = listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
+
+    /** Şu anki animasyon hızı (ayarlanmamışsa 1). */
+    fun animationScale(): Float =
+        sh("settings get global animator_duration_scale").trim().toFloatOrNull() ?: 1f
+
+    fun setAnimationScale(scale: Float) {
+        val v = if (scale == 0f) "0" else scale.toString()
+        sh(animKeys.joinToString("; ") { "settings put global $it $v" })
+    }
+
+    // ---------------- Biçimlendirme ----------------
+
+    fun mb(kb: Long): String = if (kb >= 1024 * 1024) "%.1f GB".format(kb / 1048576.0) else "${kb / 1024} MB"
+    fun gb(kb: Long): String = "%.1f GB".format(kb / 1048576.0)
+    fun bytes(b: Long): String = mb(b / 1024)
+
+    private fun duration(sec: Long): String {
+        val d = sec / 86400; val h = (sec % 86400) / 3600; val m = (sec % 3600) / 60
+        return when {
+            d > 0 -> "$d gün $h saat"
+            h > 0 -> "$h saat $m dakika"
+            else -> "$m dakika"
+        }
+    }
+}
