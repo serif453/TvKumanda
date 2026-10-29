@@ -261,6 +261,9 @@ fun RemoteScreen(
         Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = 10.dp)
     ) { tab = it }
 
+    // Tam ekran DLNA Sunucu sayfası (Cast sekmesindeki karttan açılır)
+    if (DlnaServerUi.pageOpen) DlnaServerPage(mediaLibrary) { DlnaServerUi.pageOpen = false }
+
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
     // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır
     if (playerSheet.visible && tab == Tab.CAST && cast.phase != CastPhase.NONE) {
