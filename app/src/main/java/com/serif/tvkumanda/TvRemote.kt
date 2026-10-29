@@ -104,7 +104,7 @@ class TvRemote(private val context: Context) : RemoteLink {
     @Synchronized
     override fun key(code: Int) {
         // Philips, giriş kaynağı tuşunu yalnızca "input keyevent" yoluyla gelince güvenilir biçimde açıyor
-        if (code == SLOW_KEY_INPUT) { shell("input keyevent $code"); return }
+        if (code in SLOW_KEYS) { shell("input keyevent $code"); return }
         if (!sendFast("k $code")) {
             shell("input keyevent $code")
         }
@@ -379,5 +379,9 @@ fun appName(pkg: String): String {
 
 private val NAME_SKIP = setOf("com", "tv", "android", "app", "apps", "mobile", "atv", "androidtv", "ninja", "tr", "net", "org", "www", "player", "leanback")
 
-/** KEYCODE_TV_INPUT: hızlı yol yerine her zaman kabuk komutuyla gönderilir. */
-private const val SLOW_KEY_INPUT = 178
+/**
+ * Philips'in canlı yayın (uydu/anten) ekranı bu tuşları hızlı yoldan gelince çoğu zaman yok sayıyor;
+ * kabuk komutuyla ("input keyevent") her seferinde kabul ediyor.
+ * Giriş kaynağı, Rehber, Bilgi, Altyazı, Ses dili.
+ */
+private val SLOW_KEYS = setOf(178, 172, 165, 175, 222)
