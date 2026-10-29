@@ -200,6 +200,8 @@ fun RemoteScreen(
                 dlna, onCastRoute, onDlnaPick, onDlnaSearch,
                 modifier = Modifier.weight(1f)
             )
+        } else if (tab == Tab.TOOLS) {
+            ToolsScreen(ui.method, ui.state == ConnState.CONNECTED, Modifier.weight(1f))
         } else {
         Spacer(Modifier.height(12.dp))
         AppsRow(ui.apps, ui.state, ui.method, onLaunch)
@@ -231,7 +233,7 @@ fun RemoteScreen(
             onNumpad = { sheet = Sheet.NUMPAD }
         )
         }
-        // Alt menü: Kumanda / Cast
+        // Alt menü: Kumanda / Cast / Araçlar
         BottomNav(tab) { tab = it }
     }
 

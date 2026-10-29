@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -93,7 +94,7 @@ data class CastUi(
     val routeName: String = ""
 )
 
-enum class Tab { REMOTE, CAST }
+enum class Tab { REMOTE, CAST, TOOLS }
 
 /** Yayın yolu: TV'nin Chromecast'i ya da ağdaki bir DLNA cihazı. */
 enum class CastRoute { CHROMECAST, DLNA }
@@ -105,7 +106,7 @@ data class DlnaUi(
     val searching: Boolean = false
 )
 
-/** Alt menü: Kumanda / Cast. */
+/** Alt menü: Kumanda / Cast / Araçlar. */
 @Composable
 fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
     Row(
@@ -115,6 +116,7 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
     ) {
         NavItem(AppIcons.Tv, "Kumanda", tab == Tab.REMOTE) { onTab(Tab.REMOTE) }
         NavItem(AppIcons.Cast, "Cast", tab == Tab.CAST) { onTab(Tab.CAST) }
+        NavItem(androidx.compose.material.icons.Icons.Outlined.Build, "Araçlar", tab == Tab.TOOLS) { onTab(Tab.TOOLS) }
     }
 }
 
