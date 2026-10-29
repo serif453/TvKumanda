@@ -136,29 +136,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
-        // GEÇİCİ: Kaynak tuşu testi
-        SourceTest.isAdb = { method == ConnMethod.ADB && state == ConnState.CONNECTED }
-        SourceTest.tryWay = { way ->
-            if (state != ConnState.CONNECTED) "TV bağlı değil"
-            else when (way) {
-                1 -> if (adb.rawFast("k ${Keys.INPUT}")) "Yol 1 gönderildi" else "Yardımcı çalışmıyor"
-                2 -> { adb.shell("input keyevent ${Keys.INPUT}"); "Yol 2 gönderildi" }
-                3 -> if (adb.rawFast("kl ${Keys.INPUT} 150")) "Yol 3 gönderildi" else "Yardımcı çalışmıyor"
-                4 -> {
-                    val devs = findInputDevices(adb.shell("dumpsys input"))
-                    // Tuş takımı (0x101) olan, sanal olmayan cihazlardan kumandaya benzeyeni seç
-                    val keyDevs = devs.filter { it.third and 0x101 == 0x101 && it.first >= 0 && !it.second.contains("virtual", true) }
-                    val rc = keyDevs.firstOrNull { Regex("(?i)ir|rc|remote|tpv|philips|mtk").containsMatchIn(it.second) } ?: keyDevs.firstOrNull()
-                    if (rc == null) "Kumanda cihazı bulunamadı"
-                    else if (adb.rawFast("kd ${Keys.INPUT} ${rc.first} ${rc.third}")) "Yol 4 gönderildi (${rc.second})"
-                    else "Yardımcı çalışmıyor"
-                }
-                5 -> { atv.keyDirection(Keys.INPUT, 3); "Kısa basış gönderildi" }
-                6 -> { atv.keyDirection(Keys.INPUT, 1); Thread.sleep(150); atv.keyDirection(Keys.INPUT, 2); "Basılı tutup bırakma gönderildi" }
-                else -> ""
-            }
-        }
-        SourceTest.report = { summarizeInputDump(adb.shell("dumpsys input")) }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }

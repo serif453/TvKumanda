@@ -65,6 +65,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -230,7 +231,10 @@ fun RemoteScreen(
                         0 -> {
                             DPad(padSize, onKey)
                             // Giriş kaynağı: yön tuşu dairesinin sağ üst köşesinde (yalnızca bu sayfada)
-                            SourceButton(Modifier.align(Alignment.TopEnd).padding(end = 2.dp)) { onKey(Keys.INPUT) }
+                            SourceButton(
+                                ui.method == ConnMethod.ADB,
+                                Modifier.align(Alignment.TopEnd).padding(end = 2.dp)
+                            ) { onKey(Keys.INPUT) }
                         }
                         1 -> TouchPad(padSize, onKey)
                         else -> TrackPad(padSize, ui.fastMode, ui.method, onMouse)
@@ -995,35 +999,21 @@ private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> 
     ) { content() }
 }
 
-/** Küçük "Kaynak" düğmesi: TV'nin giriş kaynağı menüsünü açar. Uzun basınca (geçici) test penceresi açılır. */
+/**
+ * Küçük "Kaynak" düğmesi: TV'nin giriş kaynağı menüsünü açar.
+ * Philips bu tuşu Standart bağlantıdan kabul etmediği için orada soluk görünür.
+ */
 @Composable
-private fun SourceButton(modifier: Modifier, onClick: () -> Unit) {
-    var testOpen by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, tween(90), label = "src")
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier
-                .size(44.dp)
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(CircleShape)
-                .background(if (pressed) Pal.BtnPressed else Pal.Btn)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = { pressed = true; tryAwaitRelease(); pressed = false },
-                        onTap = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
-                        onLongPress = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); testOpen = true }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Outlined.Input, "Kaynak", tint = Pal.Text, modifier = Modifier.size(22.dp))
+private fun SourceButton(available: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val context = LocalContext.current
+    Column(modifier.alpha(if (available) 1f else 0.4f), horizontalAlignment = Alignment.CenterHorizontally) {
+        CircleBtn(44.dp, { Icon(Icons.Outlined.Input, "Kaynak", tint = Pal.Text, modifier = Modifier.size(22.dp)) }) {
+            if (available) onClick()
+            else android.widget.Toast.makeText(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır", android.widget.Toast.LENGTH_SHORT).show()
         }
         Spacer(Modifier.height(4.dp))
         Text("Kaynak", color = Pal.Sub, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
-    if (testOpen) SourceTestDialog { testOpen = false }
 }
 
 /** Mikrofon düğmesi: dinlerken kırmızıya döner, etrafında genişleyen halkalar ve sese göre büyüyen ışık. */

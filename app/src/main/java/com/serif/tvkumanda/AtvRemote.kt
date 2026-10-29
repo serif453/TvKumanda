@@ -273,9 +273,6 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     override fun key(code: Int) = send(RemoteMsg.key(code))
 
-    /** Geçici test: tuşu belirli yönle gönderir (1 = basılı tut, 2 = bırak, 3 = kısa). */
-    fun keyDirection(code: Int, direction: Int) = send(RemoteMsg.key(code, direction))
-
     // ---------------- Sesli komut ----------------
 
     @Volatile private var voiceWaiter: java.util.concurrent.CompletableFuture<Int>? = null
