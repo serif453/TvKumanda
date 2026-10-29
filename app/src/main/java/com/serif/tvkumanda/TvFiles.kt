@@ -111,72 +111,144 @@ object TvFiles {
             if (c.moveToFirst()) c.getString(0) else null
         } ?: uri.lastPathSegment ?: "dosya"
 
-    // ---------------- Telefondan TV'ye aktarım ----------------
+    // ---------------- Telefondan TV'ye aktarım (hibrit) ----------------
+
+    /** Hızlı yolun bu oturumda çalışmadığı TV'ler (bir daha denenip vakit kaybedilmez). */
+    private val fastBroken = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Bu boyutun altındaki dosyalar doğrudan güvenli yoldan gider (hızlı yolu kurmak daha uzun sürer). */
+    private const val FAST_MIN = 4L * 1024 * 1024
+
+    /** md5 ile içerik kontrolü yapılan en büyük dosya. */
+    private const val MD5_MAX = 32L * 1024 * 1024
 
     /**
-     * Telefondaki bir akışı TV'deki [remote] dosyasına yazar.
+     * Telefondaki bir akışı TV'deki [remote] dosyasına yazar. İki yol vardır:
      *
-     * ADB'nin kendi dosya gönderme yolu bazı TV'lerde (Philips'te görüldü) büyük dosyalarda bağlantıyı
-     * koparıyor ("Software caused connection abort"): istemci, TV'nin her parça için onayını beklemeden
-     * gönderiyor. Bu yüzden önce TV'de "nc" ile bir dinleyici açılır, dosya ağ üzerinden doğrudan
-     * yazılır (daha hızlı da); TV'de nc yoksa ADB yoluna geri dönülür.
+     *  - Hızlı yol: TV'de "nc" ile geçici bir dinleyici açılır, dosya Wi-Fi üzerinden doğrudan yazılır.
+     *  - Güvenli yol: ADB'nin dosya gönderme yolu; her parçada TV'nin onayı beklenir (dadb'ye eklenen
+     *    akış denetimi), her TV'de çalışır.
+     *
+     * Büyük dosyalar önce hızlı yolu dener; kurulamaz ya da yarıda koparsa güvenli yoldan baştan gönderilir.
+     * Dosya önce "<ad>.part" olarak yazılır, boyutu (küçüklerde md5'i) doğrulanınca asıl adına taşınır ve
+     * herkesin okuyabileceği izin verilir. Hata ya da Durdur'da yarım dosya kalmaz.
+     *
+     * [open] her denemede akışı baştan açar (yedek yola geçerken dosya yeniden okunur).
      */
-    private fun pushStream(input: java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?) {
+    private fun pushStream(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int = 1) {
+        val tv = adb()
+        val part = "$remote.part"
+        if (size > 0) ensureRoom(remote.substringBeforeLast('/', "/").ifEmpty { "/" }, size * roomFactor)
+        val wantMd5 = size in 1..MD5_MAX
+        var md5: String? = null
+        fun hashing(inp: java.io.InputStream): java.io.InputStream =
+            if (!wantMd5) inp else java.security.DigestInputStream(inp, java.security.MessageDigest.getInstance("MD5")).also { dis ->
+                lastDigest = dis
+            }
+        try {
+            var sent = false
+            if ((size < 0 || size >= FAST_MIN) && tv.tvIp !in fastBroken) {
+                sent = try {
+                    open().use { inp -> fastPush(hashing(inp), size, part, progress, cancel) }
+                } catch (e: Exception) {
+                    if (cancel?.cancelled == true) throw IOException("Durduruldu")
+                    runCatching { sh("rm -f ${q(part)}") }
+                    false
+                }
+                if (!sent) fastBroken += tv.tvIp
+            }
+            if (!sent) {
+                progress(0f)
+                open().use { inp ->
+                    val d = tv.dadbOrThrow()
+                    d.push(CountingSource(hashing(inp).source(), size, progress, cancel), part, 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
+                }
+            }
+            md5 = lastDigest?.messageDigest?.digest()?.joinToString("") { "%02x".format(it) }
+            verifyAndMove(part, remote, size, if (wantMd5) md5 else null)
+            progress(1f)
+        } catch (e: Exception) {
+            runCatching { sh("rm -f ${q(part)}") }
+            if (cancel?.cancelled == true) throw IOException("Durduruldu")
+            throw e
+        } finally {
+            lastDigest = null
+        }
+    }
+
+    @Volatile private var lastDigest: java.security.DigestInputStream? = null
+
+    /** Boyutu (ve verildiyse md5'i) kontrol edip ".part" dosyasını asıl adına taşır, okuma izni verir. */
+    private fun verifyAndMove(part: String, remote: String, size: Long, md5: String?) {
+        if (size > 0) {
+            // TV'deki yazma, akış kapandıktan kısa süre sonra biter
+            var got: Long? = null
+            for (i in 0 until 40) {
+                got = sh("stat -c %s ${q(part)} 2>/dev/null").trim().toLongOrNull()
+                if (got == size) break
+                Thread.sleep(150)
+            }
+            if (got != size) throw IOException("Dosya TV'ye eksik ulaştı (${TvTools.bytes(got ?: 0)} / ${TvTools.bytes(size)}). TV'nin depolaması dolmuş olabilir.")
+        }
+        if (md5 != null) {
+            val sum = sh("(md5sum ${q(part)} || toybox md5sum ${q(part)}) 2>/dev/null").trim().substringBefore(' ').lowercase()
+            if (sum.length == 32 && sum != md5) throw IOException("Dosya TV'ye bozuk ulaştı, tekrar dene")
+        }
+        val r = sh("mv -f ${q(part)} ${q(remote)} && chmod 644 ${q(remote)} && echo tamam").trim()
+        if (!r.endsWith("tamam")) throw IOException("Dosya TV'de kaydedilemedi: ${r.take(100)}")
+    }
+
+    /** Göndermeden önce yer kontrolü: yer yoksa hiç başlamadan söyler. */
+    private fun ensureRoom(dir: String, need: Long) {
+        val free = runCatching {
+            sh("df -k ${q("$dir/")} 2>/dev/null | tail -1").trim().split(Regex("\\s+")).getOrNull(3)?.toLongOrNull()?.times(1024)
+        }.getOrNull() ?: return
+        val reserve = 50L * 1024 * 1024
+        if (free < need + reserve) throw IOException("TV'de yeterli yer yok: ${TvTools.bytes(need)} gerekiyor, ${TvTools.bytes(free)} boş")
+    }
+
+    /** Hızlı yol: TV'de nc dinleyicisi, dosya Wi-Fi üzerinden. Kurulamazsa false döner (hiç veri gitmeden). */
+    private fun fastPush(input: java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?): Boolean {
         val tv = adb()
         val d = tv.dadbOrThrow()
         val nc = runCatching { d.shell("command -v nc >/dev/null 2>&1 && echo nc || (toybox nc --help >/dev/null 2>&1 && echo toybox)").output.trim() }.getOrDefault("")
-        val phoneIp = localIpFor(tv.tvIp)
-        if ((nc == "nc" || nc == "toybox") && phoneIp != null) {
-            val bin = if (nc == "nc") "nc" else "toybox nc"
-            val port = (40000..49999).random()
-            var listenOut: String? = null
-            val listener = Thread {
-                listenOut = runCatching { d.shell("$bin -l -p $port < /dev/null > ${q(remote)} 2>/dev/null; echo NC_BITTI").output }.getOrElse { it.message ?: "hata" }
-            }.apply { isDaemon = true; start() }
-            // Dinleyicinin açılmasını bekle
-            var sock: java.net.Socket? = null
-            val until = System.currentTimeMillis() + 5000
-            while (sock == null && System.currentTimeMillis() < until) {
-                sock = runCatching { java.net.Socket().apply { connect(java.net.InetSocketAddress(tv.tvIp, port), 1500) } }.getOrNull()
-                if (sock == null) Thread.sleep(200)
-            }
-            if (sock != null) {
-                try {
-                    sock.use { s ->
-                        val out = s.getOutputStream()
-                        val buf = ByteArray(128 * 1024)
-                        var done = 0L
-                        var last = 0L
-                        while (true) {
-                            if (cancel?.cancelled == true) throw IOException("Durduruldu")
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            out.write(buf, 0, n)
-                            done += n
-                            val now = System.currentTimeMillis()
-                            if (size > 0 && now - last > 150) { last = now; progress((done.toFloat() / size).coerceIn(0f, 1f)) }
-                        }
-                        out.flush()
-                        s.shutdownOutput()
-                    }
-                } catch (e: Exception) {
-                    listener.join(3000)
-                    runCatching { sh("rm -f ${q(remote)}") }
-                    throw e
-                }
-                listener.join(30_000)
-                if (size > 0) {
-                    val got = sh("stat -c %s ${q(remote)} 2>/dev/null").trim().toLongOrNull()
-                    if (got != size) { runCatching { sh("rm -f ${q(remote)}") }; throw IOException("Dosya TV'ye eksik ulaştı (${got ?: 0} / $size bayt)") }
-                }
-                progress(1f)
-                return
-            }
-            // Bağlanılamadı: dinleyiciyi kapatıp ADB yoluna geç
-            runCatching { sh("pkill -f 'nc -l -p $port'") }
+        if (nc != "nc" && nc != "toybox") return false
+        val bin = if (nc == "nc") "nc" else "toybox nc"
+        val port = (40000..49999).random()
+        val listener = Thread {
+            runCatching { d.shell("$bin -l -p $port < /dev/null > ${q(remote)} 2>/dev/null; echo NC_BITTI") }
+        }.apply { isDaemon = true; start() }
+        // Dinleyicinin açılmasını bekle
+        var sock: java.net.Socket? = null
+        val until = System.currentTimeMillis() + 5000
+        while (sock == null && System.currentTimeMillis() < until) {
+            sock = runCatching { java.net.Socket().apply { connect(java.net.InetSocketAddress(tv.tvIp, port), 1500) } }.getOrNull()
+            if (sock == null) Thread.sleep(200)
         }
-        d.push(CountingSource(input.source(), size, progress, cancel), remote, 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
-        progress(1f)
+        if (sock == null) {
+            runCatching { sh("pkill -f 'nc -l -p $port'") }
+            return false
+        }
+        sock.use { s ->
+            s.soTimeout = 30_000
+            val out = s.getOutputStream()
+            val buf = ByteArray(128 * 1024)
+            var done = 0L
+            var last = 0L
+            while (true) {
+                if (cancel?.cancelled == true) throw IOException("Durduruldu")
+                val n = input.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                done += n
+                val now = System.currentTimeMillis()
+                if (size > 0 && now - last > 150) { last = now; progress((done.toFloat() / size).coerceIn(0f, 1f)) }
+            }
+            out.flush()
+            s.shutdownOutput()
+        }
+        listener.join(30_000)
+        return true
     }
 
     /** TV ile aynı ağdaki telefon adresi. */
@@ -228,7 +300,7 @@ object TvFiles {
             val r = "/data/local/tmp/tvk_kur_$i.apk"
             stage(if (apks.size > 1) "TV'ye gönderiliyor (${i + 1}/${apks.size})…" else "TV'ye gönderiliyor…")
             val start = done
-            f.inputStream().use { pushStream(it, f.length(), r, { v -> progress(((start + v * f.length()) / total).toFloat()) }, cancel) }
+            pushStream({ f.inputStream() }, f.length(), r, { v -> progress(((start + v * f.length()) / total).toFloat()) }, cancel, roomFactor = 2)
             done += f.length()
             r
         }
@@ -343,9 +415,7 @@ object TvFiles {
             val name = displayName(context, u).replace("/", "_")
             stage(if (uris.size > 1) "Gönderiliyor (${i + 1}/${uris.size}): $name" else "Gönderiliyor: $name")
             val start = done
-            context.contentResolver.openInputStream(u)!!.use { inp ->
-                pushStream(inp, sizes[i], "$dest/$name", { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }, cancel)
-            }
+            pushStream({ context.contentResolver.openInputStream(u)!! }, sizes[i], "$dest/$name", { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }, cancel)
             done += sizes[i]
         }
         scan(dest)
@@ -358,6 +428,14 @@ object TvFiles {
     // ---------------- Linkten indirme ----------------
 
     private class Download(val conn: java.net.HttpURLConnection, val name: String, val size: Long)
+
+    /** Link akışı: ilk açılış hazır bağlantıyı kullanır, yedek yola geçilirse link yeniden açılır. */
+    private fun linkOpener(url: String, first: Download): () -> java.io.InputStream {
+        var used = false
+        return {
+            if (!used) { used = true; first.conn.inputStream } else openLink(url).conn.inputStream
+        }
+    }
 
     private fun openLink(url: String): Download {
         var u = java.net.URL(url)
@@ -391,7 +469,7 @@ object TvFiles {
         try {
             stage("İndiriliyor: ${dl.name}")
             if (dl.size <= 0) progress(-1f)
-            dl.conn.inputStream.use { pushStream(it, dl.size.coerceAtLeast(0), "$dest/${dl.name}", progress, cancel) }
+            pushStream(linkOpener(url, dl), if (dl.size > 0) dl.size else -1, "$dest/${dl.name}", progress, cancel)
         } finally { dl.conn.disconnect() }
         scan(dest)
         return dl.name
@@ -405,7 +483,7 @@ object TvFiles {
         try {
             stage("İndiriliyor: ${dl.name}")
             if (dl.size <= 0) progress(-1f)
-            dl.conn.inputStream.use { pushStream(it, dl.size.coerceAtLeast(0), remote, progress, cancel) }
+            pushStream(linkOpener(url, dl), if (dl.size > 0) dl.size else -1, remote, progress, cancel, roomFactor = 2)
         } finally { dl.conn.disconnect() }
         stage("Kuruluyor…")
         progress(-1f)

@@ -82,5 +82,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     // ADB istemcisi (Wi-Fi üzerinden TV'ye bağlanır)
-    implementation("dev.mobile:dadb:1.2.10")
+    // dadb 1.2.10 kaynağı projenin içinde (app/src/main/java/dadb, Apache 2.0): akış denetimi eklendi
+    implementation("com.squareup.okio:okio:2.10.0")
 }
