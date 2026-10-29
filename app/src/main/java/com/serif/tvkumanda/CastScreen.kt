@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -204,6 +206,20 @@ fun CastScreen(
                 browse = k; album = null
                 if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
             }
+            Spacer(Modifier.height(20.dp))
+
+            // ---- DLNA Sunucu (deneysel, işlevi sonra) ----
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("DLNA Sunucu")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "deneysel", color = Pal.Amber, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Pal.Amber.copy(alpha = 0.15f))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            DlnaServerRow()
             Spacer(Modifier.weight(1f))
         } else {
             // Başlık: geri + albüm/tür adı
@@ -266,6 +282,31 @@ fun CastScreen(
             // Oynatıcı kartı alt menünün üstünde durur
             Spacer(Modifier.height(BarSpace))
         }
+    }
+}
+
+/** Cast ana sayfasındaki "DLNA Sunucu" satırı: telefonu ağda medya sunucusu yapar (şimdilik yalnızca görünüm). */
+@Composable
+private fun DlnaServerRow() {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().height(76.dp).clip(RoundedCornerShape(20.dp)).background(Pal.Btn)
+            .clickable { android.widget.Toast.makeText(context, "Yakında", android.widget.Toast.LENGTH_SHORT).show() }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(androidx.compose.material.icons.Icons.Outlined.Dns, null, tint = Pal.Text, modifier = Modifier.size(28.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Telefonu medya sunucusu yap", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("TV'nin kendi oynatıcısından telefondaki medyayı aç", color = Pal.Sub, fontSize = 12.sp, maxLines = 2)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Yakında", color = Pal.Sub, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.07f))
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        )
     }
 }
 
