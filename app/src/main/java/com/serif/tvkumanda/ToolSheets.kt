@@ -433,7 +433,7 @@ private fun AnimationTool() {
 private object MediaKeys {
     const val REWIND = 89; const val PLAY_PAUSE = 85; const val FAST_FORWARD = 90
     const val PREV = 88; const val STOP = 86; const val NEXT = 87
-    const val CAPTIONS = 175; const val AUDIO_TRACK = 222; const val INFO = 165
+    const val CAPTIONS = 175; const val AUDIO_TRACK = 222; const val INFO = 165; const val GUIDE = 172
 }
 
 /** Basılı tutulunca tekrarlayan (ileri/geri sarma) ya da tek dokunuşluk yuvarlak tuş. */
@@ -472,6 +472,7 @@ private fun MediaKeysTool() {
         KeyButton(Icons.Outlined.ClosedCaption, "Altyazı", 48.dp) { k(MediaKeys.CAPTIONS) }
         KeyButton(Icons.Outlined.Audiotrack, "Ses dili", 48.dp) { k(MediaKeys.AUDIO_TRACK) }
         KeyButton(Icons.Outlined.Info, "Bilgi", 48.dp) { k(MediaKeys.INFO) }
+        KeyButton(Icons.Outlined.ViewList, "Rehber", 48.dp) { k(MediaKeys.GUIDE) }
     }
     Spacer(Modifier.height(10.dp))
     Text("Tuşlara uygulama nasıl tepki verirse öyle çalışır; her uygulama hepsini desteklemeyebilir.", color = Pal.Sub, fontSize = 12.sp)
@@ -481,13 +482,17 @@ private fun MediaKeysTool() {
 
 private data class SysKey(val name: String, val icon: ImageVector, val code: Int, val adbOnly: Boolean = false)
 
+// Özel kodlar: tuş yerine ADB'de ekran doğrudan açılır
+private const val SYS_SCREENSAVER = -1
+private const val SYS_SETTINGS = -2
+private const val SYS_NOTIFICATIONS = -3
+
 private val sysKeys = listOf(
-    SysKey("Ayarlar", Icons.Outlined.Settings, 176),
-    SysKey("Bildirimler", Icons.Outlined.Notifications, 83),
+    SysKey("Ayarlar", Icons.Outlined.Settings, SYS_SETTINGS),
+    SysKey("Bildirimler", Icons.Outlined.Notifications, SYS_NOTIFICATIONS),
     SysKey("Son uygulamalar", Icons.Outlined.Layers, 187),
-    SysKey("Rehber", Icons.Outlined.ViewList, 172),
     SysKey("Bilgi", Icons.Outlined.Info, 165),
-    SysKey("Ekran koruyucu", Icons.Outlined.Wallpaper, -1, adbOnly = true),
+    SysKey("Ekran koruyucu", Icons.Outlined.Wallpaper, SYS_SCREENSAVER, adbOnly = true),
     SysKey("Uyku", Icons.Outlined.Bedtime, 223)
 )
 
@@ -501,12 +506,19 @@ private fun SystemKeysTool(adb: Boolean) {
             for (sk in row) {
                 val off = sk.adbOnly && !adb
                 Column(
-                    Modifier.weight(1f).height(84.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn)
+                    Modifier.weight(1f).height(92.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn)
                         .clickable {
                             if (off) { Toast.makeText(context, "Bu kısayol yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show(); return@clickable }
                             result = null
                             run {
-                                io { if (sk.code < 0) TvTools.screensaver() else TvTools.systemKey(sk.code) }
+                                io {
+                                    when (sk.code) {
+                                        SYS_SCREENSAVER -> TvTools.screensaver()
+                                        SYS_SETTINGS -> TvTools.openSettings()
+                                        SYS_NOTIFICATIONS -> TvTools.openNotifications()
+                                        else -> TvTools.systemKey(sk.code)
+                                    }
+                                }
                                     .onFailure { result = ToolResult(false, errorText(it)) }
                             }
                         }
@@ -516,7 +528,10 @@ private fun SystemKeysTool(adb: Boolean) {
                 ) {
                     Icon(sk.icon, sk.name, tint = Pal.Text, modifier = Modifier.size(26.dp))
                     Spacer(Modifier.height(6.dp))
-                    Text(sk.name, color = Pal.Text, fontSize = 12.sp, maxLines = 1)
+                    Text(
+                        sk.name, color = Pal.Text, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             }
             repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

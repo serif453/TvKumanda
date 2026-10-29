@@ -185,6 +185,20 @@ object TvTools {
         if (isAdb()) sh("input keyevent $code") else sendKey(code)
     }
 
+    private fun started(out: String) = !out.contains("Error", ignoreCase = true) && !out.contains("unable to resolve", ignoreCase = true)
+
+    /** TV'nin Ayarlar ekranı: ADB'de doğrudan açılır, Standart'ta Ayarlar tuşu gönderilir. */
+    fun openSettings() {
+        if (!isAdb()) { sendKey(176); return }
+        if (!started(sh("am start -a android.settings.SETTINGS"))) sh("input keyevent 176")
+    }
+
+    /** Bildirim paneli: ADB'de Android TV'nin panel komutu, olmazsa bildirim tuşu. */
+    fun openNotifications() {
+        if (!isAdb()) { sendKey(83); return }
+        if (!started(sh("am start -a com.android.tv.action.OPEN_NOTIFICATIONS_PANEL"))) sh("input keyevent 83")
+    }
+
     /** Ekran koruyucuyu başlatır (yalnızca ADB). */
     fun screensaver() {
         val out = sh("am start -n com.android.systemui/.Somnambulator")
