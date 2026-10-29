@@ -1,5 +1,7 @@
 package com.serif.tvkumanda
 
+import androidx.compose.material.icons.outlined.Input
+
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 
@@ -225,7 +227,11 @@ fun RemoteScreen(
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { p ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     when (p) {
-                        0 -> DPad(padSize, onKey)
+                        0 -> {
+                            DPad(padSize, onKey)
+                            // Giriş kaynağı: yön tuşu dairesinin sağ üst köşesinde (yalnızca bu sayfada)
+                            SourceButton(Modifier.align(Alignment.TopEnd).padding(end = 2.dp)) { onKey(Keys.INPUT) }
+                        }
                         1 -> TouchPad(padSize, onKey)
                         else -> TrackPad(padSize, ui.fastMode, ui.method, onMouse)
                     }
@@ -987,6 +993,16 @@ private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> 
             .pressable(inter, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+/** Küçük "Kaynak" düğmesi: TV'nin giriş kaynağı menüsünü açar. */
+@Composable
+private fun SourceButton(modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        CircleBtn(44.dp, { Icon(Icons.Outlined.Input, "Kaynak", tint = Pal.Text, modifier = Modifier.size(22.dp)) }, onClick)
+        Spacer(Modifier.height(4.dp))
+        Text("Kaynak", color = Pal.Sub, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
 }
 
 /** Mikrofon düğmesi: dinlerken kırmızıya döner, etrafında genişleyen halkalar ve sese göre büyüyen ışık. */

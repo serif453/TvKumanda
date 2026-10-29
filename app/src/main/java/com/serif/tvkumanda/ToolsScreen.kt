@@ -76,7 +76,6 @@ private val toolGroups = listOf(
         Tool("Panodan yaz", Icons.Outlined.ContentPaste)
     )),
     ToolGroup("Gelişmiş tuşlar", listOf(
-        Tool("Giriş kaynağı", Icons.Outlined.Input),
         Tool("Medya tuşları", Icons.Outlined.QueueMusic),
         Tool("Sistem kısayolları", Icons.Outlined.Keyboard)
     )),

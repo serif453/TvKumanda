@@ -33,6 +33,7 @@ object Keys {
     const val CH_UP = 166; const val CH_DOWN = 167; const val ASSIST = 231
     const val PREV = 88; const val PLAY_PAUSE = 85; const val NEXT = 87
     const val DEL = 67; const val ENTER = 66
+    const val INPUT = 178 // KEYCODE_TV_INPUT: TV'nin giriş kaynağı menüsü
     fun digit(n: Int) = 7 + n // KEYCODE_0 = 7
 }
 
