@@ -102,6 +102,19 @@ object Pal {
 
 val RingBrush = Brush.linearGradient(listOf(Pal.Purple, Pal.Blue))
 
+/** Kumanda sekmesinin lacivert teması (şimdilik yalnızca Kumanda'da). */
+object Navy {
+    val Bg = Color(0xFF0A0E1A)
+    val Card = Color(0xFF0F1526)
+    val Btn = Color(0xFF161D31)
+    val BtnPressed = Color(0xFF1F2842)
+    val Border = Color(0xFF232C47)
+    val Accent = Color(0xFF5B7CFF)
+    val AccentSoft = Color(0xFF1C2A5C)
+    val Sub = Color(0xFF9AA3BF)
+    val PowerBg = Color(0xFF2A1418)
+}
+
 @Composable
 fun RemoteTheme(content: @Composable () -> Unit) {
     MaterialTheme(
@@ -117,7 +130,7 @@ fun RemoteTheme(content: @Composable () -> Unit) {
     )
 }
 
-private enum class Sheet { NONE, CONNECT, KEYBOARD, NUMPAD }
+private enum class Sheet { NONE, CONNECT, KEYBOARD, NUMPAD, EDIT_APPS }
 
 // ---------- Ana ekran ----------
 @OptIn(ExperimentalMaterial3Api::class)
@@ -165,6 +178,10 @@ fun RemoteScreen(
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
+    // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
+    var padMode by remember { mutableIntStateOf(0) }
+    var appRowTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = 0 }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
@@ -176,7 +193,6 @@ fun RemoteScreen(
     LaunchedEffect(cast.phase == CastPhase.NONE, tab) {
         if (cast.phase == CastPhase.NONE || tab != Tab.CAST) playerSheet.hideNow()
     }
-    val pager = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
@@ -186,20 +202,21 @@ fun RemoteScreen(
 
     val hazeState = remember { HazeState() }
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
-    Box(Modifier.fillMaxSize().background(Pal.Bg).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
+    val screenBg = if (tab == Tab.REMOTE) Navy.Bg else Pal.Bg
+    Box(Modifier.fillMaxSize().background(screenBg).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
     Column(
         Modifier
             .fillMaxSize()
             // Yazma ekranı açıkken kumanda arkada bulanık görünür (Android 12+; eskilerde perde yeterli)
             .then(if (typingOpen) Modifier.blur(28.dp) else Modifier)
-            .background(Pal.Bg)
+            .background(screenBg)
             // Alt menünün arkasında bulanık görünecek içerik
             .haze(hazeState)
             .padding(horizontal = 16.dp)
             .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        TopBar(ui, onSettings = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
+        TopBarV2(ui, navy = tab == Tab.REMOTE, onSettings = { sheet = Sheet.CONNECT }, onPicker = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
 
         if (tab == Tab.CAST) {
             CastScreen(
@@ -215,42 +232,22 @@ fun RemoteScreen(
         } else if (tab == Tab.SHORTCUTS) {
             ShortcutsScreen(Modifier.weight(1f))
         } else {
+        Spacer(Modifier.height(8.dp))
+        RemoteAppsRow(ui.apps, ui.state, ui.method, appRowTick, onLaunch) { sheet = Sheet.EDIT_APPS }
         Spacer(Modifier.height(12.dp))
-        AppsRow(ui.apps, ui.state, ui.method, onLaunch)
-
-        // Yön tuşu kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val padSize = minOf(maxWidth * 0.88f, maxHeight)
-            // Sağa-sola kaydırarak modlar arasında geçilir
-            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { p ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    when (p) {
-                        0 -> {
-                            DPad(padSize, onKey)
-                            // Giriş kaynağı: yön tuşu dairesinin sağ üst köşesinde (yalnızca bu sayfada)
-                            SourceButton(
-                                ui.method == ConnMethod.ADB,
-                                Modifier.align(Alignment.TopEnd).padding(end = 2.dp)
-                            ) { onKey(Keys.INPUT) }
-                        }
-                        1 -> TouchPad(padSize, onKey)
-                        else -> TrackPad(padSize, ui.fastMode, ui.method, onMouse)
-                    }
-                }
-            }
-        }
-
-        PageDots(pager.currentPage) { i -> scope.launch { pager.animateScrollToPage(i) } }
-        Spacer(Modifier.height(10.dp))
-
-        BottomControls(ui, onKey, onMic,
+        // Yön tuşu kartı kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
+        PadCard(
+            ui, padMode, { padMode = it }, onKey, onMouse,
+            onNumpad = { sheet = Sheet.NUMPAD },
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
-            onNumpad = { sheet = Sheet.NUMPAD }
+            onTvSettings = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } } },
+            modifier = Modifier.weight(1f)
         )
+        Spacer(Modifier.height(12.dp))
+        MediaBar(onKey)
+        Spacer(Modifier.height(12.dp))
+        RemoteBottomKeys(ui, onKey, onMic)
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }
@@ -299,6 +296,7 @@ fun RemoteScreen(
                     Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved)
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
+                    Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }
                     Sheet.NONE -> {}
                 }
             }
@@ -468,7 +466,7 @@ private fun AppsRow(apps: List<TvApp>, state: ConnState, method: ConnMethod, onL
 }
 
 @Composable
-private fun AppTile(app: TvApp, onClick: () -> Unit) {
+internal fun AppTile(app: TvApp, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val base = tileColors[abs(app.pkg.hashCode()) % tileColors.size]
@@ -527,22 +525,33 @@ private fun AppTile(app: TvApp, onClick: () -> Unit) {
 }
 
 // ---------- Yön tuşları ----------
-private enum class Dir { UP, DOWN, LEFT, RIGHT }
+internal enum class Dir { UP, DOWN, LEFT, RIGHT }
 
 @Composable
-fun DPad(size: Dp, onKey: (Int) -> Unit) {
+fun DPad(size: Dp, onKey: (Int) -> Unit, navy: Boolean = false) {
     Box(
         Modifier
             .size(size)
             .clip(CircleShape)
-            .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
-            .border(2.dp, RingBrush, CircleShape)
+            .background(Brush.radialGradient(if (navy) listOf(Color(0xFF161E36), Navy.Card) else listOf(Color(0xFF323235), Pal.Pad)))
+            .border(if (navy) 1.5.dp else 2.dp, RingBrush, CircleShape)
+            .then(if (navy) Modifier.drawBehind {
+                // Dört yönü ayıran ince çapraz çizgiler (ortadaki OK'nin dışında)
+                val c = center
+                val r = size.minDimension / 2
+                val line = Color.White.copy(alpha = 0.07f)
+                for (a in listOf(45.0, 135.0, 225.0, 315.0)) {
+                    val rad = Math.toRadians(a)
+                    val dx = kotlin.math.cos(rad).toFloat(); val dy = kotlin.math.sin(rad).toFloat()
+                    drawLine(line, Offset(c.x + dx * r * 0.38f, c.y + dy * r * 0.38f), Offset(c.x + dx * r * 0.82f, c.y + dy * r * 0.82f), 1.dp.toPx())
+                }
+            } else Modifier)
     ) {
         DirKey(Dir.UP, Modifier.align(Alignment.TopCenter).fillMaxWidth(0.4f).fillMaxHeight(0.33f)) { onKey(Keys.UP) }
         DirKey(Dir.DOWN, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.4f).fillMaxHeight(0.33f)) { onKey(Keys.DOWN) }
         DirKey(Dir.LEFT, Modifier.align(Alignment.CenterStart).fillMaxWidth(0.33f).fillMaxHeight(0.4f)) { onKey(Keys.LEFT) }
         DirKey(Dir.RIGHT, Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.33f).fillMaxHeight(0.4f)) { onKey(Keys.RIGHT) }
-        OkButton(Modifier.align(Alignment.Center).fillMaxSize(0.3f)) { onKey(Keys.OK) }
+        OkButton(Modifier.align(Alignment.Center).fillMaxSize(0.3f), navy) { onKey(Keys.OK) }
     }
 }
 
@@ -567,7 +576,7 @@ private fun DirKey(dir: Dir, modifier: Modifier, onClick: () -> Unit) {
 
 /** İnce ok işareti. */
 @Composable
-private fun Chevron(dir: Dir, color: Color, modifier: Modifier) {
+internal fun Chevron(dir: Dir, color: Color, modifier: Modifier) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height
@@ -586,28 +595,35 @@ private fun Chevron(dir: Dir, color: Color, modifier: Modifier) {
 }
 
 @Composable
-private fun OkButton(modifier: Modifier, onClick: () -> Unit) {
+private fun OkButton(modifier: Modifier, navy: Boolean = false, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val pressed by inter.collectIsPressedAsState()
     Box(
         modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(14.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+            .shadow(if (navy) 18.dp else 14.dp, CircleShape, ambientColor = if (navy) Navy.Accent else Color.Black, spotColor = if (navy) Navy.Accent else Color.Black)
             .clip(CircleShape)
             .background(
                 Brush.verticalGradient(
-                    if (pressed) listOf(Color(0xFF3A3A3E), Color(0xFF333336))
-                    else listOf(Color(0xFF38383B), Color(0xFF2B2B2E))
+                    when {
+                        navy && pressed -> listOf(Color(0xFF232D4D), Color(0xFF1C2541))
+                        navy -> listOf(Color(0xFF1B2440), Color(0xFF131A30))
+                        pressed -> listOf(Color(0xFF3A3A3E), Color(0xFF333336))
+                        else -> listOf(Color(0xFF38383B), Color(0xFF2B2B2E))
+                    }
                 )
             )
             .border(3.dp, RingBrush, CircleShape)
-            .pressable(inter, deferMs = 70, onClick = onClick)
-    )
+            .pressable(inter, deferMs = 70, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (navy) Text("OK", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 // ---------- Dokunmatik yüzeyler ----------
-private val EdgeZone = 30.dp
+private val EdgeZone = 0.dp   // modlar artık düğmeyle değişiyor; kenar şeridi gerekmiyor
 
 /** Kenar şeritlerinden başlayan hareketler bırakılır; böylece kenardan kaydırınca mod değişir. */
 private fun inEdge(x: Float, width: Int, edgePx: Float) = x < edgePx || x > width - edgePx
@@ -624,14 +640,11 @@ private fun PadSurface(
         Modifier
             .size(size)
             .clip(shape)
-            .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
-            .border(2.dp, RingBrush, shape)
+            .background(Brush.radialGradient(listOf(Color(0xFF161E36), Navy.Card)))
+            .border(1.5.dp, RingBrush, shape)
             .then(gesture),
         contentAlignment = Alignment.Center
     ) {
-        // Kenar şeridi ipucu
-        Box(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
-        Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(width = 3.dp, height = 40.dp).clip(CircleShape).background(Color(0x33FFFFFF)))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             icon?.invoke()
             hint.forEach {
@@ -654,7 +667,7 @@ fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
 
     PadSurface(
         size,
-        listOf("Kaydır: yön", "Dokun: OK", "Mod değiştirmek için kenardan kaydır"),
+        listOf("Kaydır: yön", "Dokun: OK"),
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -989,7 +1002,7 @@ private fun BottomControls(
 }
 
 @Composable
-private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> Unit) {
+internal fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val pressed by inter.collectIsPressedAsState()
@@ -1023,7 +1036,7 @@ private fun SourceButton(available: Boolean, modifier: Modifier, onClick: () -> 
 
 /** Mikrofon düğmesi: dinlerken kırmızıya döner, etrafında genişleyen halkalar ve sese göre büyüyen ışık. */
 @Composable
-private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, onClick: () -> Unit) {
+internal fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, idle: Color = Pal.Btn, shape: androidx.compose.ui.graphics.Shape = CircleShape, label: String? = null, fill: Boolean = false, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     // Halka animasyonu yalnızca dinlerken çalışır; boşta pil ve işlemci harcanmaz
@@ -1032,11 +1045,11 @@ private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, 
         pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "ring")
     } else null
     val lvl by animateFloatAsState(if (active) level else 0f, tween(120), label = "lvl")
-    val bg by animateColorAsState(if (active) Color(0xFF4A2327) else Pal.Btn, tween(200), label = "bg")
+    val bg by animateColorAsState(if (active) Color(0xFF4A2327) else idle, tween(200), label = "bg")
     val tint by animateColorAsState(if (active) Pal.Red else Pal.Text, tween(200), label = "tint")
     Box(
         Modifier
-            .size(btnSize)
+            .then(if (fill) Modifier.fillMaxSize() else Modifier.size(btnSize))
             .drawBehind {
                 if (active) {
                     val r = size.minDimension / 2
@@ -1059,19 +1072,26 @@ private fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float, 
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(CircleShape)
+                .clip(shape)
                 .background(bg)
+                .then(if (label != null && !active) Modifier.border(1.dp, Navy.Accent.copy(alpha = 0.6f), shape) else Modifier)
                 .pressable(inter, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Icon(AppIcons.Mic, null, tint = tint, modifier = Modifier.size(iconSize))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(AppIcons.Mic, null, tint = if (label != null && !active) Color(0xFFAFC0FF) else tint, modifier = Modifier.size(iconSize))
+                if (label != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(if (active) "Dinliyor…" else label, color = if (active) Pal.Red else Color(0xFFAFC0FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
 
 /** Sayı tuş takımı simgesi (3x3 + 1 nokta). */
 @Composable
-private fun DotsIcon(iconSize: Dp) {
+internal fun DotsIcon(iconSize: Dp) {
     Canvas(Modifier.size(iconSize)) {
         val r = size.width * 0.09f
         val gap = size.width * 0.3f
@@ -1086,8 +1106,9 @@ private fun DotsIcon(iconSize: Dp) {
 
 /** VOL / CH dikey sürgüsü: üst yarı artı, alt yarı eksi. */
 @Composable
-private fun Rocker(
+internal fun Rocker(
     width: Dp,
+    bg: Color = Pal.Btn,
     label: String,
     value: String?,
     level: Float?,
@@ -1102,7 +1123,8 @@ private fun Rocker(
             .width(width)
             .fillMaxHeight()
             .clip(shape)
-            .background(Pal.Btn)
+            .background(bg)
+            .then(if (bg != Pal.Btn) Modifier.border(1.dp, Navy.Border, shape) else Modifier)
     ) {
         if (level != null) {
             Box(
