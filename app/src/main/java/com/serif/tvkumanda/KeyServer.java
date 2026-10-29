@@ -65,7 +65,15 @@ public final class KeyServer {
         String line;
         while ((line = in.readLine()) != null) {
             try {
-                if (line.startsWith("k ")) {
+                if (line.startsWith("kl ")) {
+                    // Geçici test: basılı tutup bırakma ("kl <tuş> <ms>")
+                    String[] p = line.split(" ");
+                    pressKeyLong(Integer.parseInt(p[1]), Long.parseLong(p[2]));
+                } else if (line.startsWith("kd ")) {
+                    // Geçici test: tuşu belirli bir giriş cihazından geliyormuş gibi gönder ("kd <tuş> <cihaz> <kaynak>")
+                    String[] p = line.split(" ");
+                    pressKeyFrom(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3]));
+                } else if (line.startsWith("k ")) {
                     pressKey(Integer.parseInt(line.substring(2).trim()));
                 } else if (line.startsWith("t ")) {
                     typeText(charMap, line.substring(2));
@@ -109,6 +117,24 @@ public final class KeyServer {
                 KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD));
         inject(new KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0,
                 KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD));
+    }
+
+    private static void pressKeyLong(int code, long ms) throws Exception {
+        long down = SystemClock.uptimeMillis();
+        inject(new KeyEvent(down, down, KeyEvent.ACTION_DOWN, code, 0, 0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD));
+        Thread.sleep(ms);
+        inject(new KeyEvent(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD));
+    }
+
+    private static void pressKeyFrom(int code, int deviceId, int source) throws Exception {
+        long down = SystemClock.uptimeMillis();
+        inject(new KeyEvent(down, down, KeyEvent.ACTION_DOWN, code, 0, 0,
+                deviceId, 0, 0, source));
+        Thread.sleep(80);
+        inject(new KeyEvent(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0, 0,
+                deviceId, 0, 0, source));
     }
 
     private static void typeText(KeyCharacterMap map, String text) throws Exception {

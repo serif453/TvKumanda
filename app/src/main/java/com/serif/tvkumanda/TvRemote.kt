@@ -108,6 +108,10 @@ class TvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    /** Geçici test: yardımcıya ham komut gönderir (yardımcı yoksa false). */
+    @Synchronized
+    fun rawFast(line: String): Boolean = sendFast(line)
+
     /** Fare komutu (yalnızca hızlı modda çalışır). */
     @Synchronized
     override fun mouse(line: String) {

@@ -995,14 +995,35 @@ private fun CircleBtn(size: Dp, content: @Composable () -> Unit, onClick: () -> 
     ) { content() }
 }
 
-/** Küçük "Kaynak" düğmesi: TV'nin giriş kaynağı menüsünü açar. */
+/** Küçük "Kaynak" düğmesi: TV'nin giriş kaynağı menüsünü açar. Uzun basınca (geçici) test penceresi açılır. */
 @Composable
 private fun SourceButton(modifier: Modifier, onClick: () -> Unit) {
+    var testOpen by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, tween(90), label = "src")
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        CircleBtn(44.dp, { Icon(Icons.Outlined.Input, "Kaynak", tint = Pal.Text, modifier = Modifier.size(22.dp)) }, onClick)
+        Box(
+            Modifier
+                .size(44.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(CircleShape)
+                .background(if (pressed) Pal.BtnPressed else Pal.Btn)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = { pressed = true; tryAwaitRelease(); pressed = false },
+                        onTap = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
+                        onLongPress = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); testOpen = true }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Outlined.Input, "Kaynak", tint = Pal.Text, modifier = Modifier.size(22.dp))
+        }
         Spacer(Modifier.height(4.dp))
         Text("Kaynak", color = Pal.Sub, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
+    if (testOpen) SourceTestDialog { testOpen = false }
 }
 
 /** Mikrofon düğmesi: dinlerken kırmızıya döner, etrafında genişleyen halkalar ve sese göre büyüyen ışık. */
