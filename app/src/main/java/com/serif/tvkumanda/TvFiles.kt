@@ -111,46 +111,152 @@ object TvFiles {
             if (c.moveToFirst()) c.getString(0) else null
         } ?: uri.lastPathSegment ?: "dosya"
 
+    // ---------------- Telefondan TV'ye aktarım ----------------
+
+    /**
+     * Telefondaki bir akışı TV'deki [remote] dosyasına yazar.
+     *
+     * ADB'nin kendi dosya gönderme yolu bazı TV'lerde (Philips'te görüldü) büyük dosyalarda bağlantıyı
+     * koparıyor ("Software caused connection abort"): istemci, TV'nin her parça için onayını beklemeden
+     * gönderiyor. Bu yüzden önce TV'de "nc" ile bir dinleyici açılır, dosya ağ üzerinden doğrudan
+     * yazılır (daha hızlı da); TV'de nc yoksa ADB yoluna geri dönülür.
+     */
+    private fun pushStream(input: java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?) {
+        val tv = adb()
+        val d = tv.dadbOrThrow()
+        val nc = runCatching { d.shell("command -v nc >/dev/null 2>&1 && echo nc || (toybox nc --help >/dev/null 2>&1 && echo toybox)").output.trim() }.getOrDefault("")
+        val phoneIp = localIpFor(tv.tvIp)
+        if ((nc == "nc" || nc == "toybox") && phoneIp != null) {
+            val bin = if (nc == "nc") "nc" else "toybox nc"
+            val port = (40000..49999).random()
+            var listenOut: String? = null
+            val listener = Thread {
+                listenOut = runCatching { d.shell("$bin -l -p $port < /dev/null > ${q(remote)} 2>/dev/null; echo NC_BITTI").output }.getOrElse { it.message ?: "hata" }
+            }.apply { isDaemon = true; start() }
+            // Dinleyicinin açılmasını bekle
+            var sock: java.net.Socket? = null
+            val until = System.currentTimeMillis() + 5000
+            while (sock == null && System.currentTimeMillis() < until) {
+                sock = runCatching { java.net.Socket().apply { connect(java.net.InetSocketAddress(tv.tvIp, port), 1500) } }.getOrNull()
+                if (sock == null) Thread.sleep(200)
+            }
+            if (sock != null) {
+                try {
+                    sock.use { s ->
+                        val out = s.getOutputStream()
+                        val buf = ByteArray(128 * 1024)
+                        var done = 0L
+                        var last = 0L
+                        while (true) {
+                            if (cancel?.cancelled == true) throw IOException("Durduruldu")
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            done += n
+                            val now = System.currentTimeMillis()
+                            if (size > 0 && now - last > 150) { last = now; progress((done.toFloat() / size).coerceIn(0f, 1f)) }
+                        }
+                        out.flush()
+                        s.shutdownOutput()
+                    }
+                } catch (e: Exception) {
+                    listener.join(3000)
+                    runCatching { sh("rm -f ${q(remote)}") }
+                    throw e
+                }
+                listener.join(30_000)
+                if (size > 0) {
+                    val got = sh("stat -c %s ${q(remote)} 2>/dev/null").trim().toLongOrNull()
+                    if (got != size) { runCatching { sh("rm -f ${q(remote)}") }; throw IOException("Dosya TV'ye eksik ulaştı (${got ?: 0} / $size bayt)") }
+                }
+                progress(1f)
+                return
+            }
+            // Bağlanılamadı: dinleyiciyi kapatıp ADB yoluna geç
+            runCatching { sh("pkill -f 'nc -l -p $port'") }
+        }
+        d.push(CountingSource(input.source(), size, progress, cancel), remote, 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
+        progress(1f)
+    }
+
+    /** TV ile aynı ağdaki telefon adresi. */
+    private fun localIpFor(tvIp: String): String? = runCatching {
+        val prefix = tvIp.substringBeforeLast('.')
+        val all = java.net.NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
+            .flatMap { it.inetAddresses.toList() }.filterIsInstance<java.net.Inet4Address>()
+        (all.firstOrNull { it.hostAddress?.startsWith("$prefix.") == true } ?: all.firstOrNull { it.isSiteLocalAddress })?.hostAddress
+    }.getOrNull()
+
     // ---------------- APK yükle ----------------
 
     /** Seçilen .apk ya da .apks/.xapk/.apkm dosyasını kurar; kurulan paket adını döndürür (bulunabilirse). */
-    fun installApk(context: Context, uri: Uri, stage: (String) -> Unit, progress: (Float) -> Unit): String? {
-        val d = adb().dadbOrThrow()
+    fun installApk(context: Context, uri: Uri, stage: (String) -> Unit, progress: (Float) -> Unit, cancel: Cancel? = null): String? {
         val name = displayName(context, uri).lowercase()
         val split = name.endsWith(".apks") || name.endsWith(".xapk") || name.endsWith(".apkm") || name.endsWith(".zip")
         val work = File(context.cacheDir, "kurulum").apply { deleteRecursively(); mkdirs() }
         try {
+            stage("Hazırlanıyor…")
+            val apks = ArrayList<File>()
             if (!split) {
-                // Paket adı için dosya telefonda geçici olarak tutulur
-                stage("Hazırlanıyor…")
                 val local = File(work, "base.apk")
                 context.contentResolver.openInputStream(uri)!!.use { inp -> local.outputStream().use { inp.copyTo(it) } }
-                stage("TV'ye gönderiliyor…")
-                d.install(CountingSource(local.source(), local.length(), progress), local.length(), "-r", "-t")
-                return packageName(context, local)
-            }
-            stage("Paket açılıyor…")
-            val zip = File(work, "paket.zip")
-            context.contentResolver.openInputStream(uri)!!.use { inp -> zip.outputStream().use { inp.copyTo(it) } }
-            val apks = ArrayList<File>()
-            ZipFile(zip).use { z ->
-                z.entries().toList().filter { !it.isDirectory && it.name.endsWith(".apk", true) }.forEachIndexed { i, e ->
-                    val f = File(work, "part$i.apk")
-                    z.getInputStream(e).use { inp -> f.outputStream().use { inp.copyTo(it) } }
-                    apks += f
+                apks += local
+            } else {
+                val zip = File(work, "paket.zip")
+                context.contentResolver.openInputStream(uri)!!.use { inp -> zip.outputStream().use { inp.copyTo(it) } }
+                ZipFile(zip).use { z ->
+                    z.entries().toList().filter { !it.isDirectory && it.name.endsWith(".apk", true) }.forEachIndexed { i, e ->
+                        val f = File(work, "part$i.apk")
+                        z.getInputStream(e).use { inp -> f.outputStream().use { inp.copyTo(it) } }
+                        apks += f
+                    }
                 }
+                if (apks.isEmpty()) throw IOException("Pakette APK bulunamadı")
             }
-            if (apks.isEmpty()) throw IOException("Pakette APK bulunamadı")
-            stage("Kuruluyor…")
-            progress(-1f)
-            if (apks.size == 1) d.install(apks[0], "-r", "-t") else d.installMultiple(apks, "-r", "-t")
+            installLocalApks(apks, stage, progress, cancel)
             return apks.firstNotNullOfOrNull { packageName(context, it) }
-        } catch (e: IOException) {
-            val m = e.message.orEmpty()
-            throw IOException(friendlyInstallError(m))
         } finally {
             work.deleteRecursively()
         }
+    }
+
+    /** Telefondaki APK parçalarını TV'ye gönderip kurar. */
+    private fun installLocalApks(apks: List<File>, stage: (String) -> Unit, progress: (Float) -> Unit, cancel: Cancel?) {
+        val total = apks.sumOf { it.length() }.coerceAtLeast(1)
+        var done = 0L
+        val remotes = apks.mapIndexed { i, f ->
+            val r = "/data/local/tmp/tvk_kur_$i.apk"
+            stage(if (apks.size > 1) "TV'ye gönderiliyor (${i + 1}/${apks.size})…" else "TV'ye gönderiliyor…")
+            val start = done
+            f.inputStream().use { pushStream(it, f.length(), r, { v -> progress(((start + v * f.length()) / total).toFloat()) }, cancel) }
+            done += f.length()
+            r
+        }
+        stage("Kuruluyor…")
+        progress(-1f)
+        try {
+            installRemoteApks(remotes)
+        } finally {
+            runCatching { sh("rm -f /data/local/tmp/tvk_kur_*.apk") }
+        }
+    }
+
+    /** TV'de duran APK parçalarını kurar (tek parça: pm install, çok parça: kurulum oturumu). */
+    private fun installRemoteApks(remotes: List<String>) {
+        if (remotes.size == 1) {
+            val out = sh("pm install -r -t ${q(remotes[0])} 2>&1")
+            if (!out.contains("Success")) throw IOException(friendlyInstallError(out.trim()))
+            return
+        }
+        val sizes = remotes.map { sh("stat -c %s ${q(it)}").trim().toLongOrNull() ?: 0L }
+        val create = sh("pm install-create -r -t -S ${sizes.sum()} 2>&1")
+        val session = Regex("""\[(\d+)]""").find(create)?.groupValues?.get(1) ?: throw IOException(friendlyInstallError(create.trim()))
+        remotes.forEachIndexed { i, r ->
+            val w = sh("pm install-write -S ${sizes[i]} $session part$i ${q(r)} 2>&1")
+            if (!w.contains("Success")) { sh("pm install-abandon $session"); throw IOException(friendlyInstallError(w.trim())) }
+        }
+        val commit = sh("pm install-commit $session 2>&1")
+        if (!commit.contains("Success")) throw IOException(friendlyInstallError(commit.trim()))
     }
 
     private fun friendlyInstallError(m: String): String = when {
@@ -230,29 +336,81 @@ object TvFiles {
 
     /** Seçilen dosyaları TV'deki [dest] klasörüne (varsayılan Download) gönderir. Durdurulursa yarım dosya silinir. */
     fun sendFiles(context: Context, uris: List<Uri>, stage: (String) -> Unit, progress: (Float) -> Unit, dest: String = TV_DOWNLOAD, cancel: Cancel? = null) {
-        val d = adb().dadbOrThrow()
         val sizes = uris.map { sizeOf(context, it).coerceAtLeast(0) }
         val total = sizes.sum().coerceAtLeast(1)
         var done = 0L
         uris.forEachIndexed { i, u ->
             val name = displayName(context, u).replace("/", "_")
-            val remote = "$dest/$name"
             stage(if (uris.size > 1) "Gönderiliyor (${i + 1}/${uris.size}): $name" else "Gönderiliyor: $name")
             val start = done
-            try {
-                context.contentResolver.openInputStream(u)!!.use { inp ->
-                    val src = CountingSource(inp.source(), sizes[i], { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }, cancel)
-                    d.push(src, remote, 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
-                }
-            } catch (e: Exception) {
-                if (cancel?.cancelled == true) { runCatching { sh("rm -f ${q(remote)}") }; throw IOException("Durduruldu") }
-                throw e
+            context.contentResolver.openInputStream(u)!!.use { inp ->
+                pushStream(inp, sizes[i], "$dest/$name", { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }, cancel)
             }
             done += sizes[i]
         }
-        // TV'nin medya kütüphanesi yeni dosyaları hemen görsün
-        runCatching { sh("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d ${q("file://$dest")}") }
+        scan(dest)
         progress(1f)
+    }
+
+    /** TV'nin medya kütüphanesi yeni dosyaları hemen görsün. */
+    private fun scan(dir: String) { runCatching { sh("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d ${q("file://$dir")}") } }
+
+    // ---------------- Linkten indirme ----------------
+
+    private class Download(val conn: java.net.HttpURLConnection, val name: String, val size: Long)
+
+    private fun openLink(url: String): Download {
+        var u = java.net.URL(url)
+        var conn: java.net.HttpURLConnection
+        var hops = 0
+        while (true) {
+            conn = (u.openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 10_000; readTimeout = 30_000; instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) TVKumanda")
+            }
+            val code = conn.responseCode
+            if (code in 300..399 && hops++ < 8) {
+                val loc = conn.getHeaderField("Location") ?: break
+                u = java.net.URL(u, loc); conn.disconnect(); continue
+            }
+            if (code !in 200..299) throw IOException("Link açılmadı (HTTP $code)")
+            break
+        }
+        val cd = conn.getHeaderField("Content-Disposition").orEmpty()
+        val fromHeader = Regex("""filename\*?=(?:UTF-8'')?"?([^";]+)"?""", RegexOption.IGNORE_CASE).find(cd)?.groupValues?.get(1)
+            ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+        val fromPath = u.path.substringAfterLast('/').let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+        val name = (fromHeader ?: fromPath).replace(Regex("""[\\/:*?"<>|]"""), "_").trim().ifBlank { "indirilen_dosya" }
+        return Download(conn, name, conn.contentLengthLong)
+    }
+
+    /** Linkteki dosyayı telefon indirir ve anında TV'deki [dest] klasörüne yazar; dosya adını döndürür. */
+    fun downloadLinkToTv(url: String, dest: String, stage: (String) -> Unit, progress: (Float) -> Unit, cancel: Cancel?): String {
+        stage("Bağlanılıyor…")
+        val dl = openLink(url)
+        try {
+            stage("İndiriliyor: ${dl.name}")
+            if (dl.size <= 0) progress(-1f)
+            dl.conn.inputStream.use { pushStream(it, dl.size.coerceAtLeast(0), "$dest/${dl.name}", progress, cancel) }
+        } finally { dl.conn.disconnect() }
+        scan(dest)
+        return dl.name
+    }
+
+    /** Linkteki APK'yı indirip TV'ye kurar; dosya adını döndürür. */
+    fun installFromLink(url: String, stage: (String) -> Unit, progress: (Float) -> Unit, cancel: Cancel?): String {
+        stage("Bağlanılıyor…")
+        val dl = openLink(url)
+        val remote = "/data/local/tmp/tvk_kur_0.apk"
+        try {
+            stage("İndiriliyor: ${dl.name}")
+            if (dl.size <= 0) progress(-1f)
+            dl.conn.inputStream.use { pushStream(it, dl.size.coerceAtLeast(0), remote, progress, cancel) }
+        } finally { dl.conn.disconnect() }
+        stage("Kuruluyor…")
+        progress(-1f)
+        try { installRemoteApks(listOf(remote)) } finally { runCatching { sh("rm -f $remote") } }
+        return dl.name
     }
 
     // ---------------- TV dosya gezgini ----------------

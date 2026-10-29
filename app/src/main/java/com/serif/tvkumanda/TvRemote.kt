@@ -24,6 +24,8 @@ class TvRemote(private val context: Context) : RemoteLink {
     private var dadb: Dadb? = null
     private var fast: AdbStream? = null
     private var host: String = ""
+    /** Bağlı TV'nin adresi. */
+    val tvIp: String get() = host
     private var port: Int = 5555
     // Bekleme süreli okumalar için iş parçacıkları. Tek iş parçacığı yerine havuz:
     // takılan bir okuma, sonraki bağlantının "hazır" beklemesini engellemez.

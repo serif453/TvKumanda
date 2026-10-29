@@ -228,7 +228,12 @@ object TvTools {
 
     fun mb(kb: Long): String = if (kb >= 1024 * 1024) "%.1f GB".format(kb / 1048576.0) else "${kb / 1024} MB"
     fun gb(kb: Long): String = "%.1f GB".format(kb / 1048576.0)
-    fun bytes(b: Long): String = mb(b / 1024)
+    fun bytes(b: Long): String = when {
+        b < 1024 -> "$b B"
+        b < 1024 * 1024 -> "${b / 1024} KB"
+        b < 1024L * 1024 * 1024 -> "%.1f MB".format(b / 1048576.0)
+        else -> "%.1f GB".format(b / 1073741824.0)
+    }
 
     private fun duration(sec: Long): String {
         val d = sec / 86400; val h = (sec % 86400) / 3600; val m = (sec % 3600) / 60

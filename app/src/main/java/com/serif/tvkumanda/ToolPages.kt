@@ -291,6 +291,21 @@ internal fun ApkInstallTool() {
     Spacer(Modifier.height(16.dp))
     progress?.let { Progress(stage, it); Spacer(Modifier.height(14.dp)) }
     MainButton(if (progress != null) "Kuruluyor…" else "APK seç", enabled = progress == null) { picker.launch(arrayOf("*/*")) }
+    Spacer(Modifier.height(10.dp))
+    var askLink by remember { mutableStateOf(false) }
+    SecondaryButton("Linkten kur", Modifier.fillMaxWidth(), enabled = progress == null) { askLink = true }
+    if (askLink) LinkDialog("Linkten APK kur", "APK'nın linkini yapıştır; indirilip TV'ye kurulur.", "Kur") { url ->
+        askLink = false
+        if (url != null) {
+            result = null; installed = null; progress = 0f; stage = "Bağlanılıyor…"
+            run {
+                io { TvFiles.installFromLink(url, { s -> stage = s }, { v -> progress = v }, null) }
+                    .onSuccess { n -> result = ToolResult(true, "Kuruldu: $n") }
+                    .onFailure { result = ToolResult(false, it.message ?: errorText(it)) }
+                progress = null
+            }
+        }
+    }
     installed?.let { pkg ->
         Spacer(Modifier.height(10.dp))
         SecondaryButton("Aç", Modifier.fillMaxWidth()) {
@@ -377,6 +392,21 @@ internal fun SendFilesTool(onShowInBrowser: () -> Unit) {
     Spacer(Modifier.height(16.dp))
     progress?.let { Progress(stage, it); Spacer(Modifier.height(14.dp)) }
     MainButton(if (progress != null) "Gönderiliyor…" else "Dosya seç", enabled = progress == null) { picker.launch(arrayOf("*/*")) }
+    Spacer(Modifier.height(10.dp))
+    var askLink by remember { mutableStateOf(false) }
+    SecondaryButton("Linkten indir", Modifier.fillMaxWidth(), enabled = progress == null) { askLink = true }
+    if (askLink) LinkDialog("Linkten indir", "Dosyayı telefon indirir ve doğrudan TV'nin Download klasörüne yazar.", "İndir") { url ->
+        askLink = false
+        if (url != null) {
+            result = null; sent = false; progress = 0f
+            run {
+                io { TvFiles.downloadLinkToTv(url, TvFiles.TV_DOWNLOAD, { s -> stage = s }, { v -> progress = v }, null) }
+                    .onSuccess { n -> sent = true; result = ToolResult(true, "İndirildi: $n") }
+                    .onFailure { result = ToolResult(false, errorText(it)) }
+                progress = null
+            }
+        }
+    }
     if (sent) {
         Spacer(Modifier.height(10.dp))
         SecondaryButton("TV dosya gezgininde göster", Modifier.fillMaxWidth(), onClick = onShowInBrowser)
@@ -416,6 +446,8 @@ private fun FileBrowserPage(startDir: String?, onClose: () -> Unit) {
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
     var job by remember { mutableStateOf<FileJob?>(null) }
     var result by remember { mutableStateOf<ToolResult?>(null) }
+    var linkDownload by remember { mutableStateOf(false) }
+    var linkApk by remember { mutableStateOf(false) }
     LaunchedEffect(dir, reload, showHidden) {
         files = null
         files = io { TvFiles.list(dir, showHidden) }
@@ -586,6 +618,14 @@ private fun FileBrowserPage(startDir: String?, onClose: () -> Unit) {
                                 contentAlignment = Alignment.Center
                             ) { Text("＋  Bu klasöre dosya gönder", color = Pal.Sub, fontSize = 15.sp) }
                         }
+                        // Linkten indir / linkten APK kur
+                        item {
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                LinkRow(Icons.Outlined.CloudDownload, "Linkten bu klasöre indir", Modifier.weight(1f), job == null) { linkDownload = true }
+                                LinkRow(Icons.Outlined.InstallMobile, "Linkten APK kur", Modifier.weight(1f), job == null) { linkApk = true }
+                            }
+                        }
                         item { Spacer(Modifier.height(if (job != null) 120.dp else 24.dp)) }
                     }
                 }
@@ -625,6 +665,17 @@ private fun FileBrowserPage(startDir: String?, onClose: () -> Unit) {
                 onDone = { changed -> selected = null; if (changed) reload++ })
         }
     }
+    if (linkDownload) LinkDialog("Linkten indir", "Dosyayı telefon indirir ve doğrudan TV'deki bu klasöre yazar.", "İndir") { url ->
+        linkDownload = false
+        if (url != null) {
+            val target = dir
+            startJob("Linkten indiriliyor") { j -> val n = TvFiles.downloadLinkToTv(url, target, { s -> j.stage = s }, { v -> j.progress = v }, j.cancel); "İndirildi: $n" }
+        }
+    }
+    if (linkApk) LinkDialog("Linkten APK kur", "APK'nın linkini yapıştır; indirilip TV'ye kurulur.", "Kur") { url ->
+        linkApk = false
+        if (url != null) startJob("Linkten kuruluyor") { j -> val n = TvFiles.installFromLink(url, { s -> j.stage = s }, { v -> j.progress = v }, j.cancel); "Kuruldu: $n" }
+    }
     if (newFolder) NameInputDialog("Yeni klasör", "", "Oluştur") { name ->
         newFolder = false
         if (!name.isNullOrBlank()) run { io { TvFiles.mkdir(dir, name.trim()) }.onFailure { result = ToolResult(false, errorText(it)) }; reload++ }
@@ -646,6 +697,18 @@ private fun android.graphics.Bitmap.asImageBitmapSafe(): ImageBitmap {
         android.graphics.Bitmap.createScaledBitmap(this, (width * k).toInt(), (height * k).toInt(), true)
     } else this
     return b.asImageBitmap()
+}
+
+@Composable
+private fun LinkRow(icon: ImageVector, text: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier.height(54.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = Pal.Text, fontSize = 13.sp, maxLines = 2, lineHeight = 15.sp)
+    }
 }
 
 @Composable
@@ -722,6 +785,34 @@ private fun FileActions(f: TvFiles.TvFile, onInstall: () -> Unit, onOpenTv: () -
             io { TvFiles.rename(f, name.trim()) }.onSuccess { onDone(true) }.onFailure { result = ToolResult(false, errorText(it)) }
         }
     }
+}
+
+/** Link girme penceresi; panoda link varsa kendiliğinden dolar. */
+@Composable
+internal fun LinkDialog(title: String, note: String, confirm: String, onDone: (String?) -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var text by remember { mutableStateOf(TvTools.extractUrl(clipboard.getText()?.text.orEmpty()).orEmpty()) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        containerColor = Color(0xFF242426),
+        title = { Text(title, color = Pal.Text) },
+        text = {
+            Column {
+                Text(note, color = Pal.Sub, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it }, singleLine = true,
+                    placeholder = { Text("https://…", color = Pal.Sub) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
+                        focusedBorderColor = Pal.Blue, unfocusedBorderColor = Pal.Sub, cursorColor = Pal.Blue
+                    )
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDone(TvTools.extractUrl(text)) }) { Text(confirm, color = Pal.Blue) } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Vazgeç", color = Pal.Sub) } }
+    )
 }
 
 @Composable
