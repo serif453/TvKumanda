@@ -73,12 +73,12 @@ private val toolGroups = listOf(
         Tool("Ses sınırı", Icons.Outlined.VolumeDown)
     )),
     ToolGroup("İçerik açma", listOf(
-        Tool("Bağlantıyı TV'de aç", Icons.Outlined.Link),
-        Tool("Panodan yaz", Icons.Outlined.ContentPaste)
+        Tool("Bağlantıyı TV'de aç", Icons.Outlined.Link, id = ToolId.OPEN_LINK),
+        Tool("Panodan yaz", Icons.Outlined.ContentPaste, id = ToolId.CLIPBOARD)
     )),
     ToolGroup("Gelişmiş tuşlar", listOf(
-        Tool("Medya tuşları", Icons.Outlined.QueueMusic),
-        Tool("Sistem kısayolları", Icons.Outlined.Keyboard)
+        Tool("Medya tuşları", Icons.Outlined.QueueMusic, id = ToolId.MEDIA_KEYS),
+        Tool("Sistem kısayolları", Icons.Outlined.Keyboard, id = ToolId.SYSTEM_KEYS)
     )),
     ToolGroup("Ağ ve test", listOf(
         Tool("Ağ tarayıcı", Icons.Outlined.Radar),
@@ -98,9 +98,9 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
     val context = LocalContext.current
     val adbReady = method == ConnMethod.ADB && connected
     var open by remember { mutableStateOf<Tool?>(null) }
-    open?.let { t -> ToolSheet(t.id!!, t.name, t.icon) { open = null } }
+    open?.let { t -> ToolSheet(t.id!!, t.name, t.icon, adbReady) { open = null } }
     // Bağlantı koparsa açık araç penceresi kapanır
-    LaunchedEffect(adbReady) { if (!adbReady) open = null }
+    LaunchedEffect(adbReady, connected) { open?.let { t -> if (!connected || (t.adb && !adbReady)) open = null } }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(10.dp))
         Text("Araçlar", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -147,7 +147,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
                             val msg = when {
                                 tool.adb && method != ConnMethod.ADB -> "Bu araç ADB bağlantısı gerektirir"
                                 tool.id == null -> "Yakında"
-                                tool.adb && !connected -> "Önce TV'ye bağlan"
+                                !connected -> "Önce TV'ye bağlan"
                                 else -> null
                             }
                             if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() else open = tool

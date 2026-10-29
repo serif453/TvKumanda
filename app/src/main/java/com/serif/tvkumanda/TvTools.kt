@@ -12,6 +12,12 @@ object TvTools {
     /** Yeniden başlatma komutu gönderildikten sonra çağrılır (yeniden bağlanmayı başlatır). */
     var onRebooting: () -> Unit = {}
 
+    /** Her iki bağlantıda çalışan araçlar için köprüler (MainActivity atar). */
+    var isAdb: () -> Boolean = { false }
+    var sendKey: (Int) -> Unit = {}
+    var sendText: (String) -> Unit = {}
+    var atvLink: (String) -> Unit = {}
+
     private fun sh(cmd: String): String = (adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")).shell(cmd)
 
     // ---------------- Sistem bilgisi ----------------
@@ -167,6 +173,39 @@ object TvTools {
     fun setAnimationScale(scale: Float) {
         val v = if (scale == 0f) "0" else scale.toString()
         sh(animKeys.joinToString("; ") { "settings put global $it $v" })
+    }
+
+    // ---------------- Tuşlar, metin, bağlantı (her iki bağlantıda) ----------------
+
+    /**
+     * Sistem tuşu. ADB'de "input keyevent" yoluyla gider (Philips bazı sistem tuşlarını
+     * yalnızca bu yoldan güvenilir biçimde kabul ediyor), Standart'ta kumanda protokolüyle.
+     */
+    fun systemKey(code: Int) {
+        if (isAdb()) sh("input keyevent $code") else sendKey(code)
+    }
+
+    /** Ekran koruyucuyu başlatır (yalnızca ADB). */
+    fun screensaver() {
+        val out = sh("am start -n com.android.systemui/.Somnambulator")
+        if (out.contains("Error", ignoreCase = true)) throw java.io.IOException("Bu TV ekran koruyucuyu bu yolla başlatmıyor")
+    }
+
+    /** Linki TV'de açar: ADB'de doğrudan, Standart'ta kumanda protokolünün "uygulama bağlantısı" isteğiyle. */
+    fun openLink(url: String) {
+        if (isAdb()) {
+            val q = "'" + url.replace("'", "'\\''") + "'"
+            val out = sh("am start -a android.intent.action.VIEW -d $q")
+            if (out.contains("Error", ignoreCase = true) || out.contains("unable to resolve", ignoreCase = true))
+                throw java.io.IOException("TV'de bu linki açacak uygulama bulunamadı")
+        } else atvLink(url)
+    }
+
+    /** Metindeki ilk web adresini bulur; şema yoksa https eklenir. */
+    fun extractUrl(text: String): String? {
+        Regex("""https?://\S+""").find(text)?.let { return it.value.trimEnd('.', ',', ')', '"', '\'') }
+        val bare = Regex("""(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/\S*)?""").find(text.trim())?.value ?: return null
+        return if (bare.contains('.') && !bare.contains('@')) "https://$bare" else null
     }
 
     // ---------------- Biçimlendirme ----------------

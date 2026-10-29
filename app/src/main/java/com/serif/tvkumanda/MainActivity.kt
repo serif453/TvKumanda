@@ -137,6 +137,10 @@ class MainActivity : ComponentActivity() {
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
         TvTools.adb = adb
+        TvTools.isAdb = { method == ConnMethod.ADB }
+        TvTools.sendKey = { code -> runOnUiThread { key(code) } }
+        TvTools.sendText = { t -> runOnUiThread { sendText(t) } }
+        TvTools.atvLink = { url -> atv.openLink(url) }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
@@ -255,6 +259,7 @@ class MainActivity : ComponentActivity() {
         loadApps(ip)
         refreshVolume(0)
         pendingShare?.let { list -> pendingShare = null; playShared(list) }
+        pendingLink?.let { url -> pendingLink = null; openSharedLink(url) }
     }
 
     /** Yeniden başlatılan TV açılana kadar bekler, sonra kendiliğinden yeniden bağlanır (en fazla ~3 dk). */
@@ -745,6 +750,19 @@ class MainActivity : ComponentActivity() {
             else @Suppress("DEPRECATION") intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)).orEmpty()
             else -> return
         }
+        // Link paylaşımı: TV'de açılır
+        if (uris.isEmpty() && intent.action == Intent.ACTION_SEND) {
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+            intent.action = null
+            val url = TvTools.extractUrl(text)
+            if (url == null) { if (text.isNotBlank()) toast("Paylaşılan metinde link bulunamadı"); return }
+            if (state == ConnState.CONNECTED) openSharedLink(url)
+            else {
+                pendingLink = url
+                if (state != ConnState.CONNECTING) toast("Önce TV'ye bağlan; bağlanınca link TV'de açılacak")
+            }
+            return
+        }
         intent.action = null      // aynı paylaşım ikinci kez işlenmesin
         if (uris.isEmpty()) return
         val items = uris.mapIndexed { i, u ->
@@ -762,6 +780,15 @@ class MainActivity : ComponentActivity() {
         else {
             pendingShare = items
             if (state != ConnState.CONNECTING) toast("Önce TV'ye bağlan; bağlanınca dosya TV'de açılacak")
+        }
+    }
+
+    private var pendingLink: String? = null
+
+    private fun openSharedLink(url: String) {
+        scope.launch {
+            val r = withContext(io) { runCatching { TvTools.openLink(url) } }
+            toast(r.exceptionOrNull()?.message ?: "Link TV'de açılıyor")
         }
     }
 

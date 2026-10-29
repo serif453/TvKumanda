@@ -18,7 +18,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -37,7 +40,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** İşlevi hazır olan araçlar. */
-enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION }
+enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK }
 
 /** Pencere içindeki sonuç satırı. */
 private data class ToolResult(val ok: Boolean, val text: String)
@@ -45,7 +48,7 @@ private data class ToolResult(val ok: Boolean, val text: String)
 /** Araç penceresi: alttan açılır, üstte simge-ad-açıklama, ortada içerik, altta ana buton ve sonuç. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ToolSheet(id: ToolId, name: String, icon: ImageVector, onDismiss: () -> Unit) {
+fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -70,6 +73,10 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, onDismiss: () -> Unit
                 ToolId.REBOOT -> RebootTool(onDismiss)
                 ToolId.SCREENSHOT -> ScreenshotTool()
                 ToolId.ANIMATION -> AnimationTool()
+                ToolId.MEDIA_KEYS -> MediaKeysTool()
+                ToolId.SYSTEM_KEYS -> SystemKeysTool(adb)
+                ToolId.CLIPBOARD -> ClipboardTool()
+                ToolId.OPEN_LINK -> OpenLinkTool()
             }
         }
     }
@@ -82,6 +89,10 @@ private fun description(id: ToolId) = when (id) {
     ToolId.REBOOT -> "TV'yi kapatıp yeniden açar"
     ToolId.SCREENSHOT -> "TV ekranının görüntüsünü telefona alır"
     ToolId.ANIMATION -> "Menü geçişlerini hızlandırır"
+    ToolId.MEDIA_KEYS -> "Oynatma tuşları"
+    ToolId.SYSTEM_KEYS -> "TV'nin sistem ekranlarına tek dokunuş"
+    ToolId.CLIPBOARD -> "Telefonda kopyaladığını TV'ye yazar"
+    ToolId.OPEN_LINK -> "Linki TV'de doğru uygulamada açar"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */
@@ -409,6 +420,171 @@ private fun AnimationTool() {
         run {
             io { TvTools.setAnimationScale(v) }
                 .onSuccess { current = v; result = ToolResult(true, "Animasyon hızı ${options.first { it.first == v }.second.substringBefore(" (")} yapıldı") }
+                .onFailure { result = ToolResult(false, errorText(it)) }
+            busy = false
+        }
+    }
+    ResultLine(result)
+}
+
+
+// ---------------- 7. Medya tuşları ----------------
+
+private object MediaKeys {
+    const val REWIND = 89; const val PLAY_PAUSE = 85; const val FAST_FORWARD = 90
+    const val PREV = 88; const val STOP = 86; const val NEXT = 87
+    const val CAPTIONS = 175; const val AUDIO_TRACK = 222; const val INFO = 165
+}
+
+/** Basılı tutulunca tekrarlayan (ileri/geri sarma) ya da tek dokunuşluk yuvarlak tuş. */
+@Composable
+private fun KeyButton(icon: ImageVector, label: String, size: androidx.compose.ui.unit.Dp, big: Boolean = false, repeat: Boolean = false, onClick: () -> Unit) {
+    val inter = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by inter.collectIsPressedAsState()
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.size(size).clip(CircleShape)
+                .background(if (big) (if (pressed) Pal.Blue.copy(alpha = 0.8f) else Pal.Blue) else if (pressed) Pal.BtnPressed else Pal.Btn)
+                .pressable(inter, repeat = repeat, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, label, tint = if (big) Color.White else Pal.Text, modifier = Modifier.size(size * 0.42f)) }
+        Spacer(Modifier.height(6.dp))
+        Text(label, color = Pal.Sub, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun MediaKeysTool() {
+    val k = TvTools.sendKey
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        KeyButton(Icons.Outlined.FastRewind, "Geri sar", 64.dp, repeat = true) { k(MediaKeys.REWIND) }
+        KeyButton(Icons.Outlined.PlayArrow, "Oynat/Duraklat", 84.dp, big = true) { k(MediaKeys.PLAY_PAUSE) }
+        KeyButton(Icons.Outlined.FastForward, "İleri sar", 64.dp, repeat = true) { k(MediaKeys.FAST_FORWARD) }
+    }
+    Spacer(Modifier.height(18.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        KeyButton(Icons.Outlined.SkipPrevious, "Önceki", 56.dp) { k(MediaKeys.PREV) }
+        KeyButton(Icons.Outlined.Stop, "Durdur", 56.dp) { k(MediaKeys.STOP) }
+        KeyButton(Icons.Outlined.SkipNext, "Sonraki", 56.dp) { k(MediaKeys.NEXT) }
+    }
+    Spacer(Modifier.height(18.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        KeyButton(Icons.Outlined.ClosedCaption, "Altyazı", 48.dp) { k(MediaKeys.CAPTIONS) }
+        KeyButton(Icons.Outlined.Audiotrack, "Ses dili", 48.dp) { k(MediaKeys.AUDIO_TRACK) }
+        KeyButton(Icons.Outlined.Info, "Bilgi", 48.dp) { k(MediaKeys.INFO) }
+    }
+    Spacer(Modifier.height(10.dp))
+    Text("Tuşlara uygulama nasıl tepki verirse öyle çalışır; her uygulama hepsini desteklemeyebilir.", color = Pal.Sub, fontSize = 12.sp)
+}
+
+// ---------------- 8. Sistem kısayolları ----------------
+
+private data class SysKey(val name: String, val icon: ImageVector, val code: Int, val adbOnly: Boolean = false)
+
+private val sysKeys = listOf(
+    SysKey("Ayarlar", Icons.Outlined.Settings, 176),
+    SysKey("Bildirimler", Icons.Outlined.Notifications, 83),
+    SysKey("Son uygulamalar", Icons.Outlined.Layers, 187),
+    SysKey("Rehber", Icons.Outlined.ViewList, 172),
+    SysKey("Bilgi", Icons.Outlined.Info, 165),
+    SysKey("Ekran koruyucu", Icons.Outlined.Wallpaper, -1, adbOnly = true),
+    SysKey("Uyku", Icons.Outlined.Bedtime, 223)
+)
+
+@Composable
+private fun SystemKeysTool(adb: Boolean) {
+    val context = LocalContext.current
+    val run = rememberRunner()
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    for (row in sysKeys.chunked(3)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            for (sk in row) {
+                val off = sk.adbOnly && !adb
+                Column(
+                    Modifier.weight(1f).height(84.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn)
+                        .clickable {
+                            if (off) { Toast.makeText(context, "Bu kısayol yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show(); return@clickable }
+                            result = null
+                            run {
+                                io { if (sk.code < 0) TvTools.screensaver() else TvTools.systemKey(sk.code) }
+                                    .onFailure { result = ToolResult(false, errorText(it)) }
+                            }
+                        }
+                        .then(if (off) Modifier.alpha(0.4f) else Modifier)
+                        .padding(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(sk.icon, sk.name, tint = Pal.Text, modifier = Modifier.size(26.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(sk.name, color = Pal.Text, fontSize = 12.sp, maxLines = 1)
+                }
+            }
+            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+        }
+        Spacer(Modifier.height(10.dp))
+    }
+    ResultLine(result)
+}
+
+// ---------------- 9. Panodan yaz ----------------
+
+@Composable
+private fun ClipboardTool() {
+    val clipboard = LocalClipboardManager.current
+    var text by remember { mutableStateOf(clipboard.getText()?.text.orEmpty()) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 80.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(14.dp)
+    ) {
+        Text(
+            text.ifBlank { "Panoda metin yok. Telefonda bir şeyi kopyala, sonra \"Yenile\"ye dokun." },
+            color = if (text.isBlank()) Pal.Sub else Pal.Text, fontSize = 14.sp, maxLines = 6, overflow = TextOverflow.Ellipsis
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("TV'de bir yazı alanı (ör. arama kutusu) açık olmalı.", color = Pal.Sub, fontSize = 12.sp)
+    Spacer(Modifier.height(14.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        SecondaryButton("Yenile", Modifier.weight(1f)) { text = clipboard.getText()?.text.orEmpty(); result = null }
+        Box(Modifier.weight(2f)) {
+            MainButton("TV'ye yaz", enabled = text.isNotBlank()) {
+                TvTools.sendText(text)
+                result = ToolResult(true, "TV'ye gönderildi")
+            }
+        }
+    }
+    ResultLine(result)
+}
+
+// ---------------- 10. Bağlantıyı TV'de aç ----------------
+
+@Composable
+private fun OpenLinkTool() {
+    val clipboard = LocalClipboardManager.current
+    val run = rememberRunner()
+    var url by remember { mutableStateOf(TvTools.extractUrl(clipboard.getText()?.text.orEmpty()).orEmpty()) }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    OutlinedTextField(
+        value = url, onValueChange = { url = it; result = null }, singleLine = true,
+        placeholder = { Text("https://…", color = Pal.Sub) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
+            focusedBorderColor = Pal.Blue, unfocusedBorderColor = Pal.Sub.copy(alpha = 0.5f), cursorColor = Pal.Blue
+        )
+    )
+    Spacer(Modifier.height(8.dp))
+    Text("YouTube linkleri YouTube'da, diğerleri TV'deki uygun uygulamada açılır. Telefonda bir linki Paylaş → \"TV'de aç\" ile de gönderebilirsin.", color = Pal.Sub, fontSize = 12.sp)
+    Spacer(Modifier.height(14.dp))
+    MainButton(if (busy) "Açılıyor…" else "TV'de aç", enabled = !busy && url.isNotBlank()) {
+        val u = TvTools.extractUrl(url)
+        if (u == null) { result = ToolResult(false, "Geçerli bir link değil"); return@MainButton }
+        busy = true; result = null
+        run {
+            io { TvTools.openLink(u) }
+                .onSuccess { result = ToolResult(true, "TV'de açılıyor") }
                 .onFailure { result = ToolResult(false, errorText(it)) }
             busy = false
         }

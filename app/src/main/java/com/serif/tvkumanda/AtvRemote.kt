@@ -273,6 +273,9 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
     override fun key(code: Int) = send(RemoteMsg.key(code))
 
+    /** Linki TV'de açar (ör. YouTube bağlantısı YouTube uygulamasında). */
+    fun openLink(url: String) = send(RemoteMsg.appLink(url))
+
     // ---------------- Sesli komut ----------------
 
     @Volatile private var voiceWaiter: java.util.concurrent.CompletableFuture<Int>? = null
