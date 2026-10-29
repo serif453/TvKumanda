@@ -6,8 +6,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -106,39 +104,6 @@ data class DlnaUi(
     val selected: DlnaDevice? = null,
     val searching: Boolean = false
 )
-
-/** Alt menü: Kumanda / Cast / Araçlar / Kısayollar. */
-@Composable
-fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(top = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        NavItem(AppIcons.Tv, "Kumanda", tab == Tab.REMOTE) { onTab(Tab.REMOTE) }
-        NavItem(AppIcons.Cast, "Cast", tab == Tab.CAST) { onTab(Tab.CAST) }
-        NavItem(androidx.compose.material.icons.Icons.Outlined.Build, "Araçlar", tab == Tab.TOOLS) { onTab(Tab.TOOLS) }
-        NavItem(androidx.compose.material.icons.Icons.Outlined.Bolt, "Kısayollar", tab == Tab.SHORTCUTS) { onTab(Tab.SHORTCUTS) }
-    }
-}
-
-@Composable
-private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    Column(
-        Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (selected) Pal.Btn else Pal.Bg)
-                .padding(horizontal = 18.dp, vertical = 4.dp)
-        ) {
-            Icon(icon, label, tint = if (selected) Pal.Text else Pal.Sub, modifier = Modifier.size(24.dp))
-        }
-        Text(label, color = if (selected) Pal.Text else Pal.Sub, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    }
-}
 
 /**
  * Cast sekmesi: tür seçimi, uygulama içi galeri (albümler → öğeler) ve oynatıcı kartı.
