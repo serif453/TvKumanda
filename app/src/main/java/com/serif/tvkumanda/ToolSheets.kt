@@ -40,10 +40,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** İşlevi hazır olan araçlar. */
-enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK }
+enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
+    APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER }
 
 /** Pencere içindeki sonuç satırı. */
-private data class ToolResult(val ok: Boolean, val text: String)
+internal data class ToolResult(val ok: Boolean, val text: String)
 
 /** Araç penceresi: alttan açılır, üstte simge-ad-açıklama, ortada içerik, altta ana buton ve sonuç. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +78,13 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
                 ToolId.SYSTEM_KEYS -> SystemKeysTool(adb)
                 ToolId.CLIPBOARD -> ClipboardTool()
                 ToolId.OPEN_LINK -> OpenLinkTool()
+                ToolId.APK_INSTALL -> ApkInstallTool()
+                ToolId.APP_BACKUP -> AppBackupTool()
+                ToolId.SEND_FILES -> SendFilesTool {
+                    onDismiss(); ToolPages.startDir = TvFiles.TV_DOWNLOAD; ToolPages.page = ToolId.FILE_BROWSER
+                }
+                // Tam ekran sayfa olarak açılır
+                ToolId.APP_MANAGER, ToolId.FILE_BROWSER -> {}
             }
         }
     }
@@ -93,23 +101,28 @@ private fun description(id: ToolId) = when (id) {
     ToolId.SYSTEM_KEYS -> "TV'nin sistem ekranlarına tek dokunuş"
     ToolId.CLIPBOARD -> "Telefonda kopyaladığını TV'ye yazar"
     ToolId.OPEN_LINK -> "Linki TV'de doğru uygulamada açar"
+    ToolId.APP_MANAGER -> "TV'deki uygulamalar"
+    ToolId.APK_INSTALL -> "Telefondaki APK'yı TV'ye kurar"
+    ToolId.APP_BACKUP -> "Uygulamanın APK'sını telefona kaydeder"
+    ToolId.SEND_FILES -> "Telefondan TV'ye dosya gönderir"
+    ToolId.FILE_BROWSER -> "TV'deki klasörler"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */
 @Composable
-private fun rememberRunner(): (suspend () -> Unit) -> Unit {
+internal fun rememberRunner(): (suspend () -> Unit) -> Unit {
     val scope = rememberCoroutineScope()
     return remember { { block -> scope.launch { block() } } }
 }
 
-private suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) { runCatching(block) }
+internal suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) { runCatching(block) }
 
-private fun errorText(e: Throwable) = "Olmadı: ${e.message ?: e.javaClass.simpleName}"
+internal fun errorText(e: Throwable) = "Olmadı: ${e.message ?: e.javaClass.simpleName}"
 
 // ---------------- Ortak parçalar ----------------
 
 @Composable
-private fun MainButton(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
+internal fun MainButton(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(26.dp))
             .background(if (!enabled) Pal.Btn else if (danger) Pal.Red else Pal.Blue)
@@ -121,7 +134,7 @@ private fun MainButton(text: String, enabled: Boolean = true, danger: Boolean = 
 }
 
 @Composable
-private fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(Pal.Btn)
             .clickable(enabled = enabled, onClick = onClick),
@@ -133,7 +146,7 @@ private fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled
 
 /** ⚠ araçlar için: ilk dokunuşta "Emin misin?", ikincide işlem. 4 sn içinde dokunulmazsa geri döner. */
 @Composable
-private fun ConfirmButton(text: String, enabled: Boolean, onConfirm: () -> Unit) {
+internal fun ConfirmButton(text: String, enabled: Boolean, onConfirm: () -> Unit) {
     var armed by remember { mutableStateOf(false) }
     LaunchedEffect(armed) { if (armed) { delay(4000); armed = false } }
     MainButton(if (armed) "Emin misin? Tekrar dokun" else text, enabled, danger = armed) {
@@ -142,7 +155,7 @@ private fun ConfirmButton(text: String, enabled: Boolean, onConfirm: () -> Unit)
 }
 
 @Composable
-private fun ResultLine(r: ToolResult?) {
+internal fun ResultLine(r: ToolResult?) {
     if (r == null) return
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -156,7 +169,7 @@ private fun ResultLine(r: ToolResult?) {
 }
 
 @Composable
-private fun Loading(text: String = "Okunuyor…") {
+internal fun Loading(text: String = "Okunuyor…") {
     Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(Modifier.size(18.dp), color = Pal.Sub, strokeWidth = 2.dp)
         Spacer(Modifier.width(10.dp))

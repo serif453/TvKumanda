@@ -141,6 +141,7 @@ class MainActivity : ComponentActivity() {
         TvTools.sendKey = { code -> runOnUiThread { key(code) } }
         TvTools.sendText = { t -> runOnUiThread { sendText(t) } }
         TvTools.atvLink = { url -> atv.openLink(url) }
+        TvTools.appIcons = { apps.associate { it.pkg to it.icon } }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }

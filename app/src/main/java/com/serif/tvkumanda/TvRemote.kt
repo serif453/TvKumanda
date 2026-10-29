@@ -162,6 +162,53 @@ class TvRemote(private val context: Context) : RemoteLink {
         return listAppsFromShell()
     }
 
+    /** Tuş sunucusuna bir liste komutu gönderip "END" gelene kadar satırları okur. */
+    private fun serverLines(cmd: String, timeoutSec: Long = 20): List<String>? {
+        val s = fast ?: return null
+        if (!sendFast(cmd)) return null
+        val task = waiter.submit<List<String>> {
+            val out = ArrayList<String>()
+            while (true) {
+                val l = s.source.readUtf8Line() ?: break
+                if (l == "END") break
+                out.add(l)
+            }
+            out
+        }
+        return try {
+            task.get(timeoutSec, TimeUnit.SECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            restartFastMode(s)
+            throw e
+        }
+    }
+
+    /** Kurulu tüm paketler (uygulama yöneticisi). */
+    @Synchronized
+    fun listPackages(): List<TvPackage> {
+        val lines = runCatching { serverLines("P", 40) }.getOrNull()
+        if (lines != null && lines.isNotEmpty()) {
+            return lines.mapNotNull { l ->
+                val p = l.split('\t')
+                if (p.size < 7 || p[0] != "PKG") return@mapNotNull null
+                TvPackage(p[1], p[2].ifBlank { appName(p[1]) }, p[3].contains('s'), p[3].contains('d'), p[4], p[5], p[6].toIntOrNull() ?: 0)
+            }.filter { it.pkg != context.packageName }
+        }
+        // Yardımcı yoksa kabuk komutlarıyla (adlar paket adından)
+        fun set(flag: String) = shell("pm list packages $flag").lines().map { it.removePrefix("package:").trim() }.filter { it.isNotEmpty() }.toSet()
+        val sys = set("-s"); val dis = set("-d")
+        return shell("pm list packages -f").lines().mapNotNull { l ->
+            val t = l.removePrefix("package:").trim()
+            val i = t.lastIndexOf('=')
+            if (i <= 0) return@mapNotNull null
+            val pkg = t.substring(i + 1)
+            TvPackage(pkg, appName(pkg), pkg in sys, pkg in dis, "", t.substring(0, i), 0)
+        }.filter { it.pkg != context.packageName }
+    }
+
+    /** Dosya aktarımı için ADB bağlantısı (uzun aktarımlar kilit tutmasın diye doğrudan verilir). */
+    fun dadbOrThrow(): Dadb = dadb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
+
     /** Tuş sunucusundan uygulamaları TV'nin gösterdiği ad ve simgeleriyle alır. */
     private fun listAppsFromServer(): List<TvApp>? {
         val s = fast ?: return null
@@ -342,6 +389,12 @@ fun buildTextCommand(text: String): String {
     }
     return "input text '$sb'"
 }
+
+/** Uygulama yöneticisindeki bir paket. */
+data class TvPackage(
+    val pkg: String, val label: String, val system: Boolean, val disabled: Boolean,
+    val version: String, val apkPath: String, val splits: Int
+)
 
 data class TvApp(val pkg: String, val activity: String, val name: String, val icon: ImageBitmap? = null) {
     override fun equals(other: Any?) = other is TvApp && other.pkg == pkg && other.activity == activity && other.name == name

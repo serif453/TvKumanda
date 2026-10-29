@@ -10,6 +10,8 @@ import android.view.KeyEvent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
@@ -78,6 +80,8 @@ public final class KeyServer {
                     mouseWheel(Integer.parseInt(line.substring(2).trim()));
                 } else if (line.equals("a")) {
                     listApps();
+                } else if (line.equals("P")) {
+                    listPackages();
                 }
             } catch (Throwable ignored) {
             }
@@ -324,6 +328,31 @@ public final class KeyServer {
             }
         } catch (Throwable ignored) {
             // Liste alınamazsa telefon eski yönteme geri döner
+        }
+        sb.append("END\n");
+        System.out.print(sb);
+        System.out.flush();
+    }
+
+    /** Kurulu tüm paketler (uygulama yöneticisi için): ad, sistem/devre dışı, sürüm, APK yolu. */
+    private static void listPackages() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            PackageManager pm = context().getPackageManager();
+            List<PackageInfo> list = pm.getInstalledPackages(0x200 /* MATCH_DISABLED_COMPONENTS */);
+            for (PackageInfo pi : list) {
+                ApplicationInfo ai = pi.applicationInfo;
+                if (ai == null) continue;
+                boolean sys = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+                int splits = ai.splitSourceDirs == null ? 0 : ai.splitSourceDirs.length;
+                String label;
+                try { label = clean(ai.loadLabel(pm)); } catch (Throwable t) { label = ""; }
+                sb.append("PKG\t").append(pi.packageName).append('\t').append(label).append('\t')
+                  .append(sys ? "s" : "").append(ai.enabled ? "" : "d").append('\t')
+                  .append(pi.versionName == null ? "" : clean(pi.versionName)).append('\t')
+                  .append(ai.sourceDir == null ? "" : ai.sourceDir).append('\t').append(splits).append('\n');
+            }
+        } catch (Throwable ignored) {
         }
         sb.append("END\n");
         System.out.print(sb);

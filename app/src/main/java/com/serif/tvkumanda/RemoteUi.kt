@@ -263,6 +263,8 @@ fun RemoteScreen(
 
     // Tam ekran DLNA Sunucu sayfası (Cast sekmesindeki karttan açılır)
     if (DlnaServerUi.pageOpen) DlnaServerPage(mediaLibrary) { DlnaServerUi.pageOpen = false }
+    // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini)
+    if (tab == Tab.TOOLS) ToolPageHost()
 
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
     // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır

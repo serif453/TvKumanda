@@ -17,6 +17,8 @@ object TvTools {
     var sendKey: (Int) -> Unit = {}
     var sendText: (String) -> Unit = {}
     var atvLink: (String) -> Unit = {}
+    /** Kumanda sekmesindeki uygulama simgeleri (paket → simge). */
+    var appIcons: () -> Map<String, androidx.compose.ui.graphics.ImageBitmap?> = { emptyMap() }
 
     private fun sh(cmd: String): String = (adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")).shell(cmd)
 

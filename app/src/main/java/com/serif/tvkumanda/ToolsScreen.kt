@@ -45,14 +45,14 @@ private val toolGroups = listOf(
         Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true, id = ToolId.REBOOT)
     )),
     ToolGroup("Uygulamalar", listOf(
-        Tool("Uygulama yöneticisi", Icons.Outlined.Apps, adb = true),
+        Tool("Uygulama yöneticisi", Icons.Outlined.Apps, adb = true, id = ToolId.APP_MANAGER),
         Tool("Gereksiz uygulamaları kapat", Icons.Outlined.Block, adb = true, warning = true),
-        Tool("APK yükle", Icons.Outlined.InstallMobile, adb = true),
-        Tool("Uygulama yedekle", Icons.Outlined.Backup, adb = true)
+        Tool("APK yükle", Icons.Outlined.InstallMobile, adb = true, id = ToolId.APK_INSTALL),
+        Tool("Uygulama yedekle", Icons.Outlined.Backup, adb = true, id = ToolId.APP_BACKUP)
     )),
     ToolGroup("Dosyalar", listOf(
-        Tool("Dosya gönder", Icons.Outlined.UploadFile, adb = true),
-        Tool("TV dosya gezgini", Icons.Outlined.FolderOpen, adb = true),
+        Tool("Dosya gönder", Icons.Outlined.UploadFile, adb = true, id = ToolId.SEND_FILES),
+        Tool("TV dosya gezgini", Icons.Outlined.FolderOpen, adb = true, id = ToolId.FILE_BROWSER),
         Tool("TV oynatıcısında aç", Icons.Outlined.OndemandVideo, adb = true, experimental = true)
     )),
     ToolGroup("Ekran", listOf(
@@ -100,7 +100,10 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
     var open by remember { mutableStateOf<Tool?>(null) }
     open?.let { t -> ToolSheet(t.id!!, t.name, t.icon, adbReady) { open = null } }
     // Bağlantı koparsa açık araç penceresi kapanır
-    LaunchedEffect(adbReady, connected) { open?.let { t -> if (!connected || (t.adb && !adbReady)) open = null } }
+    LaunchedEffect(adbReady, connected) {
+        open?.let { t -> if (!connected || (t.adb && !adbReady)) open = null }
+        if (!adbReady) ToolPages.page = null
+    }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(10.dp))
         Text("Araçlar", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -150,7 +153,9 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
                                 !connected -> "Önce TV'ye bağlan"
                                 else -> null
                             }
-                            if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() else open = tool
+                            if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            else if (tool.id == ToolId.APP_MANAGER || tool.id == ToolId.FILE_BROWSER) ToolPages.page = tool.id
+                            else open = tool
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
