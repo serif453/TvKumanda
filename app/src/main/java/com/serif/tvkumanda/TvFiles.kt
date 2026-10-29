@@ -184,7 +184,7 @@ object TvFiles {
             val files = paths.mapIndexed { i, path ->
                 val f = File(work, if (i == 0) "base.apk" else path.substringAfterLast('/'))
                 val start = done
-                d.pull(CountingSink(f.sink(), sizes[i]) { fr -> progress(((start + fr * sizes[i]) / total.coerceAtLeast(1)).toFloat()) }, path)
+                d.pull(CountingSink(f.sink(), sizes[i], { fr -> progress(((start + fr * sizes[i]) / total.coerceAtLeast(1)).toFloat()) }), path)
                 done += sizes[i]
                 f
             }
