@@ -121,6 +121,20 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
             )
         }
 
+        // İlerleme: hazır araç sayısı (hepsi hazır olunca kendiliğinden kaybolur)
+        val all = toolGroups.flatMap { it.tools }
+        val ready = all.count { it.id != null }
+        if (ready < all.size) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("$ready / ${all.size} araç hazır", color = Pal.Sub, fontSize = 13.sp)
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Pal.Btn)) {
+                    Box(Modifier.fillMaxWidth(ready.toFloat() / all.size).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Pal.Blue))
+                }
+            }
+        }
+
         for (group in toolGroups) {
             Spacer(Modifier.height(20.dp))
             Text(group.title, color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
