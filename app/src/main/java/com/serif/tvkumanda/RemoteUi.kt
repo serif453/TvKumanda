@@ -151,7 +151,11 @@ fun RemoteScreen(
     onCastShuffle: () -> Unit = {},
     onCastSlideshow: () -> Unit = {},
     onCastSlideSec: () -> Unit = {},
-    onCastSubtitle: () -> Unit = {}
+    onCastSubtitle: () -> Unit = {},
+    dlna: DlnaUi = DlnaUi(),
+    onCastRoute: (CastRoute) -> Unit = {},
+    onDlnaPick: (DlnaDevice) -> Unit = {},
+    onDlnaSearch: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
@@ -193,6 +197,7 @@ fun RemoteScreen(
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 onCastPrev, onCastNext, onCastSkip, onCastWarmup,
                 mediaLibrary, showInFolderTick, playerSheet, onCastSlideshow, onCastSlideSec,
+                dlna, onCastRoute, onDlnaPick, onDlnaSearch,
                 modifier = Modifier.weight(1f)
             )
         } else {

@@ -86,10 +86,23 @@ data class CastUi(
     val slideshow: Boolean = false,
     val slideSec: Int = 5,
     /** Bu videoya altyazı eklenmiş mi. */
-    val hasSubtitle: Boolean = false
+    val hasSubtitle: Boolean = false,
+    /** Yayının gittiği yol ve cihaz adı (kartta gösterilir). */
+    val route: CastRoute = CastRoute.CHROMECAST,
+    val routeName: String = ""
 )
 
 enum class Tab { REMOTE, CAST }
+
+/** Yayın yolu: TV'nin Chromecast'i ya da ağdaki bir DLNA cihazı. */
+enum class CastRoute { CHROMECAST, DLNA }
+
+/** DLNA bölümünün durumu. */
+data class DlnaUi(
+    val devices: List<DlnaDevice> = emptyList(),
+    val selected: DlnaDevice? = null,
+    val searching: Boolean = false
+)
 
 /** Alt menü: Kumanda / Cast. */
 @Composable
@@ -144,11 +157,17 @@ fun CastScreen(
     sheet: PlayerSheet,
     onSlideshow: () -> Unit,
     onSlideSec: () -> Unit,
+    dlna: DlnaUi,
+    onSelectRoute: (CastRoute) -> Unit,
+    onDlnaPick: (DlnaDevice) -> Unit,
+    onDlnaSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Sekme açılınca TV'nin Chromecast'ine arka planda (görünmeden) bağlanılır
-    LaunchedEffect(connected) { if (connected) onWarmup() }
+    // Sekme açılınca: Chromecast'e görünmeden bağlanılır, DLNA cihazları aranır
+    LaunchedEffect(connected) { onWarmup() }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
+    var browseRoute by remember { mutableStateOf(CastRoute.CHROMECAST) }
+    val canCast = if (browseRoute == CastRoute.CHROMECAST) connected else dlna.selected != null
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
@@ -179,20 +198,41 @@ fun CastScreen(
         val kind = browse
         if (kind == null) {
             Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                if (connected) "Telefondaki fotoğraf, video ya da müziği TV'de oynat" else "Önce bir TV'ye bağlan",
-                color = Pal.Sub, fontSize = 14.sp
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for ((k, icon) in listOf(MediaKind.PHOTO to AppIcons.Photo, MediaKind.VIDEO to AppIcons.Movie, MediaKind.MUSIC to AppIcons.MusicNote)) {
-                    KindButton(icon, k.label, Modifier.weight(1f), connected) {
-                        browse = k
-                        album = null
-                        if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
-                    }
-                }
+            Spacer(Modifier.height(14.dp))
+
+            // ---- Chromecast ----
+            SectionHeader("Chromecast")
+            if (!connected) Text("Önce bir TV'ye bağlan", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+            KindRow(connected) { k ->
+                browseRoute = CastRoute.CHROMECAST; onSelectRoute(CastRoute.CHROMECAST)
+                browse = k; album = null
+                if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
+            }
+            Spacer(Modifier.height(20.dp))
+
+            // ---- DLNA (deneysel) ----
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("DLNA")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "deneysel", color = Pal.Amber, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Pal.Amber.copy(alpha = 0.15f))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                )
+                Spacer(Modifier.weight(1f))
+                DlnaPicker(dlna, onDlnaPick, onDlnaSearch)
+            }
+            Spacer(Modifier.height(6.dp))
+            if (dlna.selected == null) {
+                Text(
+                    if (dlna.searching) "Ağda DLNA cihazları aranıyor…" else "Ağda DLNA cihazı bulunamadı",
+                    color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            KindRow(dlna.selected != null) { k ->
+                browseRoute = CastRoute.DLNA; onSelectRoute(CastRoute.DLNA)
+                browse = k; album = null
+                if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
             }
             Spacer(Modifier.weight(1f))
         } else {
@@ -240,8 +280,8 @@ fun CastScreen(
                         list == null -> CenterText("Yükleniyor…")
                         list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
                         open == null -> AlbumGrid(list, library) { album = it }
-                        kind == MediaKind.MUSIC -> TrackList(open.items, library, connected, current, scrollKey) { onCastItem(it, open.items, open.id) }
-                        else -> ItemGrid(open.items, library, connected, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        kind == MediaKind.MUSIC -> TrackList(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        else -> ItemGrid(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
                     }
                 }
             }
@@ -439,18 +479,64 @@ private fun TrackList(
 }
 
 @Composable
+private fun SectionHeader(text: String) {
+    Text(text, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
+}
+
+@Composable
+private fun KindRow(enabled: Boolean, onKind: (MediaKind) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        for ((k, icon) in listOf(MediaKind.PHOTO to AppIcons.Photo, MediaKind.VIDEO to AppIcons.Movie, MediaKind.MUSIC to AppIcons.MusicNote)) {
+            KindButton(icon, k.label, Modifier.weight(1f), enabled) { onKind(k) }
+        }
+    }
+}
+
+/** DLNA cihaz seçici: seçili cihazın adı; dokununca bulunan cihazlar ve "Yeniden ara". */
+@Composable
+private fun DlnaPicker(dlna: DlnaUi, onPick: (DlnaDevice) -> Unit, onSearch: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                dlna.selected?.name ?: if (dlna.searching) "Aranıyor…" else "Cihaz seç",
+                color = Pal.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 150.dp)
+            )
+            Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (d in dlna.devices) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text((if (d.key == dlna.selected?.key) "✓ " else "") + d.name + "  ·  " + d.ip) },
+                    onClick = { open = false; onPick(d) }
+                )
+            }
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(if (dlna.searching) "Aranıyor…" else "Yeniden ara") },
+                onClick = { open = false; onSearch() }
+            )
+        }
+    }
+}
+
+@Composable
 private fun KindButton(icon: ImageVector, label: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     Column(
         modifier
-            .height(110.dp)
+            .height(92.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(Pal.Btn)
             .clickable(enabled = enabled, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, null, tint = if (enabled) Pal.Text else Pal.Sub, modifier = Modifier.size(36.dp))
-        Spacer(Modifier.height(8.dp))
+        Icon(icon, null, tint = if (enabled) Pal.Text else Pal.Sub, modifier = Modifier.size(32.dp))
+        Spacer(Modifier.height(6.dp))
         Text(label, color = if (enabled) Pal.Text else Pal.Sub, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
@@ -500,9 +586,9 @@ private fun PlayerCard(
                         CastPhase.ENDED -> "Bitti"
                         CastPhase.ERROR -> cast.error.ifBlank { "Oynatılamadı" }
                         CastPhase.NONE -> ""
-                    },
+                    } + if (cast.route == CastRoute.DLNA && cast.phase != CastPhase.ERROR) "  ·  DLNA" else "",
                     color = if (cast.phase == CastPhase.ERROR) Pal.Red else Pal.Sub,
-                    fontSize = 13.sp
+                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
             Spacer(Modifier.width(10.dp))

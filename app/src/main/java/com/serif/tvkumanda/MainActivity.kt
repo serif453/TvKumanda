@@ -107,6 +107,12 @@ class MainActivity : ComponentActivity() {
     // "Paylaş" ile gelen dosyalar (bağlantı kurulunca oynatılır)
     private var pendingShare: List<MediaItem>? = null
     private var castTabTick by mutableStateOf(0)
+    // DLNA (deneysel)
+    private lateinit var dlnaClient: DlnaClient
+    private var dlnaUi by mutableStateOf(DlnaUi())
+    private var selectedRoute = CastRoute.CHROMECAST
+    private var dlnaSawPlaying = false
+    private var dlnaSearchedOnce = false
     // Fotoğraf slayt gösterisi
     private var slideshow = false
     private var slideSec = 5
@@ -136,6 +142,7 @@ class MainActivity : ComponentActivity() {
         atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
         mediaServer = MediaServer(applicationContext)
         thumbLib = MediaLibrary(applicationContext)
+        dlnaClient = DlnaClient(applicationContext)
         repeatMode = runCatching { MusicRepeat.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(MusicRepeat.ALL)
         shuffle = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getBoolean("karistir", false)
         slideSec = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getInt("slayt_sn", 5)
@@ -196,6 +203,10 @@ class MainActivity : ComponentActivity() {
                     onCastSlideshow = ::toggleSlideshow,
                     onCastSlideSec = ::cycleSlideSec,
                     onCastSubtitle = ::subtitleAction,
+                    dlna = dlnaUi,
+                    onCastRoute = { r -> selectedRoute = r },
+                    onDlnaPick = ::pickDlna,
+                    onDlnaSearch = { searchDlna(force = true) },
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -443,7 +454,8 @@ class MainActivity : ComponentActivity() {
     // ---------- Cast ----------
 
     private fun pickForCast(kind: MediaKind) {
-        if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
+        val ok = if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else state == ConnState.CONNECTED && currentIp.isNotBlank()
+        if (!ok) { toast(if (selectedRoute == CastRoute.DLNA) "Önce bir DLNA cihazı seç" else "Önce TV'ye bağlan"); return }
         pendingKind = kind
         runCatching { pickMedia.launch(kind.mimeFilter) }.onFailure { toast("Dosya seçici açılamadı") }
     }
@@ -451,9 +463,13 @@ class MainActivity : ComponentActivity() {
     /** Seçilen dosyayı telefondaki sunucudan yayınlar ve TV'nin Chromecast'ine oynatır. */
     private fun castMedia(
         uri: android.net.Uri, kind: MediaKind, knownTitle: String? = null, knownMime: String? = null,
-        startAt: Double = 0.0, askResume: Boolean = true
+        startAt: Double = 0.0, askResume: Boolean = true, route: CastRoute = nextRoute()
     ) {
-        if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
+        val dev = dlnaUi.selected
+        if (route == CastRoute.CHROMECAST && (state != ConnState.CONNECTED || currentIp.isBlank())) { toast("Önce TV'ye bağlan"); return }
+        if (route == CastRoute.DLNA && dev == null) { toast("Önce bir DLNA cihazı seç"); return }
+        // Başka yoldan yayın sürüyorsa o durdurulur (aynı anda iki cihaza yayın yapılmaz)
+        if (cast.phase != CastPhase.NONE && cast.route != route) stopRouteQuietly(cast.route)
         // Önceki videonun konumu kaydedilir
         saveResumePosition()
         val auto = autoAdvancing
@@ -461,11 +477,12 @@ class MainActivity : ComponentActivity() {
         // TV'nin büyük ihtimalle açamayacağı biçim: önce uyar (otomatik geçişte sormadan dener)
         val skipCheck = skipFormatCheck
         skipFormatCheck = false
-        if (askResume && !auto && !skipCheck && likelyUnsupported(knownMime, knownTitle ?: displayName(uri))) {
+        // DLNA cihazları genelde bu biçimleri de oynatır; uyarı yalnızca Chromecast'te
+        if (route == CastRoute.CHROMECAST && askResume && !auto && !skipCheck && likelyUnsupported(knownMime, knownTitle ?: displayName(uri))) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Bu dosya TV'de açılmayabilir")
                 .setMessage("TV'nin Chromecast oynatıcısı bu biçimi (MKV, AVI, WMV gibi) genellikle desteklemez.")
-                .setPositiveButton("Yine de dene") { _, _ -> continueCast(uri, kind, knownTitle, knownMime) }
+                .setPositiveButton("Yine de dene") { _, _ -> continueCast(uri, kind, knownTitle, knownMime, route) }
                 .setNegativeButton("Vazgeç", null)
                 .show()
             return
@@ -478,11 +495,11 @@ class MainActivity : ComponentActivity() {
                     .setTitle(knownTitle ?: kind.label)
                     .setMessage("Bu videoyu daha önce yarıda bırakmıştın.")
                     .setPositiveButton("Kaldığın yerden devam et (${formatTime(saved)})") { _, _ ->
-                        castMedia(uri, kind, knownTitle, knownMime, startAt = saved, askResume = false)
+                        castMedia(uri, kind, knownTitle, knownMime, startAt = saved, askResume = false, route = route)
                     }
                     .setNegativeButton("Baştan başla") { _, _ ->
                         prefs.edit().remove(resumeKey(uri)).apply()
-                        castMedia(uri, kind, knownTitle, knownMime, startAt = 0.0, askResume = false)
+                        castMedia(uri, kind, knownTitle, knownMime, startAt = 0.0, askResume = false, route = route)
                     }
                     .show()
                 return
@@ -490,10 +507,10 @@ class MainActivity : ComponentActivity() {
         }
         currentUri = uri
         askNotificationPermissionOnce()
-        val ip = currentIp
+        val ip = if (route == CastRoute.DLNA) dev!!.ip else currentIp
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
         val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
-        val subUri = if (kind == MediaKind.VIDEO) prefs.getString(subtitleKey(uri), null)?.let { android.net.Uri.parse(it) } else null
+        val subUri = if (kind == MediaKind.VIDEO && route == CastRoute.CHROMECAST) prefs.getString(subtitleKey(uri), null)?.let { android.net.Uri.parse(it) } else null
         cast = CastUi(
             CastPhase.PREPARING, title, kind, hasList = playlist.size > 1,
             currentId = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri }?.id,
@@ -506,12 +523,29 @@ class MainActivity : ComponentActivity() {
             shuffle = shuffle,
             slideshow = slideshow && kind == MediaKind.PHOTO,
             slideSec = slideSec,
-            hasSubtitle = subUri != null
+            hasSubtitle = subUri != null,
+            route = route,
+            routeName = if (route == CastRoute.DLNA) dev?.name.orEmpty() else tvName
         )
         castPollJob?.cancel()
         if (kind != MediaKind.PHOTO) { slideshow = false; slideJob?.cancel() } else if (slideshow) restartSlideTimer()
         scope.launch {
             try {
+                if (route == CastRoute.DLNA) {
+                    withContext(castIo) {
+                        val url = mediaServer.publish(uri, mime, ip)
+                        // Bağlı olduğumuz TV ise ve uykudaysa önce uyandırılır
+                        if (dev!!.ip == currentIp && state == ConnState.CONNECTED) wakeTvIfAsleep(ip, waitForCast = false)
+                        castStage("DLNA cihazına gönderiliyor…")
+                        dlnaSawPlaying = false
+                        dlnaClient.load(dev, url, mime, title, kind)
+                        if (startAt > 0) runCatching { Thread.sleep(800); dlnaClient.seek(dev, startAt) }
+                        dlnaClient.volume(dev)?.let { v -> runOnUiThread { castVolumeKnown = v; cast = cast.copy(volume = v) } }
+                    }
+                    if (kind == MediaKind.PHOTO) cast = cast.copy(phase = CastPhase.PLAYING)
+                    startCastPolling()
+                    return@launch
+                }
                 withContext(castIo) {
                     val url = mediaServer.publish(uri, mime, ip)
                     // Altyazı: SRT → WebVTT, telefondaki sunucudan
@@ -549,7 +583,12 @@ class MainActivity : ComponentActivity() {
             while (true) {
                 val v = pendingVolume ?: break
                 pendingVolume = null
-                withContext(castIo) { runCatching { castClient.setVolume(v) } }
+                withContext(castIo) {
+                    runCatching {
+                        if (cast.route == CastRoute.DLNA) dlnaUi.selected?.let { dlnaClient.setVolume(it, v) }
+                        else castClient.setVolume(v)
+                    }
+                }
                 delay(150)
             }
         }
@@ -707,18 +746,19 @@ class MainActivity : ComponentActivity() {
 
     /** Cast sekmesi açılınca: TV'nin Chromecast'ine görünmeden bağlanır (TV ekranı değişmez). */
     private fun castWarmup() {
+        if (!dlnaSearchedOnce) searchDlna(force = false)
         val ip = currentIp
         if (state != ConnState.CONNECTED || ip.isBlank()) return
         scope.launch(castIo) { runCatching { castClient.connect(ip) } }
     }
 
     /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */
-    private fun playFromList(list: List<MediaItem>, index: Int) {
+    private fun playFromList(list: List<MediaItem>, index: Int, route: CastRoute = selectedRoute) {
         if (list.isEmpty() || index !in list.indices) return
         playlist = list
         playIndex = index
         val item = list[index]
-        castMedia(item.uri, item.kind, item.title, item.mime)
+        castMedia(item.uri, item.kind, item.title, item.mime, route = route)
     }
 
     /** Önceki (-1) / sonraki (+1); liste sonunda başa, başında sona döner. */
@@ -730,7 +770,62 @@ class MainActivity : ComponentActivity() {
             // Karıştır: aynı şarkı art arda gelmesin
             (0 until n).filter { it != playIndex }.random()
         } else ((playIndex + dir) % n + n) % n
-        playFromList(playlist, next)
+        playFromList(playlist, next, cast.route)
+    }
+
+    // ---------- DLNA ----------
+
+    /** Kullanıcının başlattığı yeni yayın için yol: en son dokunulan bölüm. */
+    private fun nextRoute(): CastRoute = selectedRoute
+
+    /** Ağdaki DLNA oynatıcılarını arar; seçili cihaz yoksa kendiliğinden seçer. */
+    private fun searchDlna(force: Boolean) {
+        if (dlnaUi.searching) return
+        if (!force && dlnaSearchedOnce) return
+        dlnaSearchedOnce = true
+        dlnaUi = dlnaUi.copy(searching = true)
+        scope.launch {
+            val found = withContext(Dispatchers.IO) { runCatching { dlnaClient.discover() }.getOrDefault(emptyList()) }
+            val saved = prefs.getString("dlna_cihaz", null)
+            val keep = dlnaUi.selected?.let { s -> found.firstOrNull { it.key == s.key } }
+            val pick = keep
+                ?: found.firstOrNull { it.key == saved }
+                ?: found.firstOrNull { it.ip == currentIp }
+                ?: found.firstOrNull()
+            dlnaUi = DlnaUi(found, pick, searching = false)
+            if (force && found.isEmpty()) toast("Ağda DLNA cihazı bulunamadı")
+        }
+    }
+
+    private fun pickDlna(d: DlnaDevice) {
+        prefs.edit().putString("dlna_cihaz", d.key).apply()
+        dlnaUi = dlnaUi.copy(selected = d)
+    }
+
+    /** DLNA cihazının durumu sorulur; oynattıktan sonra "durdu" bildirimi, dosyanın bittiği anlamına gelir. */
+    private suspend fun pollDlna() {
+        val dev = dlnaUi.selected ?: return
+        val st = withContext(castIo) { runCatching { dlnaClient.status(dev) }.getOrNull() } ?: return
+        if (st.playerState == "PLAYING") dlnaSawPlaying = true
+        val mapped = if (st.playerState == "IDLE")
+            st.copy(idleReason = if (dlnaSawPlaying) "FINISHED" else "") else st
+        if (mapped.idleReason == "FINISHED") dlnaSawPlaying = false
+        onCastStatus(mapped)
+    }
+
+    /** Başka yola geçerken önceki yayını sessizce durdurur. */
+    private fun stopRouteQuietly(route: CastRoute) {
+        castPollJob?.cancel()
+        scope.launch(castIo) { stopRouteBlocking(route) }
+    }
+
+    private fun stopRouteBlocking(route: CastRoute) {
+        if (route == CastRoute.DLNA) {
+            dlnaUi.selected?.let { d -> runCatching { dlnaClient.stop(d) } }
+        } else {
+            runCatching { castClient.stopApp() }
+            runCatching { Thread.sleep(300); castClient.close() }
+        }
     }
 
     // ---------- Biçim uyarısı ----------
@@ -743,9 +838,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Uyarıdan sonra "Yine de dene": soru sormadan devam eder (kaldığı yer sorusu yine sorulur). */
-    private fun continueCast(uri: android.net.Uri, kind: MediaKind, title: String?, mime: String?) {
+    private fun continueCast(uri: android.net.Uri, kind: MediaKind, title: String?, mime: String?, route: CastRoute) {
         skipFormatCheck = true
-        castMedia(uri, kind, title, mime)
+        castMedia(uri, kind, title, mime, route = route)
     }
     private var skipFormatCheck = false
 
@@ -772,13 +867,13 @@ class MainActivity : ComponentActivity() {
     private fun reloadCurrent() {
         val uri = currentUri ?: return
         val item = cast.item
-        castMedia(uri, cast.kind, item?.title ?: cast.title, item?.mime, startAt = cast.position, askResume = false)
+        castMedia(uri, cast.kind, item?.title ?: cast.title, item?.mime, startAt = cast.position, askResume = false, route = cast.route)
     }
 
     // ---------- TV'yi uyandırma ----------
 
     /** TV uykudaysa uyandırır ve Chromecast'i hazır olana kadar bekler (en fazla ~15 sn). */
-    private fun wakeTvIfAsleep(ip: String) {
+    private fun wakeTvIfAsleep(ip: String, waitForCast: Boolean = true) {
         val asleep = when (method) {
             ConnMethod.STANDARD -> atv.isOn == false
             ConnMethod.ADB -> adb.isScreenOn() == false
@@ -786,6 +881,7 @@ class MainActivity : ComponentActivity() {
         if (!asleep) return
         castStage("TV açılıyor…")
         runCatching { remote.key(KEYCODE_WAKEUP) }
+        if (!waitForCast) { Thread.sleep(4000); return }
         castClient.close()
         for (i in 0 until 15) {
             Thread.sleep(1000)
@@ -904,7 +1000,7 @@ class MainActivity : ComponentActivity() {
             while (isActive) {
                 delay(1000)
                 if (cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING || cast.phase == CastPhase.PAUSED) {
-                    withContext(castIo) { castClient.refresh() }
+                    if (cast.route == CastRoute.DLNA) pollDlna() else withContext(castIo) { castClient.refresh() }
                     if (++saveCounter % 10 == 0) saveResumePosition()   // 10 sn'de bir konum kaydı
                 }
             }
@@ -962,15 +1058,16 @@ class MainActivity : ComponentActivity() {
         val playing = cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING
         if (cast.phase == CastPhase.ENDED) { castSeek(0.0); return }
         cast = cast.copy(phase = if (playing) CastPhase.PAUSED else CastPhase.PLAYING)
-        castCommand { if (playing) pause() else play() }
+        castCommand({ if (playing) pause() else play() }, { d -> if (playing) pause(d) else play(d) })
     }
 
     private fun castSeek(seconds: Double) {
         cast = cast.copy(position = seconds)
-        castCommand { seek(seconds) }
+        castCommand({ seek(seconds) }, { d -> seek(d, seconds) })
     }
 
     private fun castStop() {
+        val stoppedRoute = cast.route
         saveResumePosition()
         currentUri = null
         slideshow = false
@@ -983,16 +1080,19 @@ class MainActivity : ComponentActivity() {
         CastService.stop(this)
         scope.launch(castIo) {
             // TV'deki oynatıcı da kapatılır; bekleme ekranı kalmaz
-            runCatching { castClient.stopApp() }
-            runCatching { Thread.sleep(300); castClient.close() }
+            stopRouteBlocking(stoppedRoute)
             mediaServer.stop()
         }
     }
 
-    private fun castCommand(action: CastClient.() -> Unit) {
+    private fun castCommand(action: CastClient.() -> Unit, dlnaAction: DlnaClient.(DlnaDevice) -> Unit = {}) {
+        val route = cast.route
         scope.launch {
             try {
-                withContext(castIo) { castClient.action() }
+                withContext(castIo) {
+                    if (route == CastRoute.DLNA) dlnaUi.selected?.let { dlnaClient.dlnaAction(it) }
+                    else castClient.action()
+                }
                 if (castPollJob?.isActive != true) startCastPolling()
             } catch (e: Exception) {
                 toast("Cast: ${e.message ?: e.javaClass.simpleName}")

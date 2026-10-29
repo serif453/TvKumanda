@@ -40,7 +40,9 @@ class MediaServer(private val context: Context) {
         entries.clear()
         val token = UUID.randomUUID().toString().replace("-", "")
         entries[token] = Entry(uri, mime)
-        return "http://$host:${s.localPort}/m/$token"
+        // Bazı DLNA cihazları biçimi adresin uzantısından anlar
+        val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)?.let { ".$it" } ?: ""
+        return "http://$host:${s.localPort}/m/$token$ext"
     }
 
     /** Bellekteki küçük bir dosyayı (ör. altyazı) son yayının yanında sunar. */
@@ -84,7 +86,8 @@ class MediaServer(private val context: Context) {
         val out = c.getOutputStream()
 
         if (method == "OPTIONS") { writeHead(out, "204 No Content", emptyMap()); return }
-        val entry = path.removePrefix("/m/").takeIf { path.startsWith("/m/") }?.let { entries[it] }
+        val entry = path.removePrefix("/m/").takeIf { path.startsWith("/m/") }
+            ?.substringBefore('.')?.substringBefore('?')?.let { entries[it] }
         if (entry == null || (method != "GET" && method != "HEAD")) {
             writeHead(out, "404 Not Found", mapOf("Content-Length" to "0"))
             return
@@ -118,7 +121,10 @@ class MediaServer(private val context: Context) {
             val h = linkedMapOf(
                 "Content-Type" to entry.mime,
                 "Content-Length" to len.toString(),
-                "Accept-Ranges" to "bytes"
+                "Accept-Ranges" to "bytes",
+                // DLNA oynatıcıları için akış bilgisi (Chromecast bunları yok sayar)
+                "transferMode.dlna.org" to if (entry.mime.startsWith("image")) "Interactive" else "Streaming",
+                "contentFeatures.dlna.org" to "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             )
             if (partial) h["Content-Range"] = "bytes $start-$end/$total"
             writeHead(out, if (partial) "206 Partial Content" else "200 OK", h)

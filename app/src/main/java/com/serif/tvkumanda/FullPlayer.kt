@@ -151,7 +151,9 @@ fun FullPlayer(
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     Icon(AppIcons.Cast, null, tint = Pal.Blue, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(tvName.ifBlank { "TV" }, color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                    Text(
+                        if (cast.route == CastRoute.DLNA) "DLNA · ${cast.routeName}" else tvName.ifBlank { "TV" },
+                        color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.Medium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.width(44.dp))
@@ -228,7 +230,7 @@ fun FullPlayer(
                     if (sub.isNotBlank()) Text(sub, color = Pal.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (cast.phase == CastPhase.ERROR) Text(cast.error, color = Pal.Red, fontSize = 13.sp)
                 }
-                if (cast.kind == MediaKind.VIDEO) {
+                if (cast.kind == MediaKind.VIDEO && cast.route == CastRoute.CHROMECAST) {
                     Text(
                         if (cast.hasSubtitle) "Altyazıyı kaldır" else "Altyazı ekle",
                         color = if (cast.hasSubtitle) Pal.Blue else Pal.Text, fontSize = 13.sp,
