@@ -52,7 +52,7 @@ enum class MediaKind(val label: String, val mimeFilter: String, val fallbackMime
 }
 
 /** Müzikte tekrar modu. */
-enum class RepeatMode { OFF, ALL, ONE }
+enum class MusicRepeat { OFF, ALL, ONE }
 
 enum class CastPhase { NONE, PREPARING, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
 
@@ -80,7 +80,7 @@ data class CastUi(
     val volume: Float = -1f,
     /** Oynatmanın başladığı klasörün öğeleri (önizleme şeridi için). */
     val list: List<MediaItem> = emptyList(),
-    val repeat: RepeatMode = RepeatMode.ALL,
+    val repeat: MusicRepeat = MusicRepeat.ALL,
     val shuffle: Boolean = false
 )
 

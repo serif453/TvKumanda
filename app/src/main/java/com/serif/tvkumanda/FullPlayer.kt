@@ -246,9 +246,9 @@ fun FullPlayer(
                     ModeToggle(AppIcons.Shuffle, if (cast.shuffle) "Karıştır: açık" else "Karıştır: kapalı", cast.shuffle, onShuffle)
                     Spacer(Modifier.weight(1f))
                     ModeToggle(
-                        if (cast.repeat == RepeatMode.ONE) AppIcons.RepeatOne else AppIcons.Repeat,
-                        when (cast.repeat) { RepeatMode.OFF -> "Tekrar: kapalı"; RepeatMode.ALL -> "Listeyi tekrarla"; RepeatMode.ONE -> "Bu şarkıyı tekrarla" },
-                        cast.repeat != RepeatMode.OFF, onRepeat
+                        if (cast.repeat == MusicRepeat.ONE) AppIcons.RepeatOne else AppIcons.Repeat,
+                        when (cast.repeat) { MusicRepeat.OFF -> "Tekrar: kapalı"; MusicRepeat.ALL -> "Listeyi tekrarla"; MusicRepeat.ONE -> "Bu şarkıyı tekrarla" },
+                        cast.repeat != MusicRepeat.OFF, onRepeat
                     )
                 }
             }

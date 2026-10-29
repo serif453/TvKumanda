@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
     private var castStepTick = 0
     private var castVolumeKnown = -1f
     // Müzikte tekrar/karıştır (seçim hatırlanır)
-    private var repeatMode by mutableStateOf(RepeatMode.ALL)
+    private var repeatMode by mutableStateOf(MusicRepeat.ALL)
     private var shuffle by mutableStateOf(false)
     // Bildirim/kilit ekranı kontrolleri
     private var mediaSession: android.media.session.MediaSession? = null
@@ -124,7 +124,7 @@ class MainActivity : ComponentActivity() {
         atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
         mediaServer = MediaServer(applicationContext)
         thumbLib = MediaLibrary(applicationContext)
-        repeatMode = runCatching { RepeatMode.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(RepeatMode.ALL)
+        repeatMode = runCatching { MusicRepeat.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(MusicRepeat.ALL)
         shuffle = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getBoolean("karistir", false)
         setupMediaSession()
         CastService.controller = { a -> runOnUiThread { onNotificationAction(a) } }
@@ -669,8 +669,8 @@ class MainActivity : ComponentActivity() {
     private fun onMediaFinished() {
         if (cast.kind == MediaKind.MUSIC) {
             when {
-                repeatMode == RepeatMode.ONE -> { playFromList(playlist.ifEmpty { return }, playIndex.coerceAtLeast(0)); return }
-                repeatMode == RepeatMode.OFF && !shuffle && playIndex >= playlist.size - 1 -> {
+                repeatMode == MusicRepeat.ONE -> { playFromList(playlist.ifEmpty { return }, playIndex.coerceAtLeast(0)); return }
+                repeatMode == MusicRepeat.OFF && !shuffle && playIndex >= playlist.size - 1 -> {
                     cast = cast.copy(phase = CastPhase.ENDED); castPollJob?.cancel(); return
                 }
             }
@@ -679,10 +679,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun cycleRepeat() {
-        repeatMode = when (repeatMode) { RepeatMode.OFF -> RepeatMode.ALL; RepeatMode.ALL -> RepeatMode.ONE; RepeatMode.ONE -> RepeatMode.OFF }
+        repeatMode = when (repeatMode) { MusicRepeat.OFF -> MusicRepeat.ALL; MusicRepeat.ALL -> MusicRepeat.ONE; MusicRepeat.ONE -> MusicRepeat.OFF }
         prefs.edit().putString("tekrar", repeatMode.name).apply()
         cast = cast.copy(repeat = repeatMode)
-        toast(when (repeatMode) { RepeatMode.OFF -> "Tekrar kapalı"; RepeatMode.ALL -> "Listeyi tekrarla"; RepeatMode.ONE -> "Bu şarkıyı tekrarla" })
+        toast(when (repeatMode) { MusicRepeat.OFF -> "Tekrar kapalı"; MusicRepeat.ALL -> "Listeyi tekrarla"; MusicRepeat.ONE -> "Bu şarkıyı tekrarla" })
     }
 
     private fun toggleShuffle() {
@@ -745,7 +745,7 @@ class MainActivity : ComponentActivity() {
         if (cast.phase == CastPhase.PREPARING && st.playerState == "IDLE") return
         // Bitince sıradaki kendiliğinden başlar (liste sonunda başa döner)
         if (st.playerState == "IDLE" && st.idleReason == "FINISHED" &&
-            (playlist.size > 1 || (cast.kind == MediaKind.MUSIC && repeatMode == RepeatMode.ONE && playlist.isNotEmpty()))) {
+            (playlist.size > 1 || (cast.kind == MediaKind.MUSIC && repeatMode == MusicRepeat.ONE && playlist.isNotEmpty()))) {
             onMediaFinished()
             return
         }
