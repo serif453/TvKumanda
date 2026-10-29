@@ -538,7 +538,7 @@ fun DPad(size: Dp, onKey: (Int) -> Unit, navy: Boolean = false) {
             .then(if (navy) Modifier.drawBehind {
                 // Dört yönü ayıran ince çapraz çizgiler (ortadaki OK'nin dışında)
                 val c = center
-                val r = size.minDimension / 2
+                val r = this.size.minDimension / 2
                 val line = Color.White.copy(alpha = 0.07f)
                 for (a in listOf(45.0, 135.0, 225.0, 315.0)) {
                     val rad = Math.toRadians(a)
@@ -984,7 +984,7 @@ private fun BottomControls(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     CircleBtn(b, { Icon(AppIcons.VolumeOff, null, tint = Pal.Text, modifier = Modifier.size(icon)) }) { onKey(Keys.MUTE) }
-                    MicButton(b, icon, ui.micActive, ui.micLevel, onMic)
+                    MicButton(b, icon, ui.micActive, ui.micLevel, onClick = onMic)
                     CircleBtn(b, { Icon(AppIcons.Keyboard, null, tint = Pal.Text, modifier = Modifier.size(icon)) }, onKeyboard)
                 }
             }
