@@ -220,6 +220,8 @@ fun CastScreen(
                 )
             }
             Spacer(Modifier.height(10.dp))
+            // Kart yokken galeri alt menünün arkasından akar; son öğeler için altta boşluk bırakılır
+            CompositionLocalProvider(LocalListBottom provides if (cast.phase == CastPhase.NONE) BarSpace else 0.dp) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // permTick'e bağlı: izin cevabı gelince ya da uygulamaya dönülünce yeniden kontrol edilir
                 val granted = remember(kind, permTick) { library.hasPermission(kind) }
@@ -255,19 +257,21 @@ fun CastScreen(
                     }
                 }
             }
+            }
         }
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
             // Kart başlığına dokununca tam ekran oynatıcı açılır
             PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, sheet, onSlideshow, onSlideSec)
+            // Oynatıcı kartı alt menünün üstünde durur
+            Spacer(Modifier.height(BarSpace))
         }
-        Spacer(Modifier.height(6.dp))
     }
 }
 
 @Composable
 private fun CenterText(text: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().padding(bottom = LocalListBottom.current), contentAlignment = Alignment.Center) {
         Text(text, color = Pal.Sub, fontSize = 15.sp, textAlign = TextAlign.Center)
     }
 }
@@ -275,7 +279,7 @@ private fun CenterText(text: String) {
 @Composable
 private fun PermissionNeeded(onAsk: () -> Unit, onPicker: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 12.dp),
+        Modifier.fillMaxSize().padding(bottom = LocalListBottom.current).padding(horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -330,6 +334,7 @@ private fun AlbumGrid(albums: List<MediaAlbum>, library: MediaLibrary, onOpen: (
         columns = GridCells.Fixed(2),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = LocalListBottom.current),
         modifier = Modifier.fillMaxSize()
     ) {
         items(albums, key = { it.id }) { a ->
@@ -377,6 +382,7 @@ private fun ItemGrid(
         columns = GridCells.Fixed(3),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(bottom = LocalListBottom.current),
         modifier = Modifier.fillMaxSize()
     ) {
         items(items, key = { it.id }) { item ->
@@ -420,7 +426,7 @@ private fun TrackList(
 ) {
     val state = rememberLazyListState()
     FollowCurrent(null, state, items.indexOfFirst { it.id == currentId }, scrollKey)
-    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = LocalListBottom.current), modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
             val playing = item.id == currentId
             Row(

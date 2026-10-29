@@ -10,9 +10,17 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.PathParser
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +41,25 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private class NavEntry(val tab: Tab, val icon: ImageVector, val label: String)
+private class NavEntry(val tab: Tab, val icon: ImageVector, val selectedIcon: ImageVector, val label: String)
+
+/** Alt menünün kapladığı yükseklik (kapsül + alt boşluk + nefes payı); içerikler en alta bu kadar boşluk bırakır. */
+val BarSpace = 82.dp
+
+/** Alt menünün arkasından akan listelerin en altta bırakacağı boşluk. */
+val LocalListBottom = compositionLocalOf { 0.dp }
+
+/** Seçili Kumanda simgesi: ekranı dolu televizyon. */
+private val TvFilled: ImageVector by lazy {
+    ImageVector.Builder("TvFilled", 24.dp, 24.dp, 24f, 24f).apply {
+        addPath(
+            PathParser().parsePathString(
+                "M21,3H3c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h5v2h8v-2h5c1.1,0 1.99,-0.9 1.99,-2L23,5c0,-1.1 -0.9,-2 -2,-2z"
+            ).toNodes(),
+            fill = SolidColor(Color.White)
+        )
+    }.build()
+}
 
 /**
  * Alt menü: Kumanda / Cast / Araçlar / Kısayollar.
@@ -43,13 +69,13 @@ private class NavEntry(val tab: Tab, val icon: ImageVector, val label: String)
  * takip eder ve bırakılan sekme açılır.
  */
 @Composable
-fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
+fun BottomNav(tab: Tab, hazeState: HazeState, modifier: Modifier = Modifier, onTab: (Tab) -> Unit) {
     val entries = remember {
         listOf(
-            NavEntry(Tab.REMOTE, AppIcons.Tv, "Kumanda"),
-            NavEntry(Tab.CAST, AppIcons.Cast, "Cast"),
-            NavEntry(Tab.TOOLS, Icons.Outlined.Build, "Araçlar"),
-            NavEntry(Tab.SHORTCUTS, Icons.Outlined.Bolt, "Kısayollar")
+            NavEntry(Tab.REMOTE, AppIcons.Tv, TvFilled, "Kumanda"),
+            NavEntry(Tab.CAST, AppIcons.Cast, Icons.Filled.CastConnected, "Cast"),
+            NavEntry(Tab.TOOLS, Icons.Outlined.Build, Icons.Filled.Build, "Araçlar"),
+            NavEntry(Tab.SHORTCUTS, Icons.Outlined.Bolt, Icons.Filled.Bolt, "Kısayollar")
         )
     }
     val count = entries.size
@@ -89,11 +115,33 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
         if (entries[i].tab != tab) onTab(entries[i].tab)
     }
 
+    val barShape = RoundedCornerShape(32.dp)
+    // Yüzen cam bar: arkasındaki içerik bulanıklaşıp hafifçe içeri sızar
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .height(64.dp)
-            .padding(top = 6.dp)
+            .shadow(10.dp, barShape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(barShape)
+            .hazeChild(
+                hazeState,
+                HazeStyle(
+                    backgroundColor = Pal.Bg,
+                    tint = HazeTint(Color(0xFF2C2C30).copy(alpha = 0.62f)),
+                    blurRadius = 22.dp,
+                    noiseFactor = 0.04f
+                )
+            )
+            .border(
+                1.dp,
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.05f))),
+                barShape
+            )
+            .padding(5.dp)
+    ) {
+    Box(
+        Modifier
+            .fillMaxSize()
             .onSizeChanged { widthPx = it.width.toFloat() }
             .pointerInput(slot, selectedIndex) {
                 detectTapGestures { pos -> if (slot > 0) settle((pos.x / slot).toInt()) }
@@ -121,7 +169,7 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
     ) {
         // Cam kapsül
         if (slot > 0) {
-            val inset = with(density) { 6.dp.toPx() }
+            val inset = with(density) { 1.dp.toPx() }
             val pillWidth = with(density) { (slot - 2 * inset).toDp() }
             Box(
                 Modifier
@@ -130,13 +178,13 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
                     .fillMaxHeight()
                     .graphicsLayer { scaleX = if (dragging) 1.06f else 1f; scaleY = if (dragging) 1.06f else 1f }
                     .background(
-                        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.05f))),
-                        RoundedCornerShape(22.dp)
+                        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.07f))),
+                        RoundedCornerShape(27.dp)
                     )
                     .border(
                         1.dp,
-                        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.08f))),
-                        RoundedCornerShape(22.dp)
+                        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.10f))),
+                        RoundedCornerShape(27.dp)
                     )
             )
         }
@@ -148,11 +196,12 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(e.icon, e.label, tint = if (lit) Pal.Text else Pal.Sub, modifier = Modifier.size(24.dp))
+                    Icon(if (lit) e.selectedIcon else e.icon, e.label, tint = if (lit) Pal.Text else Pal.Sub, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.height(2.dp))
                     Text(e.label, color = if (lit) Pal.Text else Pal.Sub, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
         }
+    }
     }
 }

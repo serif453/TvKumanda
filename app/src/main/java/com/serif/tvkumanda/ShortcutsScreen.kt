@@ -85,7 +85,8 @@ fun ShortcutsScreen(modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(10.dp))
         }
-        Spacer(Modifier.height(12.dp))
+        // Son satır alt menünün arkasında kalmasın
+        Spacer(Modifier.height(BarSpace))
     }
 }
 

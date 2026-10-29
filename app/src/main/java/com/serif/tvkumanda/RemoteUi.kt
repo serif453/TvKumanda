@@ -1,5 +1,8 @@
 package com.serif.tvkumanda
 
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
@@ -178,6 +181,7 @@ fun RemoteScreen(
         if (ui.state == ConnState.CONNECTED && sheet == Sheet.CONNECT) sheet = Sheet.NONE
     }
 
+    val hazeState = remember { HazeState() }
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
     Box(Modifier.fillMaxSize().background(Pal.Bg).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
     Column(
@@ -186,7 +190,10 @@ fun RemoteScreen(
             // Yazma ekranı açıkken kumanda arkada bulanık görünür (Android 12+; eskilerde perde yeterli)
             .then(if (typingOpen) Modifier.blur(28.dp) else Modifier)
             .background(Pal.Bg)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            // Alt menünün arkasında bulanık görünecek içerik
+            .haze(hazeState)
+            .padding(horizontal = 16.dp)
+            .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TopBar(ui, onSettings = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
@@ -234,10 +241,15 @@ fun RemoteScreen(
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onNumpad = { sheet = Sheet.NUMPAD }
         )
+        // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
+        Spacer(Modifier.height(BarSpace))
         }
-        // Alt menü: Kumanda / Cast / Araçlar / Kısayollar
-        BottomNav(tab) { tab = it }
     }
+    // Alt menü: Kumanda / Cast / Araçlar / Kısayollar — içeriğin üstünde yüzen cam kapsül
+    BottomNav(
+        tab, hazeState,
+        Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = 10.dp)
+    ) { tab = it }
 
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
     // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır

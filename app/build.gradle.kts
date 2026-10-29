@@ -74,6 +74,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     // Araçlar sekmesindeki simgeler (kullanılmayanları küçültme aracı atar)
     implementation("androidx.compose.material:material-icons-extended")
+    // Alt menünün cam (arka plan bulanıklığı) görünümü — Apache 2.0, chrisbanes/haze
+    implementation("dev.chrisbanes.haze:haze:1.1.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
