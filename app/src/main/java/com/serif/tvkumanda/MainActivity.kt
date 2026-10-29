@@ -114,6 +114,10 @@ class MainActivity : ComponentActivity() {
     // Kaldığın yerden devam (video)
     private var currentUri: android.net.Uri? = null
     private var autoAdvancing = false
+    // Altyazı (videoya göre hatırlanır)
+    private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSubtitlePicked(uri)
+    }
     private var saveCounter = 0
     @Volatile private var pendingVolume: Float? = null
     private var volumeSendJob: Job? = null
@@ -191,6 +195,7 @@ class MainActivity : ComponentActivity() {
                     onCastShuffle = ::toggleShuffle,
                     onCastSlideshow = ::toggleSlideshow,
                     onCastSlideSec = ::cycleSlideSec,
+                    onCastSubtitle = ::subtitleAction,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -451,9 +456,21 @@ class MainActivity : ComponentActivity() {
         if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
         // Önceki videonun konumu kaydedilir
         saveResumePosition()
-        // Daha önce yarıda bırakılmış video: kaldığı yerden devam edilsin mi?
         val auto = autoAdvancing
         autoAdvancing = false
+        // TV'nin büyük ihtimalle açamayacağı biçim: önce uyar (otomatik geçişte sormadan dener)
+        val skipCheck = skipFormatCheck
+        skipFormatCheck = false
+        if (askResume && !auto && !skipCheck && likelyUnsupported(knownMime, knownTitle ?: displayName(uri))) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Bu dosya TV'de açılmayabilir")
+                .setMessage("TV'nin Chromecast oynatıcısı bu biçimi (MKV, AVI, WMV gibi) genellikle desteklemez.")
+                .setPositiveButton("Yine de dene") { _, _ -> continueCast(uri, kind, knownTitle, knownMime) }
+                .setNegativeButton("Vazgeç", null)
+                .show()
+            return
+        }
+        // Daha önce yarıda bırakılmış video: kaldığı yerden devam edilsin mi?
         if (kind == MediaKind.VIDEO && askResume && !auto) {
             val saved = prefs.getFloat(resumeKey(uri), 0f).toDouble()
             if (saved > 0) {
@@ -476,6 +493,7 @@ class MainActivity : ComponentActivity() {
         val ip = currentIp
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
         val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
+        val subUri = if (kind == MediaKind.VIDEO) prefs.getString(subtitleKey(uri), null)?.let { android.net.Uri.parse(it) } else null
         cast = CastUi(
             CastPhase.PREPARING, title, kind, hasList = playlist.size > 1,
             currentId = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri }?.id,
@@ -487,7 +505,8 @@ class MainActivity : ComponentActivity() {
             repeat = repeatMode,
             shuffle = shuffle,
             slideshow = slideshow && kind == MediaKind.PHOTO,
-            slideSec = slideSec
+            slideSec = slideSec,
+            hasSubtitle = subUri != null
         )
         castPollJob?.cancel()
         if (kind != MediaKind.PHOTO) { slideshow = false; slideJob?.cancel() } else if (slideshow) restartSlideTimer()
@@ -495,6 +514,15 @@ class MainActivity : ComponentActivity() {
             try {
                 withContext(castIo) {
                     val url = mediaServer.publish(uri, mime, ip)
+                    // Altyazı: SRT → WebVTT, telefondaki sunucudan
+                    val subUrl = subUri?.let { su ->
+                        runCatching {
+                            val raw = contentResolver.openInputStream(su)!!.use { it.readBytes() }
+                            mediaServer.publishBytes(Subtitles.convert(raw), "text/vtt; charset=utf-8", ip)
+                        }.getOrElse { runOnUiThread { toast("Altyazı dosyası okunamadı") }; null }
+                    }
+                    // TV uykudaysa önce uyandırılır
+                    wakeTvIfAsleep(ip)
                     if (!castClient.isConnected) castStage("TV'ye bağlanılıyor…")
                     castClient.connect(ip)
                     if (!castClient.hasReceiver) {
@@ -502,7 +530,7 @@ class MainActivity : ComponentActivity() {
                         castClient.prepareReceiver()
                     }
                     castStage("Dosya yükleniyor…")
-                    castClient.load(url, mime, title, startAt)
+                    castClient.load(url, mime, title, startAt, subUrl)
                 }
                 startCastPolling()
             } catch (e: Exception) {
@@ -703,6 +731,66 @@ class MainActivity : ComponentActivity() {
             (0 until n).filter { it != playIndex }.random()
         } else ((playIndex + dir) % n + n) % n
         playFromList(playlist, next)
+    }
+
+    // ---------- Biçim uyarısı ----------
+
+    private fun likelyUnsupported(mime: String?, name: String?): Boolean {
+        val m = mime.orEmpty().lowercase()
+        val ext = name.orEmpty().substringAfterLast('.', "").lowercase()
+        return m in setOf("video/x-matroska", "video/x-msvideo", "video/avi", "video/x-ms-wmv", "video/x-flv", "audio/x-ms-wma") ||
+            ext in setOf("mkv", "avi", "wmv", "flv", "wma", "rmvb", "ts", "m2ts", "vob")
+    }
+
+    /** Uyarıdan sonra "Yine de dene": soru sormadan devam eder (kaldığı yer sorusu yine sorulur). */
+    private fun continueCast(uri: android.net.Uri, kind: MediaKind, title: String?, mime: String?) {
+        skipFormatCheck = true
+        castMedia(uri, kind, title, mime)
+    }
+    private var skipFormatCheck = false
+
+    // ---------- Altyazı ----------
+
+    private fun subtitleKey(uri: android.net.Uri) = "altyazi_" + uri.toString().hashCode()
+
+    /** Altyazı tuşu: yoksa dosya seç, varsa kaldır; ikisinde de video kaldığı yerden yeniden açılır. */
+    private fun subtitleAction() {
+        val uri = currentUri ?: return
+        if (cast.hasSubtitle) {
+            prefs.edit().remove(subtitleKey(uri)).apply()
+            reloadCurrent()
+        } else runCatching { pickSubtitle.launch(arrayOf("*/*")) }.onFailure { toast("Dosya seçici açılamadı") }
+    }
+
+    private fun onSubtitlePicked(sub: android.net.Uri) {
+        val uri = currentUri ?: return
+        runCatching { contentResolver.takePersistableUriPermission(sub, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        prefs.edit().putString(subtitleKey(uri), sub.toString()).apply()
+        reloadCurrent()
+    }
+
+    private fun reloadCurrent() {
+        val uri = currentUri ?: return
+        val item = cast.item
+        castMedia(uri, cast.kind, item?.title ?: cast.title, item?.mime, startAt = cast.position, askResume = false)
+    }
+
+    // ---------- TV'yi uyandırma ----------
+
+    /** TV uykudaysa uyandırır ve Chromecast'i hazır olana kadar bekler (en fazla ~15 sn). */
+    private fun wakeTvIfAsleep(ip: String) {
+        val asleep = when (method) {
+            ConnMethod.STANDARD -> atv.isOn == false
+            ConnMethod.ADB -> adb.isScreenOn() == false
+        }
+        if (!asleep) return
+        castStage("TV açılıyor…")
+        runCatching { remote.key(KEYCODE_WAKEUP) }
+        castClient.close()
+        for (i in 0 until 15) {
+            Thread.sleep(1000)
+            if (runCatching { castClient.connect(ip) }.isSuccess) return
+        }
     }
 
     // ---------- Slayt gösterisi ----------
@@ -960,6 +1048,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val VOICE_BLOCK = 16 * 1024
+    private val KEYCODE_WAKEUP = 224
 
     private fun startVoiceStream() {
         micStop = false

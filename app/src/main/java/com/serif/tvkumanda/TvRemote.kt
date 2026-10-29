@@ -230,6 +230,16 @@ class TvRemote(private val context: Context) : RemoteLink {
             .sortedWith(compareBy<TvApp> { knownRank(it.pkg) }.thenBy { it.name.lowercase() })
     }
 
+    /** TV ekranı açık mı (ADB: güç hizmetinin uyanıklık durumu); bilinmiyorsa null. */
+    fun isScreenOn(): Boolean? = runCatching {
+        val out = shell("dumpsys power | grep -m1 mWakefulness=")
+        when {
+            out.contains("Awake") -> true
+            out.contains("Asleep") || out.contains("Dozing") || out.contains("Dreaming") -> false
+            else -> null
+        }
+    }.getOrNull()
+
     override fun launch(app: TvApp) {
         shell(launchCommand(app))
     }

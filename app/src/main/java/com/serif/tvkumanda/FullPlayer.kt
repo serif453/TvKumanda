@@ -118,7 +118,8 @@ fun FullPlayer(
     onRepeat: () -> Unit = {},
     onShuffle: () -> Unit = {},
     onSlideshow: () -> Unit = {},
-    onSlideSec: () -> Unit = {}
+    onSlideSec: () -> Unit = {},
+    onSubtitle: () -> Unit = {}
 ) {
     BackHandler(enabled = sheet.visible) { sheet.close() }
 
@@ -226,6 +227,15 @@ fun FullPlayer(
                     val sub = cast.item?.subtitle.orEmpty()
                     if (sub.isNotBlank()) Text(sub, color = Pal.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (cast.phase == CastPhase.ERROR) Text(cast.error, color = Pal.Red, fontSize = 13.sp)
+                }
+                if (cast.kind == MediaKind.VIDEO) {
+                    Text(
+                        if (cast.hasSubtitle) "Altyazıyı kaldır" else "Altyazı ekle",
+                        color = if (cast.hasSubtitle) Pal.Blue else Pal.Text, fontSize = 13.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Pal.BtnPressed)
+                            .clickable(onClick = onSubtitle).padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
                 }
                 RoundAction(AppIcons.Stop, "Durdur", size = 40.dp, iconSize = 20.dp, onClick = onStop)
             }

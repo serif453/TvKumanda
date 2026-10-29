@@ -72,6 +72,9 @@ class AtvRemote(private val context: Context) : RemoteLink {
     /** Kör modda (TV kutu bilgisi göndermezken) TV'ye gönderdiğimiz son metin. */
     @Volatile private var blindText = ""
     @Volatile private var volumeInfo: Pair<Int, Int>? = null
+    /** TV açık mı (remote_start ile bildirilir; bilinmiyorsa null). */
+    @Volatile var isOn: Boolean? = null
+        private set
     @Volatile private var deviceName = ""
 
     /** TV ses seviyesini kendiliğinden bildirdiğinde çağrılır (değer, en yüksek). */
@@ -229,6 +232,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
                     onImeShow?.invoke(st.str(2))
                 }
             }
+            m.has(40) -> isOn = (m.msg(40)?.int(1) ?: 1) != 0                 // remote_start { started=1 }
             m.has(30) -> {                                                       // remote_voice_begin
                 val sid = m.msg(30)?.int(1) ?: 0
                 voiceWaiter?.let { if (!it.isDone) it.complete(sid) }

@@ -84,7 +84,9 @@ data class CastUi(
     val shuffle: Boolean = false,
     /** Fotoğraf slayt gösterisi açık mı ve kaç saniyede bir geçiliyor. */
     val slideshow: Boolean = false,
-    val slideSec: Int = 5
+    val slideSec: Int = 5,
+    /** Bu videoya altyazı eklenmiş mi. */
+    val hasSubtitle: Boolean = false
 )
 
 enum class Tab { REMOTE, CAST }

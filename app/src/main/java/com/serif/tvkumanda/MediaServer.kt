@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class MediaServer(private val context: Context) {
 
-    private class Entry(val uri: Uri, val mime: String)
+    private class Entry(val uri: Uri?, val mime: String, val bytes: ByteArray? = null)
 
     private val entries = ConcurrentHashMap<String, Entry>()
     @Volatile private var server: ServerSocket? = null
@@ -40,6 +40,16 @@ class MediaServer(private val context: Context) {
         entries.clear()
         val token = UUID.randomUUID().toString().replace("-", "")
         entries[token] = Entry(uri, mime)
+        return "http://$host:${s.localPort}/m/$token"
+    }
+
+    /** Bellekteki küçük bir dosyayı (ör. altyazı) son yayının yanında sunar. */
+    @Synchronized
+    fun publishBytes(bytes: ByteArray, mime: String, tvIp: String): String {
+        val host = localAddressFor(tvIp) ?: throw java.io.IOException("Telefonun Wi-Fi adresi bulunamadı")
+        val s = server ?: throw java.io.IOException("Sunucu çalışmıyor")
+        val token = UUID.randomUUID().toString().replace("-", "")
+        entries[token] = Entry(null, mime, bytes)
         return "http://$host:${s.localPort}/m/$token"
     }
 
@@ -80,7 +90,12 @@ class MediaServer(private val context: Context) {
             return
         }
 
-        val afd = context.contentResolver.openAssetFileDescriptor(entry.uri, "r")
+        entry.bytes?.let { b ->
+            writeHead(out, "200 OK", mapOf("Content-Type" to entry.mime, "Content-Length" to b.size.toString()))
+            if (method == "GET") { out.write(b); out.flush() }
+            return
+        }
+        val afd = context.contentResolver.openAssetFileDescriptor(entry.uri ?: return, "r")
             ?: run { writeHead(out, "404 Not Found", mapOf("Content-Length" to "0")); return }
         afd.use {
             val total = afd.length.takeIf { it >= 0 } ?: afd.parcelFileDescriptor.statSize

@@ -86,18 +86,29 @@ class CastClient {
      * Medyayı TV'de açar. [url] TV'nin erişebileceği bir http adresidir (telefondaki sunucu).
      * Varsayılan medya alıcısı gerekirse başlatılır.
      */
-    fun load(url: String, mime: String, title: String, startAt: Double = 0.0) {
+    fun load(url: String, mime: String, title: String, startAt: Double = 0.0, subtitleUrl: String? = null) {
         val app = prepareReceiver()
         val media = JSONObject()
             .put("contentId", url)
             .put("contentType", mime)
             .put("streamType", "BUFFERED")
             .put("metadata", JSONObject().put("metadataType", 0).put("title", title))
-        val reply = request(app, NS_MEDIA, JSONObject()
+        val load = JSONObject()
             .put("type", "LOAD")
-            .put("media", media)
             .put("autoplay", true)
-            .put("currentTime", startAt), timeoutMs = 20_000)
+            .put("currentTime", startAt)
+        if (subtitleUrl != null) {
+            // Altyazı: WebVTT metin izi, hemen etkin
+            media.put("tracks", org.json.JSONArray().put(JSONObject()
+                .put("trackId", 1).put("type", "TEXT").put("subtype", "SUBTITLES")
+                .put("trackContentId", subtitleUrl).put("trackContentType", "text/vtt")
+                .put("name", "Altyazı").put("language", "tr")))
+            media.put("textTrackStyle", JSONObject()
+                .put("backgroundColor", "#00000099").put("foregroundColor", "#FFFFFFFF").put("fontScale", 1.0))
+            load.put("activeTrackIds", org.json.JSONArray().put(1))
+        }
+        load.put("media", media)
+        val reply = request(app, NS_MEDIA, load, timeoutMs = 20_000)
         when (reply.optString("type")) {
             "MEDIA_STATUS" -> handleMediaStatus(reply)
             "LOAD_FAILED" -> throw IOException("TV bu dosyayı açamadı (biçim desteklenmiyor olabilir)")
