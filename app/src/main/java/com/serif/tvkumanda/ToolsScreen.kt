@@ -153,7 +153,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
 private fun ToolTile(tool: Tool, dimmed: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier
-            .height(104.dp)
+            .height(116.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Pal.Btn)
             .clickable(onClick = onClick)
@@ -170,6 +170,15 @@ private fun ToolTile(tool: Tool, dimmed: Boolean, modifier: Modifier, onClick: (
                 tool.name, color = Pal.Text, fontSize = 12.sp, lineHeight = 14.sp,
                 textAlign = TextAlign.Center, maxLines = 2
             )
+            // İşlevi henüz eklenmemiş araçlar; işlev gelince kendiliğinden kalkar
+            if (tool.id == null) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Yakında", color = Pal.Sub, fontSize = 9.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.07f))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
         }
         // Rozetler: sol üstte ADB, sağ üstte deneysel / uyarı
         if (tool.adb) Badge("ADB", Pal.Blue, Modifier.align(Alignment.TopStart))
