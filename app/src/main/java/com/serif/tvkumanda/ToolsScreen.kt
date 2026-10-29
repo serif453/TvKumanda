@@ -53,7 +53,8 @@ private val toolGroups = listOf(
     ToolGroup("Dosyalar", listOf(
         Tool("Dosya gönder", Icons.Outlined.UploadFile, adb = true, id = ToolId.SEND_FILES),
         Tool("TV dosya gezgini", Icons.Outlined.FolderOpen, adb = true, id = ToolId.FILE_BROWSER),
-        Tool("TV oynatıcısında aç", Icons.Outlined.OndemandVideo, adb = true, experimental = true)
+        // Dosya gezginindeki "▶ TV" düğmesiyle çalışır; kutucuk gezgini açar
+        Tool("TV oynatıcısında aç", Icons.Outlined.OndemandVideo, adb = true, experimental = true, id = ToolId.FILE_BROWSER)
     )),
     ToolGroup("Ekran", listOf(
         Tool("Ekran görüntüsü", Icons.Outlined.Screenshot, adb = true, id = ToolId.SCREENSHOT),

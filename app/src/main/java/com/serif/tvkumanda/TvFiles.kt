@@ -71,10 +71,14 @@ object TvFiles {
 
     // ---------------- İlerleme sayan akışlar ----------------
 
-    private class CountingSource(src: Source, private val total: Long, private val progress: (Float) -> Unit) : ForwardingSource(src) {
+    /** Süren bir aktarımı durdurmak için. */
+    class Cancel { @Volatile var cancelled = false }
+
+    private class CountingSource(src: Source, private val total: Long, private val progress: (Float) -> Unit, private val cancel: Cancel? = null) : ForwardingSource(src) {
         private var done = 0L
         private var last = 0L
         override fun read(sink: Buffer, byteCount: Long): Long {
+            if (cancel?.cancelled == true) throw IOException("Durduruldu")
             val n = super.read(sink, byteCount)
             if (n > 0) {
                 done += n
@@ -85,10 +89,11 @@ object TvFiles {
         }
     }
 
-    private class CountingSink(dst: Sink, private val total: Long, private val progress: (Float) -> Unit) : ForwardingSink(dst) {
+    private class CountingSink(dst: Sink, private val total: Long, private val progress: (Float) -> Unit, private val cancel: Cancel? = null) : ForwardingSink(dst) {
         private var done = 0L
         private var last = 0L
         override fun write(source: Buffer, byteCount: Long) {
+            if (cancel?.cancelled == true) throw IOException("Durduruldu")
             super.write(source, byteCount)
             done += byteCount
             val now = System.currentTimeMillis()
@@ -223,24 +228,30 @@ object TvFiles {
 
     const val TV_DOWNLOAD = "/sdcard/Download"
 
-    /** Seçilen dosyaları TV'nin Download klasörüne gönderir. */
-    fun sendFiles(context: Context, uris: List<Uri>, stage: (String) -> Unit, progress: (Float) -> Unit) {
+    /** Seçilen dosyaları TV'deki [dest] klasörüne (varsayılan Download) gönderir. Durdurulursa yarım dosya silinir. */
+    fun sendFiles(context: Context, uris: List<Uri>, stage: (String) -> Unit, progress: (Float) -> Unit, dest: String = TV_DOWNLOAD, cancel: Cancel? = null) {
         val d = adb().dadbOrThrow()
         val sizes = uris.map { sizeOf(context, it).coerceAtLeast(0) }
         val total = sizes.sum().coerceAtLeast(1)
         var done = 0L
         uris.forEachIndexed { i, u ->
             val name = displayName(context, u).replace("/", "_")
+            val remote = "$dest/$name"
             stage(if (uris.size > 1) "Gönderiliyor (${i + 1}/${uris.size}): $name" else "Gönderiliyor: $name")
             val start = done
-            context.contentResolver.openInputStream(u)!!.use { inp ->
-                val src = CountingSource(inp.source(), sizes[i]) { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }
-                d.push(src, "$TV_DOWNLOAD/$name", 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
+            try {
+                context.contentResolver.openInputStream(u)!!.use { inp ->
+                    val src = CountingSource(inp.source(), sizes[i], { fr -> progress(((start + fr * sizes[i]) / total).toFloat()) }, cancel)
+                    d.push(src, remote, 33188 /* düzenli dosya, 0644 */, System.currentTimeMillis())
+                }
+            } catch (e: Exception) {
+                if (cancel?.cancelled == true) { runCatching { sh("rm -f ${q(remote)}") }; throw IOException("Durduruldu") }
+                throw e
             }
             done += sizes[i]
         }
         // TV'nin medya kütüphanesi yeni dosyaları hemen görsün
-        runCatching { sh("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$TV_DOWNLOAD") }
+        runCatching { sh("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d ${q("file://$dest")}") }
         progress(1f)
     }
 
@@ -269,15 +280,63 @@ object TvFiles {
         }.sortedWith(compareBy<TvFile> { !it.dir }.thenBy { it.name.lowercase() })
     }
 
+    /** Klasörün bulunduğu depolamada boş ve toplam alan (bayt). */
+    fun space(dir: String): Pair<Long, Long>? {
+        val line = sh("df -k ${q("$dir/")} 2>/dev/null | tail -1").trim().split(Regex("\\s+"))
+        val total = line.getOrNull(1)?.toLongOrNull() ?: return null
+        val free = line.getOrNull(3)?.toLongOrNull() ?: return null
+        return free * 1024 to total * 1024
+    }
+
+    fun isApk(f: TvFile) = !f.dir && f.name.endsWith(".apk", true)
+
+    /** Dosyanın türü: video, müzik, fotoğraf (TV'de açılabilenler) ya da null. */
+    fun mediaMime(f: TvFile): String? {
+        if (f.dir) return null
+        val ext = f.name.substringAfterLast('.', "").lowercase()
+        val m = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+            ?: when (ext) { "mkv" -> "video/x-matroska"; "ts" -> "video/mp2t"; "flac" -> "audio/flac"; else -> null }
+        return m?.takeIf { it.startsWith("video/") || it.startsWith("audio/") || it.startsWith("image/") }
+    }
+
+    /** TV'de duran bir APK'yı kurar. */
+    fun installFromTv(f: TvFile) {
+        val tmp = "/data/local/tmp/tvk_kur.apk"
+        val out = sh("cp ${q(f.path)} $tmp && pm install -r -t $tmp 2>&1; rm -f $tmp")
+        if (!out.contains("Success")) throw IOException(friendlyInstallError(out.trim()))
+    }
+
+    /** TV'deki dosyayı TV'nin kendi oynatıcısında / galerisinde açar. */
+    fun openOnTv(f: TvFile) {
+        val mime = mediaMime(f) ?: throw IOException("Bu dosya türü TV'de açılamıyor")
+        val real = if (f.path.startsWith("/sdcard")) "/storage/emulated/0" + f.path.removePrefix("/sdcard") else f.path
+        val uri = "file://" + real.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+        val args = "-a android.intent.action.VIEW -d ${q(uri)} -t ${q(mime)}"
+        // Google TV, açamadığı dosyaları hiçbir şey yapmayan bir yer tutucuya yönlendiriyor: o da "uygulama yok" demek
+        val resolved = sh("cmd package resolve-activity --brief $args 2>&1")
+        if (resolved.contains("frameworkpackagestubs") || resolved.contains("No activity found", true))
+            throw IOException("TV'de bu dosyayı açacak bir oynatıcı yok")
+        val out = sh("am start $args 2>&1")
+        if (out.contains("Error", true)) throw IOException("TV'de bu dosyayı açacak bir oynatıcı yok")
+    }
+
+    /** Fotoğrafı önizleme için telefona alır (büyük dosyalar alınmaz). */
+    fun preview(context: Context, f: TvFile): File {
+        if (f.size > 25L * 1024 * 1024) throw IOException("Fotoğraf önizleme için çok büyük; telefona indirebilirsin")
+        val dst = File(context.cacheDir, "onizleme").apply { mkdirs(); listFiles()?.forEach { it.delete() } }.let { File(it, "p_" + f.name) }
+        adb().dadbOrThrow().pull(dst, f.path)
+        return dst
+    }
+
     fun mkdir(dir: String, name: String) = check(sh("mkdir -p ${q("$dir/$name")} 2>&1"), "Klasör oluşturma")
     fun rename(f: TvFile, newName: String) = check(sh("mv ${q(f.path)} ${q(f.path.substringBeforeLast('/') + "/" + newName)} 2>&1"), "Yeniden adlandırma")
     fun delete(f: TvFile) = check(sh("rm -rf ${q(f.path)} 2>&1"), "Silme")
 
     /** TV'deki dosyayı telefonun İndirilenler/TV Kumanda klasörüne indirir. */
-    fun download(context: Context, f: TvFile, progress: (Float) -> Unit): Uri {
+    fun download(context: Context, f: TvFile, progress: (Float) -> Unit, cancel: Cancel? = null): Uri {
         val d = adb().dadbOrThrow()
         val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.name.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
-        return saveToDownloads(context, f.name, mime) { out -> d.pull(CountingSink(out.sink(), f.size, progress), f.path) }
+        return saveToDownloads(context, f.name, mime) { out -> d.pull(CountingSink(out.sink(), f.size, progress, cancel), f.path) }
     }
 }

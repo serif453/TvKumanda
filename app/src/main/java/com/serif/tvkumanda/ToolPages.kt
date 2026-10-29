@@ -25,6 +25,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -384,84 +386,225 @@ internal fun SendFilesTool(onShowInBrowser: () -> Unit) {
 
 // ---------------- TV dosya gezgini ----------------
 
+/** Gezgindeki süren iş (gönderme, indirme, kurma): altta ilerleme kartı olarak görünür. */
+private class FileJob(val title: String) {
+    var stage by mutableStateOf("")
+    var progress by mutableFloatStateOf(0f)
+    val cancel = TvFiles.Cancel()
+}
+
+private enum class FileSort(val label: String) { NAME("Ada göre"), NEW("En yeni"), BIG("En büyük") }
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun FileBrowserPage(startDir: String?, onClose: () -> Unit) {
     val context = LocalContext.current
     val run = rememberRunner()
-    val roots by produceState<List<Pair<String, String>>>(listOf("/sdcard" to "Dahili depolama")) {
-        io { TvFiles.roots() }.onSuccess { value = it }
+    val usb by produceState<List<Pair<String, String>>>(emptyList()) {
+        io { TvFiles.roots().drop(1) }.onSuccess { value = it }
     }
-    var root by remember { mutableStateOf("/sdcard") }
     var dir by remember { mutableStateOf(startDir ?: "/sdcard") }
     var reload by remember { mutableIntStateOf(0) }
     var showHidden by remember { mutableStateOf(false) }
     var files by remember { mutableStateOf<Result<List<TvFiles.TvFile>>?>(null) }
+    var space by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var query by remember { mutableStateOf("") }
+    var sort by remember { mutableStateOf(FileSort.NAME) }
+    var sortMenu by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<TvFiles.TvFile?>(null) }
     var newFolder by remember { mutableStateOf(false) }
-    LaunchedEffect(dir, reload, showHidden) { files = null; files = io { TvFiles.list(dir, showHidden) } }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var job by remember { mutableStateOf<FileJob?>(null) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    LaunchedEffect(dir, reload, showHidden) {
+        files = null
+        files = io { TvFiles.list(dir, showHidden) }
+        space = io { TvFiles.space(dir) }.getOrNull()
+    }
+    LaunchedEffect(dir) { query = "" }
 
-    BackHandler {
-        if (dir != root) { val up = dir.substringBeforeLast('/'); dir = if (up.length < root.length) root else up } else onClose()
+    // Uzun süren işler: altta kartta ilerler, Durdur ile kesilebilir
+    fun startJob(title: String, block: (FileJob) -> String) {
+        val j = FileJob(title)
+        job = j; result = null
+        run {
+            io { block(j) }
+                .onSuccess { msg -> result = ToolResult(true, msg); reload++ }
+                .onFailure { e -> result = ToolResult(false, if (j.cancel.cancelled) "Durduruldu" else errorText(e)) }
+            job = null
+        }
+    }
+    fun quick(okMsg: String, block: () -> Unit) {
+        result = null
+        run { io(block).onSuccess { result = ToolResult(true, okMsg) }.onFailure { result = ToolResult(false, errorText(it)) } }
+    }
+    val sendPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val target = dir
+        startJob("Bu klasöre gönderiliyor") { j ->
+            TvFiles.sendFiles(context, uris, { s -> j.stage = s }, { v -> j.progress = v }, target, j.cancel)
+            "${uris.size} dosya gönderildi"
+        }
     }
 
-    val rootName = roots.firstOrNull { it.first == root }?.second ?: "Depolama"
-    val crumbs = dir.removePrefix(root).split('/').filter { it.isNotEmpty() }
+    // Hızlı yerler (en uzun eşleşen seçili görünür)
+    val places = listOf("Dahili depolama" to "/sdcard", "Download" to "/sdcard/Download", "Filmler" to "/sdcard/Movies",
+        "Resimler" to "/sdcard/Pictures", "Müzik" to "/sdcard/Music") + usb
+    val current = places.filter { dir == it.second || dir.startsWith(it.second + "/") }.maxByOrNull { it.second.length }
+    val root = if (dir.startsWith("/storage/")) "/storage/" + dir.removePrefix("/storage/").substringBefore('/') else "/sdcard"
+    val rootName = if (root == "/sdcard") "Dahili depolama" else usb.firstOrNull { it.first == root }?.second ?: "USB"
+
+    BackHandler {
+        when {
+            selected != null -> selected = null
+            dir != root -> { val up = dir.substringBeforeLast('/'); dir = if (up.length < root.length) root else up }
+            else -> onClose()
+        }
+    }
 
     PageScaffold("TV dosya gezgini", onClose, actions = {
         Box(Modifier.size(44.dp).clip(CircleShape).clickable { showHidden = !showHidden }, contentAlignment = Alignment.Center) {
             Icon(if (showHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, "Gizli dosyalar", tint = Pal.Sub, modifier = Modifier.size(22.dp))
         }
-        Box(Modifier.size(44.dp).clip(CircleShape).clickable { newFolder = true }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Outlined.CreateNewFolder, "Yeni klasör", tint = Pal.Text, modifier = Modifier.size(24.dp))
-        }
     }) {
-        if (roots.size > 1) {
-            FilterChipRow(roots.map { it.second }, roots.indexOfFirst { it.first == root }.coerceAtLeast(0)) { i ->
-                root = roots[i].first; dir = root
-            }
-            Spacer(Modifier.height(8.dp))
-        }
+        FilterChipRow(places.map { it.first }, places.indexOf(current).coerceAtLeast(0).let { if (current == null) -1 else it }) { i -> dir = places[i].second }
+        Spacer(Modifier.height(10.dp))
         // Konum: Dahili depolama › Download › …
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            Text(rootName, color = if (crumbs.isEmpty()) Pal.Text else Pal.Blue, fontSize = 13.sp, modifier = Modifier.clickable { dir = root })
+            val crumbs = dir.removePrefix(root).split('/').filter { it.isNotEmpty() }
+            Text(rootName, color = if (crumbs.isEmpty()) Pal.Text else Pal.Blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { dir = root })
             var acc = root
             for (c in crumbs) {
                 acc = "$acc/$c"
                 val target = acc
-                Text("  ›  ", color = Pal.Sub, fontSize = 13.sp)
-                Text(c, color = if (target == dir) Pal.Text else Pal.Blue, fontSize = 13.sp, modifier = Modifier.clickable { dir = target })
+                Text("  ›  ", color = Pal.Sub, fontSize = 14.sp)
+                Text(c, color = if (target == dir) Pal.Text else Pal.Blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { dir = target })
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        SearchBox(query, { query = it }, "Bu klasörde ara")
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box {
+                Row(
+                    Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { sortMenu = true }.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(sort.label, color = Pal.Text, fontSize = 14.sp)
+                    Icon(Icons.Outlined.ExpandMore, null, tint = Pal.Sub, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }, containerColor = Color(0xFF2C2C2E)) {
+                    FileSort.entries.forEach { s -> DropdownMenuItem(text = { Text(s.label, color = Pal.Text) }, onClick = { sort = s; sortMenu = false }) }
+                }
+            }
+            Row(
+                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { newFolder = true }.padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.CreateNewFolder, null, tint = Pal.Text, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Yeni klasör", color = Pal.Text, fontSize = 14.sp)
+            }
+            Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { reload++ }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Refresh, "Yenile", tint = Pal.Text, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
         val r = files
-        when {
-            r == null -> Loading()
-            r.isFailure -> ResultLine(ToolResult(false, errorText(r.exceptionOrNull()!!)))
-            r.getOrThrow().isEmpty() -> Text("Bu klasör boş", color = Pal.Sub, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp))
-            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(r.getOrThrow(), key = { it.path }) { f ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .combinedClickable(
-                                onClick = { if (f.dir) dir = f.path else selected = f },
-                                onLongClick = { selected = f }
-                            ).padding(horizontal = 8.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(fileIcon(f), null, tint = if (f.dir) Pal.Amber else Pal.Text, modifier = Modifier.size(26.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(f.name, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                listOfNotNull(if (f.dir) null else TvTools.bytes(f.size), date(f.modified)).joinToString(" · "),
-                                color = Pal.Sub, fontSize = 12.sp
-                            )
+        val items = r?.getOrNull().orEmpty()
+        Text(
+            listOfNotNull(
+                space?.let { (free, total) -> "${TvTools.bytes(free)} boş / ${TvTools.bytes(total)}" },
+                if (r?.isSuccess == true) "${items.size} öge" else null
+            ).joinToString(" · "),
+            color = Pal.Sub, fontSize = 12.sp
+        )
+        ResultLine(result)
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.weight(1f)) {
+            when {
+                r == null -> Loading()
+                r.isFailure -> ResultLine(ToolResult(false, errorText(r.exceptionOrNull()!!)))
+                else -> {
+                    val shown = items.filter { query.isBlank() || it.name.contains(query, true) }.sortedWith(
+                        compareBy<TvFiles.TvFile> { !it.dir }.then(
+                            when (sort) {
+                                FileSort.NAME -> compareBy { it.name.lowercase() }
+                                FileSort.NEW -> compareByDescending { it.modified }
+                                FileSort.BIG -> compareByDescending { it.size }
+                            }
+                        )
+                    )
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (shown.isEmpty()) item {
+                            Text(if (query.isBlank()) "Bu klasör boş" else "Eşleşen yok", color = Pal.Sub, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
                         }
-                        if (f.dir) Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub)
+                        items(shown, key = { it.path }) { f ->
+                            val mime = TvFiles.mediaMime(f)
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                    .combinedClickable(
+                                        onClick = {
+                                            when {
+                                                f.dir -> dir = f.path
+                                                mime?.startsWith("image/") == true -> run {
+                                                    io { TvFiles.preview(context, f).let { android.graphics.BitmapFactory.decodeFile(it.absolutePath)!!.asImageBitmapSafe() } }
+                                                        .onSuccess { preview = it }.onFailure { result = ToolResult(false, errorText(it)) }
+                                                }
+                                                else -> selected = f
+                                            }
+                                        },
+                                        onLongClick = { selected = f }
+                                    ).padding(horizontal = 6.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val (icon, tint) = fileLook(f)
+                                Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                                    Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(f.name, color = Pal.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(listOfNotNull(if (f.dir) "Klasör" else TvTools.bytes(f.size), date(f.modified)).joinToString(" · "), color = Pal.Sub, fontSize = 12.sp, maxLines = 1)
+                                }
+                                if (TvFiles.isApk(f)) QuickChip("Kur", Pal.Green) {
+                                    startJob("Kuruluyor: ${f.name}") { j -> j.progress = -1f; j.stage = "Kuruluyor…"; TvFiles.installFromTv(f); "Kuruldu: ${f.name}" }
+                                }
+                                if (mime != null) QuickChip("▶ TV", Pal.Blue) { quick("TV'de açıldı: ${f.name}") { TvFiles.openOnTv(f) } }
+                                Box(Modifier.size(40.dp).clip(CircleShape).clickable { selected = f }, contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Outlined.MoreHoriz, "Diğer", tint = Pal.Sub, modifier = Modifier.size(22.dp))
+                                }
+                            }
+                        }
+                        // Bu klasöre dosya gönder
+                        item {
+                            Spacer(Modifier.height(6.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(16.dp))
+                                    .dashedBorder(Pal.Sub.copy(alpha = 0.55f), 16.dp)
+                                    .clickable(enabled = job == null) { sendPicker.launch(arrayOf("*/*")) },
+                                contentAlignment = Alignment.Center
+                            ) { Text("＋  Bu klasöre dosya gönder", color = Pal.Sub, fontSize = 15.sp) }
+                        }
+                        item { Spacer(Modifier.height(if (job != null) 120.dp else 24.dp)) }
                     }
                 }
-                item { Spacer(Modifier.height(24.dp)) }
+            }
+            // İlerleme kartı
+            job?.let { j ->
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF2A2A2D)).padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(j.title, color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (j.progress >= 0) Text(
+                            "Durdur", color = Pal.Red, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { j.cancel.cancelled = true }.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Progress(j.stage, j.progress)
+                }
             }
         }
     }
@@ -472,43 +615,86 @@ private fun FileBrowserPage(startDir: String?, onClose: () -> Unit) {
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = Color(0xFF242426)
         ) {
-            FileActions(f) { changed -> selected = null; if (changed) reload++ }
+            FileActions(f,
+                onInstall = { selected = null; startJob("Kuruluyor: ${f.name}") { j -> j.progress = -1f; j.stage = "Kuruluyor…"; TvFiles.installFromTv(f); "Kuruldu: ${f.name}" } },
+                onOpenTv = { selected = null; quick("TV'de açıldı: ${f.name}") { TvFiles.openOnTv(f) } },
+                onDownload = {
+                    selected = null
+                    startJob("Telefona indiriliyor: ${f.name}") { j -> j.stage = "İndiriliyor…"; TvFiles.download(context, f, { v -> j.progress = v }, j.cancel); "İndirilenler/TV Kumanda klasörüne kaydedildi" }
+                },
+                onDone = { changed -> selected = null; if (changed) reload++ })
         }
     }
     if (newFolder) NameInputDialog("Yeni klasör", "", "Oluştur") { name ->
         newFolder = false
-        if (!name.isNullOrBlank()) run { io { TvFiles.mkdir(dir, name.trim()) }; reload++ }
+        if (!name.isNullOrBlank()) run { io { TvFiles.mkdir(dir, name.trim()) }.onFailure { result = ToolResult(false, errorText(it)) }; reload++ }
+    }
+    preview?.let { img ->
+        androidx.compose.ui.window.Dialog(onDismissRequest = { preview = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { preview = null }, contentAlignment = Alignment.Center) {
+                Image(img, null, Modifier.fillMaxWidth(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+            }
+        }
     }
 }
 
-private fun fileIcon(f: TvFiles.TvFile): ImageVector {
-    if (f.dir) return Icons.Outlined.Folder
+private fun android.graphics.Bitmap.asImageBitmapSafe(): ImageBitmap {
+    // Çok büyük fotoğraflar ekrana sığacak boyuta küçültülür
+    val max = 2048
+    val b = if (width > max || height > max) {
+        val k = max.toFloat() / maxOf(width, height)
+        android.graphics.Bitmap.createScaledBitmap(this, (width * k).toInt(), (height * k).toInt(), true)
+    } else this
+    return b.asImageBitmap()
+}
+
+@Composable
+private fun QuickChip(text: String, color: Color, onClick: () -> Unit) {
+    Text(
+        text, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 6.dp).clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.15f))
+            .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp)
+    )
+}
+
+private fun Modifier.dashedBorder(color: Color, radius: androidx.compose.ui.unit.Dp) = this.drawBehind {
+    drawRoundRect(
+        color = color, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14f, 10f)))
+    )
+}
+
+/** Dosya türüne göre simge ve renk. */
+private fun fileLook(f: TvFiles.TvFile): Pair<ImageVector, Color> {
+    if (f.dir) return Icons.Outlined.Folder to Pal.Amber
     val ext = f.name.substringAfterLast('.', "").lowercase()
     return when (ext) {
-        "jpg", "jpeg", "png", "gif", "webp", "heic", "bmp" -> Icons.Outlined.Image
-        "mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "3gp" -> Icons.Outlined.Movie
-        "mp3", "flac", "aac", "m4a", "ogg", "wav", "opus" -> Icons.Outlined.MusicNote
-        "apk", "apks", "xapk" -> Icons.Outlined.Android
-        "zip", "rar", "7z", "tar", "gz" -> Icons.Outlined.FolderZip
-        "txt", "log", "srt", "json", "xml" -> Icons.Outlined.Description
-        else -> Icons.Outlined.InsertDriveFile
+        "jpg", "jpeg", "png", "gif", "webp", "heic", "bmp" -> Icons.Outlined.Image to Pal.Blue
+        "mp4", "mkv", "avi", "mov", "webm", "ts", "m4v", "3gp", "wmv", "flv" -> Icons.Outlined.Movie to Pal.Purple
+        "mp3", "flac", "aac", "m4a", "ogg", "wav", "opus" -> Icons.Outlined.MusicNote to Pal.Green
+        "apk", "apks", "xapk" -> Icons.Outlined.Android to Pal.Green
+        "zip", "rar", "7z", "tar", "gz", "xz" -> Icons.Outlined.FolderZip to Pal.Amber
+        "txt", "log", "srt", "json", "xml" -> Icons.Outlined.Description to Pal.Sub
+        else -> Icons.Outlined.InsertDriveFile to Pal.Sub
     }
 }
+
+private fun fileIcon(f: TvFiles.TvFile): ImageVector = fileLook(f).first
 
 private fun date(ms: Long): String? = if (ms <= 0) null else SimpleDateFormat("d MMM yyyy HH:mm", Locale("tr")).format(Date(ms))
 
 @Composable
-private fun FileActions(f: TvFiles.TvFile, onDone: (Boolean) -> Unit) {
-    val context = LocalContext.current
+private fun FileActions(f: TvFiles.TvFile, onInstall: () -> Unit, onOpenTv: () -> Unit, onDownload: () -> Unit, onDone: (Boolean) -> Unit) {
     val run = rememberRunner()
     var busy by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf<Float?>(null) }
     var result by remember { mutableStateOf<ToolResult?>(null) }
-    var downloaded by remember { mutableStateOf<Uri?>(null) }
     var renaming by remember { mutableStateOf(false) }
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(fileIcon(f), null, tint = if (f.dir) Pal.Amber else Pal.Text, modifier = Modifier.size(34.dp))
+            val (icon, tint) = fileLook(f)
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = tint, modifier = Modifier.size(26.dp))
+            }
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(f.name, color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -516,22 +702,9 @@ private fun FileActions(f: TvFiles.TvFile, onDone: (Boolean) -> Unit) {
             }
         }
         Spacer(Modifier.height(16.dp))
-        progress?.let { Progress("Telefona indiriliyor…", it); Spacer(Modifier.height(12.dp)) }
-        if (!f.dir) {
-            if (downloaded == null) MainButton("Telefona indir", enabled = !busy) {
-                busy = true; result = null; progress = 0f
-                run {
-                    io { TvFiles.download(context, f) { v -> progress = v } }
-                        .onSuccess { downloaded = it; result = ToolResult(true, "İndirilenler/TV Kumanda klasörüne kaydedildi") }
-                        .onFailure { result = ToolResult(false, errorText(it)) }
-                    progress = null; busy = false
-                }
-            } else {
-                val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.name.substringAfterLast('.', "").lowercase()) ?: "*/*"
-                MainButton("Paylaş") { share(context, downloaded!!, mime) }
-            }
-            Spacer(Modifier.height(10.dp))
-        }
+        if (TvFiles.isApk(f)) { MainButton("TV'ye kur", onClick = onInstall); Spacer(Modifier.height(10.dp)) }
+        if (TvFiles.mediaMime(f) != null) { MainButton("TV'de aç", onClick = onOpenTv); Spacer(Modifier.height(10.dp)) }
+        if (!f.dir) { SecondaryButton("Telefona indir", Modifier.fillMaxWidth(), onClick = onDownload); Spacer(Modifier.height(10.dp)) }
         SecondaryButton("Yeniden adlandır", Modifier.fillMaxWidth(), enabled = !busy) { renaming = true }
         Spacer(Modifier.height(10.dp))
         ConfirmButton(if (f.dir) "Klasörü sil" else "Sil", enabled = !busy) {
