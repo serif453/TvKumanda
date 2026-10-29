@@ -34,7 +34,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,7 +46,7 @@ import kotlin.math.roundToInt
 private class NavEntry(val tab: Tab, val icon: ImageVector, val selectedIcon: ImageVector, val label: String)
 
 /** Alt menünün kapladığı yükseklik (kapsül + alt boşluk + nefes payı); içerikler en alta bu kadar boşluk bırakır. */
-val BarSpace = 82.dp
+val BarSpace = 86.dp
 
 /** Alt menünün arkasından akan listelerin en altta bırakacağı boşluk. */
 val LocalListBottom = compositionLocalOf { 0.dp }
@@ -120,7 +122,7 @@ fun BottomNav(tab: Tab, hazeState: HazeState, modifier: Modifier = Modifier, onT
     Box(
         modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(68.dp)
             .shadow(10.dp, barShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(barShape)
             .hazeChild(
@@ -192,13 +194,16 @@ fun BottomNav(tab: Tab, hazeState: HazeState, modifier: Modifier = Modifier, onT
             entries.forEachIndexed { i, e ->
                 val lit = i == litIndex
                 Column(
-                    Modifier.weight(1f),
+                    // Göz, altta yazı olduğu için tam ortadaki ikiliyi biraz yukarıda algılar; 1 dp aşağı alınır
+                    Modifier.weight(1f).offset(y = 1.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(if (lit) e.selectedIcon else e.icon, e.label, tint = if (lit) Pal.Text else Pal.Sub, modifier = Modifier.size(24.dp))
+                    Icon(if (lit) e.selectedIcon else e.icon, e.label, tint = if (lit) Pal.Text else Pal.Sub, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.height(2.dp))
-                    Text(e.label, color = if (lit) Pal.Text else Pal.Sub, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    Text(e.label, color = if (lit) Pal.Text else Pal.Sub, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+                        // Yazı tipinin üst-alt fazladan boşluğu kırpılır, ikili kapsülde tam ortalanır
+                        style = TextStyle(lineHeight = 13.sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)))
                 }
             }
         }
