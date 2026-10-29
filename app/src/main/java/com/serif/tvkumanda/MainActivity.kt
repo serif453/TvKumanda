@@ -999,7 +999,9 @@ class MainActivity : ComponentActivity() {
         castPollJob = scope.launch {
             while (isActive) {
                 delay(1000)
-                if (cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING || cast.phase == CastPhase.PAUSED) {
+                // DLNA cihazları kendiliğinden durum bildirmez; "hazırlanıyor" aşamasında da sorulur
+                val dlnaPreparing = cast.route == CastRoute.DLNA && cast.phase == CastPhase.PREPARING
+                if (dlnaPreparing || cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING || cast.phase == CastPhase.PAUSED) {
                     if (cast.route == CastRoute.DLNA) pollDlna() else withContext(castIo) { castClient.refresh() }
                     if (++saveCounter % 10 == 0) saveResumePosition()   // 10 sn'de bir konum kaydı
                 }
