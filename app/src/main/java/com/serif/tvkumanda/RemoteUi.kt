@@ -146,10 +146,14 @@ fun RemoteScreen(
     onCastSkip: (Double) -> Unit = {},
     onCastWarmup: () -> Unit = {},
     onCastVolume: (Float) -> Unit = {},
-    onCastPlayAt: (Int) -> Unit = {}
+    onCastPlayAt: (Int) -> Unit = {},
+    onCastRepeat: () -> Unit = {},
+    onCastShuffle: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
+    // "Paylaş" ile dosya gelince Cast sekmesine geçilir
+    LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
     val context = LocalContext.current
     val mediaLibrary = remember { MediaLibrary(context.applicationContext) }
@@ -233,7 +237,8 @@ fun RemoteScreen(
             onPrev = onCastPrev, onNext = onCastNext, onSkip = onCastSkip,
             onVolume = onCastVolume,
             onPlayAt = onCastPlayAt,
-            onShowInFolder = { playerSheet.close(); showInFolderTick++ }
+            onShowInFolder = { playerSheet.close(); showInFolderTick++ },
+            onRepeat = onCastRepeat, onShuffle = onCastShuffle
         )
     }
 

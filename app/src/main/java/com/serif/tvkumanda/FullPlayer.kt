@@ -113,7 +113,9 @@ fun FullPlayer(
     onSkip: (Double) -> Unit,
     onVolume: (Float) -> Unit,
     onPlayAt: (Int) -> Unit,
-    onShowInFolder: () -> Unit
+    onShowInFolder: () -> Unit,
+    onRepeat: () -> Unit = {},
+    onShuffle: () -> Unit = {}
 ) {
     BackHandler(enabled = sheet.visible) { sheet.close() }
 
@@ -238,6 +240,19 @@ fun FullPlayer(
                 }
             }
 
+            // Müzik: karıştır ve tekrar
+            if (cast.kind == MediaKind.MUSIC) {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ModeToggle(AppIcons.Shuffle, if (cast.shuffle) "Karıştır: açık" else "Karıştır: kapalı", cast.shuffle, onShuffle)
+                    Spacer(Modifier.weight(1f))
+                    ModeToggle(
+                        if (cast.repeat == RepeatMode.ONE) AppIcons.RepeatOne else AppIcons.Repeat,
+                        when (cast.repeat) { RepeatMode.OFF -> "Tekrar: kapalı"; RepeatMode.ALL -> "Listeyi tekrarla"; RepeatMode.ONE -> "Bu şarkıyı tekrarla" },
+                        cast.repeat != RepeatMode.OFF, onRepeat
+                    )
+                }
+            }
+
             // Tuşlar
             Spacer(Modifier.height(8.dp))
             Row(
@@ -299,6 +314,16 @@ private fun PreviewStrip(cast: CastUi, library: MediaLibrary, onPlayAt: (Int) ->
             }
         }
     }
+}
+
+@Composable
+private fun ModeToggle(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(44.dp).clip(CircleShape)
+            .background(if (active) Pal.Blue.copy(alpha = 0.18f) else Pal.Bg.copy(alpha = 0f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, desc, tint = if (active) Pal.Blue else Pal.Sub, modifier = Modifier.size(24.dp)) }
 }
 
 private fun statusText(cast: CastUi) = when (cast.phase) {

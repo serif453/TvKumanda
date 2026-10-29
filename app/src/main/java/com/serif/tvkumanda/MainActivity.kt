@@ -94,6 +94,19 @@ class MainActivity : ComponentActivity() {
     private var playAlbumId: Long? = null
     private var castStepTick = 0
     private var castVolumeKnown = -1f
+    // Müzikte tekrar/karıştır (seçim hatırlanır)
+    private var repeatMode by mutableStateOf(RepeatMode.ALL)
+    private var shuffle by mutableStateOf(false)
+    // Bildirim/kilit ekranı kontrolleri
+    private var mediaSession: android.media.session.MediaSession? = null
+    private var volumeProvider: android.media.VolumeProvider? = null
+    private lateinit var thumbLib: MediaLibrary
+    private var notifKey = ""
+    private var artFor: Long? = null
+    private var artBitmap: android.graphics.Bitmap? = null
+    // "Paylaş" ile gelen dosyalar (bağlantı kurulunca oynatılır)
+    private var pendingShare: List<MediaItem>? = null
+    private var castTabTick by mutableStateOf(0)
     @Volatile private var pendingVolume: Float? = null
     private var volumeSendJob: Job? = null
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -110,6 +123,11 @@ class MainActivity : ComponentActivity() {
         atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
         atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
         mediaServer = MediaServer(applicationContext)
+        thumbLib = MediaLibrary(applicationContext)
+        repeatMode = runCatching { RepeatMode.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(RepeatMode.ALL)
+        shuffle = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getBoolean("karistir", false)
+        setupMediaSession()
+        CastService.controller = { a -> runOnUiThread { onNotificationAction(a) } }
         castClient.onStatus = { st -> runOnUiThread { onCastStatus(st) } }
         castClient.onClosed = { reason -> runOnUiThread { onCastClosed(reason) } }
         castClient.onVolume = { v -> runOnUiThread { castVolumeKnown = v; if (cast.phase != CastPhase.NONE) cast = cast.copy(volume = v) } }
@@ -122,7 +140,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingHint),
+                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -160,6 +178,8 @@ class MainActivity : ComponentActivity() {
                     onCastWarmup = ::castWarmup,
                     onCastVolume = ::castVolume,
                     onCastPlayAt = { i -> castStepTick++; playFromList(playlist, i) },
+                    onCastRepeat = ::cycleRepeat,
+                    onCastShuffle = ::toggleShuffle,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -168,6 +188,9 @@ class MainActivity : ComponentActivity() {
         }
 
         if (savedIp.isNotBlank()) connect(savedIp)
+        handleShare(intent)
+        // Oynatıcı durumu değiştikçe bildirim ve kilit ekranı güncellenir
+        scope.launch { androidx.compose.runtime.snapshotFlow { cast }.collect { syncMediaSession(it) } }
     }
 
     private fun connect(ip: String) {
@@ -201,6 +224,7 @@ class MainActivity : ComponentActivity() {
         apps = emptyList()
         loadApps(ip)
         refreshVolume(0)
+        pendingShare?.let { list -> pendingShare = null; playShared(list) }
     }
 
     /** Kayıtlı bir TV'ye, en son çalışan yöntemiyle bağlanır. */
@@ -422,7 +446,9 @@ class MainActivity : ComponentActivity() {
             stepTick = castStepTick,
             item = playlist.getOrNull(playIndex)?.takeIf { it.uri == uri },
             volume = castVolumeKnown,
-            list = playlist
+            list = playlist,
+            repeat = repeatMode,
+            shuffle = shuffle
         )
         castPollJob?.cancel()
         scope.launch {
@@ -438,7 +464,6 @@ class MainActivity : ComponentActivity() {
                     castStage("Dosya yükleniyor…")
                     castClient.load(url, mime, title)
                 }
-                CastService.start(this@MainActivity, title)
                 startCastPolling()
             } catch (e: Exception) {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
@@ -467,6 +492,151 @@ class MainActivity : ComponentActivity() {
         if (cast.phase == CastPhase.PREPARING) cast = cast.copy(stage = text)
     }
 
+    // ---------- Bildirim ve kilit ekranı (MediaSession) ----------
+
+    private fun setupMediaSession() {
+        val ms = android.media.session.MediaSession(this, "TvKumanda")
+        ms.setCallback(object : android.media.session.MediaSession.Callback() {
+            override fun onPlay() { if (cast.phase == CastPhase.PAUSED || cast.phase == CastPhase.ENDED) castToggle() }
+            override fun onPause() { if (cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING) castToggle() }
+            override fun onSkipToNext() { castStep(1) }
+            override fun onSkipToPrevious() { castStep(-1) }
+            override fun onStop() { castStop() }
+            override fun onSeekTo(pos: Long) { castSeek(pos / 1000.0) }
+        })
+        // Yayın sürerken telefonun ses tuşları (ekran kilitliyken de) TV'nin sesini değiştirir
+        val vp = object : android.media.VolumeProvider(VOLUME_CONTROL_ABSOLUTE, 100, 50) {
+            override fun onSetVolumeTo(volume: Int) { runOnUiThread { castVolume(volume / 100f); currentVolume = volume } }
+            override fun onAdjustVolume(direction: Int) {
+                runOnUiThread {
+                    val v = ((castVolumeKnown.coerceAtLeast(0f) * 100).toInt() + direction * 2).coerceIn(0, 100)
+                    castVolume(v / 100f); currentVolume = v
+                }
+            }
+        }
+        ms.setPlaybackToRemote(vp)
+        volumeProvider = vp
+        mediaSession = ms
+    }
+
+    private fun onNotificationAction(a: String) {
+        when (a) {
+            CastService.ACTION_PLAY, CastService.ACTION_PAUSE -> castToggle()
+            CastService.ACTION_NEXT -> castStep(1)
+            CastService.ACTION_PREV -> castStep(-1)
+            CastService.ACTION_STOP -> castStop()
+        }
+    }
+
+    /** Oynatıcı durumunu bildirime ve kilit ekranına yansıtır. */
+    private fun syncMediaSession(c: CastUi) {
+        val ms = mediaSession ?: return
+        if (c.phase == CastPhase.NONE) {
+            ms.isActive = false
+            notifKey = ""
+            return
+        }
+        // Bitti/hata: bildirim kaldırılır (yayın sürmüyor)
+        if (c.phase == CastPhase.ENDED || c.phase == CastPhase.ERROR) {
+            notifKey = ""
+            CastService.stop(this)
+            return
+        }
+        val playing = c.phase == CastPhase.PLAYING || c.phase == CastPhase.BUFFERING || c.phase == CastPhase.PREPARING
+        val state = when (c.phase) {
+            CastPhase.PLAYING -> android.media.session.PlaybackState.STATE_PLAYING
+            CastPhase.PAUSED -> android.media.session.PlaybackState.STATE_PAUSED
+            CastPhase.ENDED, CastPhase.ERROR -> android.media.session.PlaybackState.STATE_STOPPED
+            else -> android.media.session.PlaybackState.STATE_BUFFERING
+        }
+        var actions = android.media.session.PlaybackState.ACTION_STOP
+        if (c.kind != MediaKind.PHOTO) actions = actions or android.media.session.PlaybackState.ACTION_PLAY or
+            android.media.session.PlaybackState.ACTION_PAUSE or android.media.session.PlaybackState.ACTION_PLAY_PAUSE or
+            android.media.session.PlaybackState.ACTION_SEEK_TO
+        if (c.hasList) actions = actions or android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT or
+            android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS
+        ms.setPlaybackState(
+            android.media.session.PlaybackState.Builder()
+                .setActions(actions)
+                .setState(state, (c.position * 1000).toLong(), if (c.phase == CastPhase.PLAYING) 1f else 0f)
+                .build()
+        )
+        if (c.volume >= 0f) volumeProvider?.currentVolume = (c.volume * 100).toInt()
+        ms.isActive = true
+
+        // Kapak/küçük resim (dosya değişince bir kez yüklenir)
+        val item = c.item
+        if (item != null && artFor != item.id) {
+            artFor = item.id
+            artBitmap = null
+            scope.launch {
+                val bmp = withContext(Dispatchers.IO) { runCatching { thumbLib.thumbnail(item, 512) }.getOrNull() }
+                if (artFor == item.id) { artBitmap = bmp; notifKey = ""; syncMediaSession(cast) }
+            }
+        }
+        // Bildirim yalnızca ad/durum değişince güncellenir (konum her saniye değil)
+        val key = "${c.title}|$playing|${c.hasList}|${c.kind}|${artBitmap != null}"
+        if (key == notifKey) return
+        notifKey = key
+        ms.setMetadata(
+            android.media.MediaMetadata.Builder()
+                .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, c.title)
+                .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, c.item?.subtitle.orEmpty())
+                .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, (c.duration * 1000).toLong())
+                .apply { artBitmap?.let { putBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART, it) } }
+                .build()
+        )
+        CastService.update(this, CastService.Info(
+            title = c.title, subtitle = c.item?.subtitle.orEmpty(), playing = playing,
+            canSkip = c.hasList, isPhoto = c.kind == MediaKind.PHOTO, art = artBitmap, token = ms.sessionToken
+        ))
+    }
+
+    // ---------- "Paylaş" ile gelen dosyalar ----------
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShare(intent)
+    }
+
+    private fun handleShare(intent: Intent?) {
+        intent ?: return
+        val uris: List<android.net.Uri> = when (intent.action) {
+            Intent.ACTION_SEND -> listOfNotNull(
+                if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            )
+            Intent.ACTION_SEND_MULTIPLE -> (if (android.os.Build.VERSION.SDK_INT >= 33)
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)).orEmpty()
+            else -> return
+        }
+        intent.action = null      // aynı paylaşım ikinci kez işlenmesin
+        if (uris.isEmpty()) return
+        val items = uris.mapIndexed { i, u ->
+            val mime = contentResolver.getType(u) ?: intent.type ?: ""
+            val kind = when {
+                mime.startsWith("image") -> MediaKind.PHOTO
+                mime.startsWith("audio") -> MediaKind.MUSIC
+                else -> MediaKind.VIDEO
+            }
+            MediaItem(id = -1L - i, uri = u, title = displayName(u) ?: kind.label, subtitle = "",
+                mime = mime.ifBlank { kind.fallbackMime }, kind = kind)
+        }
+        castTabTick++
+        if (state == ConnState.CONNECTED) playShared(items)
+        else {
+            pendingShare = items
+            if (state != ConnState.CONNECTING) toast("Önce TV'ye bağlan; bağlanınca dosya TV'de açılacak")
+        }
+    }
+
+    private fun playShared(items: List<MediaItem>) {
+        playAlbumId = null
+        playFromList(items, 0)
+    }
+
     /** Cast sekmesi açılınca: TV'nin Chromecast'ine görünmeden bağlanır (TV ekranı değişmez). */
     private fun castWarmup() {
         val ip = currentIp
@@ -488,7 +658,38 @@ class MainActivity : ComponentActivity() {
         if (playlist.isEmpty()) return
         val n = playlist.size
         castStepTick++                     // galeri listesi yeni öğeyi takip etsin
-        playFromList(playlist, ((playIndex + dir) % n + n) % n)
+        val next = if (shuffle && cast.kind == MediaKind.MUSIC && n > 2 && dir > 0) {
+            // Karıştır: aynı şarkı art arda gelmesin
+            (0 until n).filter { it != playIndex }.random()
+        } else ((playIndex + dir) % n + n) % n
+        playFromList(playlist, next)
+    }
+
+    /** Şarkı/video bitince ne olacağı (müzikte tekrar moduna göre). */
+    private fun onMediaFinished() {
+        if (cast.kind == MediaKind.MUSIC) {
+            when {
+                repeatMode == RepeatMode.ONE -> { playFromList(playlist.ifEmpty { return }, playIndex.coerceAtLeast(0)); return }
+                repeatMode == RepeatMode.OFF && !shuffle && playIndex >= playlist.size - 1 -> {
+                    cast = cast.copy(phase = CastPhase.ENDED); castPollJob?.cancel(); return
+                }
+            }
+        }
+        if (playlist.size > 1) castStep(1) else cast = cast.copy(phase = CastPhase.ENDED)
+    }
+
+    private fun cycleRepeat() {
+        repeatMode = when (repeatMode) { RepeatMode.OFF -> RepeatMode.ALL; RepeatMode.ALL -> RepeatMode.ONE; RepeatMode.ONE -> RepeatMode.OFF }
+        prefs.edit().putString("tekrar", repeatMode.name).apply()
+        cast = cast.copy(repeat = repeatMode)
+        toast(when (repeatMode) { RepeatMode.OFF -> "Tekrar kapalı"; RepeatMode.ALL -> "Listeyi tekrarla"; RepeatMode.ONE -> "Bu şarkıyı tekrarla" })
+    }
+
+    private fun toggleShuffle() {
+        shuffle = !shuffle
+        prefs.edit().putBoolean("karistir", shuffle).apply()
+        cast = cast.copy(shuffle = shuffle)
+        toast(if (shuffle) "Karıştır açık" else "Karıştır kapalı")
     }
 
     /** 10 saniye ileri/geri; videonun başı ve sonunda durur. */
@@ -543,8 +744,9 @@ class MainActivity : ComponentActivity() {
         // Yeni dosya yüklenirken önceki dosyanın "bitti/kesildi" bildirimleri yok sayılır
         if (cast.phase == CastPhase.PREPARING && st.playerState == "IDLE") return
         // Bitince sıradaki kendiliğinden başlar (liste sonunda başa döner)
-        if (st.playerState == "IDLE" && st.idleReason == "FINISHED" && playlist.size > 1) {
-            castStep(1)
+        if (st.playerState == "IDLE" && st.idleReason == "FINISHED" &&
+            (playlist.size > 1 || (cast.kind == MediaKind.MUSIC && repeatMode == RepeatMode.ONE && playlist.isNotEmpty()))) {
+            onMediaFinished()
             return
         }
         val phase = when (st.playerState) {
@@ -849,7 +1051,9 @@ data class UiState(
     val typingSeed: String,
     val typingSeedTick: Int,
     val imeReady: Boolean,
-    val typingHint: String = ""
+    val typingHint: String = "",
+    /** Artınca alt menü Cast sekmesine geçer (Paylaş ile dosya gelince). */
+    val castTabTick: Int = 0
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */

@@ -51,6 +51,9 @@ enum class MediaKind(val label: String, val mimeFilter: String, val fallbackMime
     MUSIC("Müzik", "audio/*", "audio/mpeg")
 }
 
+/** Müzikte tekrar modu. */
+enum class RepeatMode { OFF, ALL, ONE }
+
 enum class CastPhase { NONE, PREPARING, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
 
 /** Cast ekranının durumu. Süreler saniye cinsinden. */
@@ -76,7 +79,9 @@ data class CastUi(
     /** Chromecast ses düzeyi 0..1 (bilinmiyorsa -1). */
     val volume: Float = -1f,
     /** Oynatmanın başladığı klasörün öğeleri (önizleme şeridi için). */
-    val list: List<MediaItem> = emptyList()
+    val list: List<MediaItem> = emptyList(),
+    val repeat: RepeatMode = RepeatMode.ALL,
+    val shuffle: Boolean = false
 )
 
 enum class Tab { REMOTE, CAST }
