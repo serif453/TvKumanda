@@ -81,7 +81,10 @@ data class CastUi(
     /** Oynatmanın başladığı klasörün öğeleri (önizleme şeridi için). */
     val list: List<MediaItem> = emptyList(),
     val repeat: MusicRepeat = MusicRepeat.ALL,
-    val shuffle: Boolean = false
+    val shuffle: Boolean = false,
+    /** Fotoğraf slayt gösterisi açık mı ve kaç saniyede bir geçiliyor. */
+    val slideshow: Boolean = false,
+    val slideSec: Int = 5
 )
 
 enum class Tab { REMOTE, CAST }
@@ -137,6 +140,8 @@ fun CastScreen(
     library: MediaLibrary,
     showInFolderTick: Int,
     sheet: PlayerSheet,
+    onSlideshow: () -> Unit,
+    onSlideSec: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Sekme açılınca TV'nin Chromecast'ine arka planda (görünmeden) bağlanılır
@@ -242,7 +247,7 @@ fun CastScreen(
         if (cast.phase != CastPhase.NONE) {
             Spacer(Modifier.height(8.dp))
             // Kart başlığına dokununca tam ekran oynatıcı açılır
-            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, sheet)
+            PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, sheet, onSlideshow, onSlideSec)
         }
         Spacer(Modifier.height(6.dp))
     }
@@ -457,7 +462,9 @@ private fun PlayerCard(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
-    sheet: PlayerSheet
+    sheet: PlayerSheet,
+    onSlideshow: () -> Unit,
+    onSlideSec: () -> Unit
 ) {
     Column(
         Modifier
@@ -536,7 +543,7 @@ private fun PlayerCard(
                 )
                 RoundAction(AppIcons.Forward10, "10 saniye ileri", onClick = { onSkip(10.0) })
             } else {
-                Spacer(Modifier.width(40.dp))
+                SlideshowControls(cast, onSlideshow, onSlideSec, big = 64.dp)
             }
             RoundAction(AppIcons.SkipNext, "Sonraki", enabled = cast.hasList, onClick = onNext)
         }
@@ -561,6 +568,22 @@ internal fun RoundAction(
     ) {
         Icon(icon, desc, tint = if (enabled) Pal.Text else Pal.Sub.copy(alpha = 0.4f), modifier = Modifier.size(iconSize))
     }
+}
+
+/** Fotoğraf slayt gösterisi: oynat/duraklat ve süre seçimi (3 / 5 / 10 sn). */
+@Composable
+internal fun SlideshowControls(cast: CastUi, onSlideshow: () -> Unit, onSlideSec: () -> Unit, big: Dp) {
+    if (cast.list.size <= 1) { Spacer(Modifier.width(40.dp)); return }
+    RoundAction(
+        if (cast.slideshow) AppIcons.Pause else AppIcons.PlayArrow,
+        if (cast.slideshow) "Slaytı durdur" else "Slayt gösterisi",
+        size = big, iconSize = big / 2, primary = true, onClick = onSlideshow
+    )
+    Text(
+        "${cast.slideSec} sn", color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+        modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.BtnPressed)
+            .clickable(onClick = onSlideSec).padding(horizontal = 10.dp, vertical = 8.dp)
+    )
 }
 
 internal fun timeText(sec: Double): String {

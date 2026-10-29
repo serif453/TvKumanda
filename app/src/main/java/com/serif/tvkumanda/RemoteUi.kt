@@ -148,7 +148,9 @@ fun RemoteScreen(
     onCastVolume: (Float) -> Unit = {},
     onCastPlayAt: (Int) -> Unit = {},
     onCastRepeat: () -> Unit = {},
-    onCastShuffle: () -> Unit = {}
+    onCastShuffle: () -> Unit = {},
+    onCastSlideshow: () -> Unit = {},
+    onCastSlideSec: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
     var tab by remember { mutableStateOf(Tab.REMOTE) }
@@ -189,7 +191,7 @@ fun RemoteScreen(
                 cast, ui.state == ConnState.CONNECTED,
                 onCastPick, onCastItem, onCastToggle, onCastSeek, onCastStop,
                 onCastPrev, onCastNext, onCastSkip, onCastWarmup,
-                mediaLibrary, showInFolderTick, playerSheet,
+                mediaLibrary, showInFolderTick, playerSheet, onCastSlideshow, onCastSlideSec,
                 modifier = Modifier.weight(1f)
             )
         } else {
@@ -238,7 +240,8 @@ fun RemoteScreen(
             onVolume = onCastVolume,
             onPlayAt = onCastPlayAt,
             onShowInFolder = { playerSheet.close(); showInFolderTick++ },
-            onRepeat = onCastRepeat, onShuffle = onCastShuffle
+            onRepeat = onCastRepeat, onShuffle = onCastShuffle,
+            onSlideshow = onCastSlideshow, onSlideSec = onCastSlideSec
         )
     }
 

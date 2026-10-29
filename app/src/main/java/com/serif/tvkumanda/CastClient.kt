@@ -86,7 +86,7 @@ class CastClient {
      * Medyayı TV'de açar. [url] TV'nin erişebileceği bir http adresidir (telefondaki sunucu).
      * Varsayılan medya alıcısı gerekirse başlatılır.
      */
-    fun load(url: String, mime: String, title: String) {
+    fun load(url: String, mime: String, title: String, startAt: Double = 0.0) {
         val app = prepareReceiver()
         val media = JSONObject()
             .put("contentId", url)
@@ -97,7 +97,7 @@ class CastClient {
             .put("type", "LOAD")
             .put("media", media)
             .put("autoplay", true)
-            .put("currentTime", 0), timeoutMs = 20_000)
+            .put("currentTime", startAt), timeoutMs = 20_000)
         when (reply.optString("type")) {
             "MEDIA_STATUS" -> handleMediaStatus(reply)
             "LOAD_FAILED" -> throw IOException("TV bu dosyayı açamadı (biçim desteklenmiyor olabilir)")

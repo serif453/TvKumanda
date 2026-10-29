@@ -107,6 +107,14 @@ class MainActivity : ComponentActivity() {
     // "Paylaş" ile gelen dosyalar (bağlantı kurulunca oynatılır)
     private var pendingShare: List<MediaItem>? = null
     private var castTabTick by mutableStateOf(0)
+    // Fotoğraf slayt gösterisi
+    private var slideshow = false
+    private var slideSec = 5
+    private var slideJob: Job? = null
+    // Kaldığın yerden devam (video)
+    private var currentUri: android.net.Uri? = null
+    private var autoAdvancing = false
+    private var saveCounter = 0
     @Volatile private var pendingVolume: Float? = null
     private var volumeSendJob: Job? = null
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -126,6 +134,7 @@ class MainActivity : ComponentActivity() {
         thumbLib = MediaLibrary(applicationContext)
         repeatMode = runCatching { MusicRepeat.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(MusicRepeat.ALL)
         shuffle = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getBoolean("karistir", false)
+        slideSec = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getInt("slayt_sn", 5)
         setupMediaSession()
         CastService.controller = { a -> runOnUiThread { onNotificationAction(a) } }
         castClient.onStatus = { st -> runOnUiThread { onCastStatus(st) } }
@@ -180,6 +189,8 @@ class MainActivity : ComponentActivity() {
                     onCastPlayAt = { i -> castStepTick++; playFromList(playlist, i) },
                     onCastRepeat = ::cycleRepeat,
                     onCastShuffle = ::toggleShuffle,
+                    onCastSlideshow = ::toggleSlideshow,
+                    onCastSlideSec = ::cycleSlideSec,
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -433,8 +444,34 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Seçilen dosyayı telefondaki sunucudan yayınlar ve TV'nin Chromecast'ine oynatır. */
-    private fun castMedia(uri: android.net.Uri, kind: MediaKind, knownTitle: String? = null, knownMime: String? = null) {
+    private fun castMedia(
+        uri: android.net.Uri, kind: MediaKind, knownTitle: String? = null, knownMime: String? = null,
+        startAt: Double = 0.0, askResume: Boolean = true
+    ) {
         if (state != ConnState.CONNECTED || currentIp.isBlank()) { toast("Önce TV'ye bağlan"); return }
+        // Önceki videonun konumu kaydedilir
+        saveResumePosition()
+        // Daha önce yarıda bırakılmış video: kaldığı yerden devam edilsin mi?
+        val auto = autoAdvancing
+        autoAdvancing = false
+        if (kind == MediaKind.VIDEO && askResume && !auto) {
+            val saved = prefs.getFloat(resumeKey(uri), 0f).toDouble()
+            if (saved > 0) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle(knownTitle ?: kind.label)
+                    .setMessage("Bu videoyu daha önce yarıda bırakmıştın.")
+                    .setPositiveButton("Kaldığın yerden devam et (${formatTime(saved)})") { _, _ ->
+                        castMedia(uri, kind, knownTitle, knownMime, startAt = saved, askResume = false)
+                    }
+                    .setNegativeButton("Baştan başla") { _, _ ->
+                        prefs.edit().remove(resumeKey(uri)).apply()
+                        castMedia(uri, kind, knownTitle, knownMime, startAt = 0.0, askResume = false)
+                    }
+                    .show()
+                return
+            }
+        }
+        currentUri = uri
         askNotificationPermissionOnce()
         val ip = currentIp
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
@@ -448,9 +485,12 @@ class MainActivity : ComponentActivity() {
             volume = castVolumeKnown,
             list = playlist,
             repeat = repeatMode,
-            shuffle = shuffle
+            shuffle = shuffle,
+            slideshow = slideshow && kind == MediaKind.PHOTO,
+            slideSec = slideSec
         )
         castPollJob?.cancel()
+        if (kind != MediaKind.PHOTO) { slideshow = false; slideJob?.cancel() } else if (slideshow) restartSlideTimer()
         scope.launch {
             try {
                 withContext(castIo) {
@@ -462,7 +502,7 @@ class MainActivity : ComponentActivity() {
                         castClient.prepareReceiver()
                     }
                     castStage("Dosya yükleniyor…")
-                    castClient.load(url, mime, title)
+                    castClient.load(url, mime, title, startAt)
                 }
                 startCastPolling()
             } catch (e: Exception) {
@@ -665,8 +705,56 @@ class MainActivity : ComponentActivity() {
         playFromList(playlist, next)
     }
 
+    // ---------- Slayt gösterisi ----------
+
+    private fun toggleSlideshow() {
+        slideshow = !slideshow
+        cast = cast.copy(slideshow = slideshow)
+        if (slideshow) restartSlideTimer() else slideJob?.cancel()
+    }
+
+    private fun cycleSlideSec() {
+        slideSec = when (slideSec) { 3 -> 5; 5 -> 10; else -> 3 }
+        prefs.edit().putInt("slayt_sn", slideSec).apply()
+        cast = cast.copy(slideSec = slideSec)
+        if (slideshow) restartSlideTimer()
+    }
+
+    /** Her fotoğrafta sayaç baştan başlar; önceki/sonraki tuşu slaytı bozmaz. */
+    private fun restartSlideTimer() {
+        slideJob?.cancel()
+        slideJob = scope.launch {
+            delay(slideSec * 1000L)
+            if (slideshow && cast.kind == MediaKind.PHOTO && playlist.size > 1) castStep(1)
+        }
+    }
+
+    // ---------- Kaldığın yerden devam ----------
+
+    private fun resumeKey(uri: android.net.Uri) = "konum_" + uri.toString().hashCode()
+
+    /** 1 dakikadan uzun, 30 sn'den fazla izlenmiş ve sonuna 30 sn'den fazla kalmış video hatırlanır. */
+    private fun saveResumePosition() {
+        val uri = currentUri ?: return
+        if (cast.kind != MediaKind.VIDEO) return
+        val pos = cast.position
+        val dur = cast.duration
+        val e = prefs.edit()
+        if (dur > 60 && pos > 30 && pos < dur - 30) e.putFloat(resumeKey(uri), pos.toFloat())
+        else if (dur > 0 && pos >= dur - 30) e.remove(resumeKey(uri))
+        e.apply()
+    }
+
+    private fun formatTime(sec: Double): String {
+        val t = sec.toLong(); val h = t / 3600; val m = (t % 3600) / 60; val r = t % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)
+    }
+
     /** Şarkı/video bitince ne olacağı (müzikte tekrar moduna göre). */
     private fun onMediaFinished() {
+        currentUri?.let { prefs.edit().remove(resumeKey(it)).apply() }   // sonuna kadar izlendi
+        currentUri = null
+        autoAdvancing = true
         if (cast.kind == MediaKind.MUSIC) {
             when {
                 repeatMode == MusicRepeat.ONE -> { playFromList(playlist.ifEmpty { return }, playIndex.coerceAtLeast(0)); return }
@@ -729,6 +817,7 @@ class MainActivity : ComponentActivity() {
                 delay(1000)
                 if (cast.phase == CastPhase.PLAYING || cast.phase == CastPhase.BUFFERING || cast.phase == CastPhase.PAUSED) {
                     withContext(castIo) { castClient.refresh() }
+                    if (++saveCounter % 10 == 0) saveResumePosition()   // 10 sn'de bir konum kaydı
                 }
             }
         }
@@ -794,6 +883,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun castStop() {
+        saveResumePosition()
+        currentUri = null
+        slideshow = false
+        slideJob?.cancel()
         castPollJob?.cancel()
         cast = CastUi()
         playlist = emptyList()
@@ -1026,7 +1119,9 @@ class MainActivity : ComponentActivity() {
         micStop = true
         recognizer?.destroy()
         scope.cancel()
+        saveResumePosition()
         castPollJob?.cancel()
+        slideJob?.cancel()
         CastService.stop(this)
         Thread { adb.close(); atv.release(); io.close(); castClient.close(); mediaServer.stop(); castIo.close() }.start()
     }

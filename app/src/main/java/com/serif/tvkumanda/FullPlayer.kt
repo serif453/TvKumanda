@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -115,7 +116,9 @@ fun FullPlayer(
     onPlayAt: (Int) -> Unit,
     onShowInFolder: () -> Unit,
     onRepeat: () -> Unit = {},
-    onShuffle: () -> Unit = {}
+    onShuffle: () -> Unit = {},
+    onSlideshow: () -> Unit = {},
+    onSlideSec: () -> Unit = {}
 ) {
     BackHandler(enabled = sheet.visible) { sheet.close() }
 
@@ -156,7 +159,22 @@ fun FullPlayer(
 
             // Büyük görsel + durum etiketi (kalan alana göre boyutlanır)
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Box(Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true).clip(RoundedCornerShape(28.dp))) {
+                // Görsele çift dokunma: sağ yarı +10 sn, sol yarı −10 sn (fotoğrafta yok)
+                var flash by remember { mutableStateOf<String?>(null) }
+                var flashTick by remember { mutableStateOf(0) }
+                LaunchedEffect(flashTick) { if (flash != null) { kotlinx.coroutines.delay(650); flash = null } }
+                Box(
+                    Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true).clip(RoundedCornerShape(28.dp))
+                        .pointerInput(cast.kind) {
+                            if (cast.kind == MediaKind.PHOTO) return@pointerInput
+                            detectTapGestures(onDoubleTap = { o ->
+                                val fwd = o.x > size.width / 2
+                                onSkip(if (fwd) 10.0 else -10.0)
+                                flash = if (fwd) "+10 sn" else "−10 sn"
+                                flashTick++
+                            })
+                        }
+                ) {
                     val it = cast.item
                     if (it != null) {
                         Thumb(
@@ -168,6 +186,14 @@ fun FullPlayer(
                         Box(Modifier.fillMaxSize().background(Pal.Btn), contentAlignment = Alignment.Center) {
                             Icon(placeholderFor(cast.kind), null, tint = Pal.Sub, modifier = Modifier.size(96.dp))
                         }
+                    }
+                    flash?.let { f ->
+                        Text(
+                            f, color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.align(if (f.startsWith("+")) Alignment.CenterEnd else Alignment.CenterStart)
+                                .padding(24.dp).clip(RoundedCornerShape(20.dp)).background(Pal.Bg.copy(alpha = 0.7f))
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
                     }
                     Text(
                         statusText(cast),
@@ -267,7 +293,7 @@ fun FullPlayer(
                     RoundAction(if (playing) AppIcons.Pause else AppIcons.PlayArrow, if (playing) "Duraklat" else "Oynat",
                         size = 72.dp, iconSize = 36.dp, primary = true, onClick = onToggle)
                     RoundAction(AppIcons.Forward10, "10 saniye ileri", size = 52.dp, onClick = { onSkip(10.0) })
-                } else Spacer(Modifier.width(48.dp))
+                } else SlideshowControls(cast, onSlideshow, onSlideSec, big = 72.dp)
                 RoundAction(AppIcons.SkipNext, "Sonraki", size = 52.dp, enabled = cast.hasList, onClick = onNext)
             }
 
