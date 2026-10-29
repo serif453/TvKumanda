@@ -56,12 +56,14 @@ fun ShortcutsScreen(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(20.dp))
         Text("Favori kanallar", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        val channelCells: List<(@Composable (Modifier) -> Unit)> =
-            sampleChannels.map { (no, name) -> { m: Modifier -> ChannelTile(no, name, m, soon) } } +
-                listOf({ m: Modifier -> AddTile("Kanal ekle", m.height(76.dp), soon) })
+        // null = "Kanal ekle" kutusu
+        val channelCells: List<Pair<String, String>?> = sampleChannels + listOf(null)
         for (row in channelCells.chunked(3)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (cell in row) cell(Modifier.weight(1f))
+                for (ch in row) {
+                    if (ch != null) ChannelTile(ch.first, ch.second, Modifier.weight(1f), soon)
+                    else AddTile("Kanal ekle", Modifier.weight(1f).height(76.dp), soon)
+                }
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
             Spacer(Modifier.height(10.dp))
@@ -71,12 +73,14 @@ fun ShortcutsScreen(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(10.dp))
         Text("Kısayollarım", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        val cells: List<(@Composable (Modifier) -> Unit)> =
-            sampleShortcuts.map { sc -> { m: Modifier -> ShortcutTile(sc, m, soon) } } +
-                listOf({ m: Modifier -> AddTile("Yeni kısayol", m.height(96.dp), soon) })
+        // null = "Yeni kısayol" kutusu
+        val cells: List<Shortcut?> = sampleShortcuts + listOf(null)
         for (row in cells.chunked(2)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (cell in row) cell(Modifier.weight(1f))
+                for (sc in row) {
+                    if (sc != null) ShortcutTile(sc, Modifier.weight(1f), soon)
+                    else AddTile("Yeni kısayol", Modifier.weight(1f).height(96.dp), soon)
+                }
                 repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
             }
             Spacer(Modifier.height(10.dp))
