@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -94,7 +95,7 @@ data class CastUi(
     val routeName: String = ""
 )
 
-enum class Tab { REMOTE, CAST, TOOLS }
+enum class Tab { REMOTE, CAST, TOOLS, SHORTCUTS }
 
 /** Yayın yolu: TV'nin Chromecast'i ya da ağdaki bir DLNA cihazı. */
 enum class CastRoute { CHROMECAST, DLNA }
@@ -106,7 +107,7 @@ data class DlnaUi(
     val searching: Boolean = false
 )
 
-/** Alt menü: Kumanda / Cast / Araçlar. */
+/** Alt menü: Kumanda / Cast / Araçlar / Kısayollar. */
 @Composable
 fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
     Row(
@@ -117,13 +118,14 @@ fun BottomNav(tab: Tab, onTab: (Tab) -> Unit) {
         NavItem(AppIcons.Tv, "Kumanda", tab == Tab.REMOTE) { onTab(Tab.REMOTE) }
         NavItem(AppIcons.Cast, "Cast", tab == Tab.CAST) { onTab(Tab.CAST) }
         NavItem(androidx.compose.material.icons.Icons.Outlined.Build, "Araçlar", tab == Tab.TOOLS) { onTab(Tab.TOOLS) }
+        NavItem(androidx.compose.material.icons.Icons.Outlined.Bolt, "Kısayollar", tab == Tab.SHORTCUTS) { onTab(Tab.SHORTCUTS) }
     }
 }
 
 @Composable
 private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     Column(
-        Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 2.dp),
+        Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
