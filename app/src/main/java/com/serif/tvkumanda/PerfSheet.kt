@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -161,14 +160,11 @@ private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Uni
                         val off = i in v.offline
                         add(RingItem("Çekirdek ${i + 1}", if (off) "Kapalı" else pct(p), (p ?: 0) / 100f, off, Icons.Outlined.Memory, AppSort.CPU))
                     }
-                    // Sıcaklık halkası: 100 °C dolu sayılır, 75 °C üstü sarı
-                    v.tempC?.let { add(RingItem("Sıcaklık", "$it°C", it / 100f, false, Icons.Outlined.Thermostat, AppSort.CPU)) }
                 }
                 cards.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         row.forEach { c ->
-                            val warm = c.label == "Sıcaklık" && c.f > 0.75f
-                            RingCard(c.label, c.text, c.f, c.dim, c.icon, if (warm) Pal.Amber else null, Modifier.weight(1f)) { onOpen(c.sort) }
+                            RingCard(c.label, c.text, c.f, c.dim, c.icon, null, Modifier.weight(1f)) { onOpen(c.sort) }
                         }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
@@ -218,19 +214,25 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
             }.onFailure { error = errorText(it); delay(2000) }
         }
     }
-    // Ağır ölçümler liste ekrana geldikten sonra: önce ekrandaki uygulama, sonra gerçek bellek (5 sn'de bir)
+    // Ağır ölçümler sürekli değil (TV'yi yoruyor): liste ekrana gelince bir kez, sonra yalnızca gerektiğinde.
+    // Ekrandaki uygulama: açılışta, durdurma/açmadan sonra ve "Yenile"de. Gerçek bellek (PSS): açılışta ve "Yenile"de.
     val ready = apps != null
-    LaunchedEffect(ready) {
+    var fgTick by remember { mutableIntStateOf(0) }
+    var pssTick by remember { mutableIntStateOf(0) }
+    var measuring by remember { mutableStateOf(false) }
+    LaunchedEffect(ready, fgTick) {
         if (!ready) return@LaunchedEffect
-        while (true) {
-            io { TvTools.foregroundApp() }.onSuccess { foreground = it; PerfCache.foreground = it }
-            io { TvTools.appPss() }.onSuccess { m ->
-                PerfCache.pss = m
-                // Yeni PSS değerlerini listeye hemen uygula, sonraki turu bekleme
-                apps = apps?.map { a -> m[a.pkg]?.let { a.copy(kb = it) } ?: a }
-            }
-            delay(5000)
+        if (fgTick > 0) delay(1500) // durdurulan/açılan uygulamanın yerleşmesi için
+        io { TvTools.foregroundApp() }.onSuccess { foreground = it; PerfCache.foreground = it }
+    }
+    LaunchedEffect(ready, pssTick) {
+        if (!ready) return@LaunchedEffect
+        measuring = true
+        io { TvTools.appPss() }.onSuccess { m ->
+            PerfCache.pss = m
+            apps = apps?.map { a -> m[a.pkg]?.let { a.copy(kb = it) } ?: a }
         }
+        measuring = false
     }
     // Açılış süresi teşhis kaydına: yavaşlık sürerse nerede takıldığı görülsün
     LaunchedEffect(ready) {
@@ -247,9 +249,11 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
         }
         Spacer(Modifier.height(12.dp))
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SortChip("Bellek", sort == AppSort.RAM) { onSort(AppSort.RAM) }
         SortChip("İşlemci", sort == AppSort.CPU) { onSort(AppSort.CPU) }
+        Spacer(Modifier.weight(1f))
+        SortChip(if (measuring) "Ölçülüyor…" else "Yenile", false) { if (!measuring && ready) { pssTick++; fgTick++ } }
     }
     Spacer(Modifier.height(12.dp))
     val list = apps
@@ -265,7 +269,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
                 stopped[pkg] = true; result = null; expanded = null
                 run {
                     io { TvFiles.forceStop(TvPackage(pkg, label(pkg), false, false, "", "", 0)) }
-                        .onSuccess { stopped.remove(pkg); result = ToolResult(true, "${label(pkg)} durduruldu") }
+                        .onSuccess { stopped.remove(pkg); result = ToolResult(true, "${label(pkg)} durduruldu"); fgTick++ }
                         .onFailure { stopped.remove(pkg); result = ToolResult(false, errorText(it)) }
                 }
             }
@@ -287,7 +291,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
                             expanded = null; result = null
                             run {
                                 io { TvFiles.open(TvPackage(a.pkg, label(a.pkg), false, false, "", "", 0)) }
-                                    .onSuccess { result = ToolResult(true, "${label(a.pkg)} TV'de açıldı") }
+                                    .onSuccess { result = ToolResult(true, "${label(a.pkg)} TV'de açıldı"); fgTick++ }
                                     .onFailure { result = ToolResult(false, errorText(it)) }
                             }
                         },
@@ -319,7 +323,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
                 confirmAll = false; busyAll = true; result = null
                 run {
                     io { TvTools.forceStopAll(targets) }
-                        .onSuccess { result = ToolResult(true, "${targets.size} uygulama durduruldu") }
+                        .onSuccess { result = ToolResult(true, "${targets.size} uygulama durduruldu"); fgTick++ }
                         .onFailure { result = ToolResult(false, errorText(it)) }
                     busyAll = false
                 }

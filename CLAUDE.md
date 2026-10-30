@@ -103,11 +103,13 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Performans: `PerfStats.kt` (saf: tek komutla `/proc/stat` cpu satırları, MemTotal/MemAvailable, `cpu/present`; iki ölçüm
   farkından yüzde, iowait boşta sayılır; listede olmayan çekirdek "Kapalı") + `PerfSheet.kt` (bellek kartı, 2'li ızgarada
   halkalar). Pencere açıkken 1 sn'de bir ADB ile okur, kapanınca durur. Görünüm Serif'in gönderdiği ekran görüntüsünden.
-  Sıcaklık: `paste` ile tüm thermal_zone'lar tek süreçte, seçim `SysInfo.temperature` ile aynı. "Son 1 dakika" grafiği
+  **Sıcaklık yok:** v0.106'da saniyede bir tüm thermal_zone'ları okumak Serif'in TV'sini yeniden başlattı (Philips logosu);
+  v0.107'de kaldırıldı. Sistem bilgisi'ndeki tek seferlik okuma kaldı. "Son 1 dakika" grafiği
   (işlemci + bellek, 60 ölçüm). Kartlara dokununca "Çalışan uygulamalar" (Bellek/İşlemci sıralı); Sistem'de ayrı kutucuk da var.
   - Ölçüm: tek `ps -A -o PID,RSS,TIME+,NAME` (TIME+ = jiffy; ps bilmiyorsa `/proc/[pid]/stat`) 2 sn'de bir; işlemci tüm
-    işlemcinin yüzdesi; süreçler paket adına toplanır. Ağır olanlar liste ekrana geldikten sonra 5 sn'de bir: ekrandaki
-    uygulama (`dumpsys activity activities`) ve PSS (`dumpsys meminfo`; gelene kadar RSS).
+    işlemcinin yüzdesi; süreçler paket adına toplanır. Ağır olanlar **sürekli çalışmaz** (Serif'in kararı, TV'yi yoruyor):
+    ekrandaki uygulama (`dumpsys activity activities`) açılışta, durdurma/açmadan sonra ve "Yenile"de; PSS (`dumpsys
+    meminfo`; gelene kadar RSS) açılışta ve "Yenile"de.
   - Hız: `PerfCache` (bağlantı başına) uygulama adlarını, son listeyi ve ölçümü tutar; Performans açılınca liste önceden
     hazırlanır. Açılış süresi teşhis kaydına yazılır ("Çalışan uygulamalar: liste N ms").
   - Durdur = `am force-stop`; `TvAdvanced.isProtected` olanlarda düğme yok. Toplu durdurma iki dokunuşla, ekrandaki uygulama

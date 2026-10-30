@@ -9,9 +9,9 @@ object PerfStats {
     /** Bölümler "##X" satırlarıyla ayrılır: S = /proc/stat, M = bellek, C = var olan çekirdekler (ör. "0-3"). */
     const val COMMAND = "echo '##S'; grep '^cpu' /proc/stat; " +
         "echo '##M'; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; " +
-        "echo '##C'; cat /sys/devices/system/cpu/present 2>/dev/null; " +
-        // Tek süreçle tüm sıcaklık bölgeleri: önce adlar, sonra değerler, tek satırda sekmeyle
-        "echo '##H'; paste /sys/class/thermal/thermal_zone*/type /sys/class/thermal/thermal_zone*/temp 2>/dev/null"
+        "echo '##C'; cat /sys/devices/system/cpu/present 2>/dev/null"
+    // Sıcaklık bilerek yok: v0.106'da saniyede bir tüm sıcaklık sensörlerini okumak Serif'in Philips TV'sini
+    // yeniden başlattı. Ayrıştırıcı ([temperature], "##H" bölümü) yerinde; tekrar eklenecekse tek sensör ve seyrek.
 
     /** Bir işlemci satırının sayaçları: toplam ve boşta geçen süre (jiffy). */
     data class Ticks(val total: Long, val idle: Long)
