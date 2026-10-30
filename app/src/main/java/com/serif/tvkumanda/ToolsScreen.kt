@@ -60,7 +60,7 @@ private val toolGroups = listOf(
     )),
     ToolGroup("Ekran", listOf(
         Tool("Ekran görüntüsü", Icons.Outlined.Screenshot, adb = true, id = ToolId.SCREENSHOT),
-        Tool("Ekran kaydı", Icons.Outlined.Videocam, adb = true, experimental = true),
+        Tool("Ekran kaydı", Icons.Outlined.Videocam, adb = true, experimental = true, id = ToolId.SCREEN_REC),
         Tool("Animasyon hızı", Icons.Outlined.Animation, adb = true, warning = true, id = ToolId.ANIMATION)
     )),
     ToolGroup("Gelişmiş", listOf(
@@ -91,8 +91,8 @@ private val toolGroups = listOf(
         Tool("Teşhis kaydını paylaş", Icons.Outlined.BugReport, offline = true, id = ToolId.DIAG_LOG)
     )),
     ToolGroup("Deneysel", listOf(
-        Tool("Ekran yansıtma", Icons.Outlined.ScreenShare, experimental = true),
-        Tool("Telefonu TV hoparlörüne bağla", Icons.Outlined.Speaker, experimental = true)
+        Tool("Ekran yansıtma", Icons.Outlined.ScreenShare, experimental = true, id = ToolId.MIRROR),
+        Tool("Telefonu TV hoparlörüne bağla", Icons.Outlined.Speaker, experimental = true, id = ToolId.PHONE_SPEAKER)
     ))
 )
 

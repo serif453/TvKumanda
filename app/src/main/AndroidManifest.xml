@@ -18,6 +18,8 @@
     <!-- Cast: ekran kapalıyken de yayın sürsün (kalıcı bildirim + Wi-Fi uyanık) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Ekran yansıtma ve hoparlör: telefonun ekranı/sesi yakalanıp ağda yayınlanır (ön plan hizmeti) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- DLNA: ağdaki oynatıcıları bulmak için çoklu yayın (yerel ağ) -->
@@ -88,6 +90,10 @@
             android:name=".DlnaServerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name=".LiveService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
         <service
             android:name=".CastService"
             android:exported="false"

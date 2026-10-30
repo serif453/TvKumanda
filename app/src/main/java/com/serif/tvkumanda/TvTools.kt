@@ -228,6 +228,21 @@ object TvTools {
         } else atvLink(url)
     }
 
+    /**
+     * Telefonun canlı yayın adresini TV'deki oynatıcıda açar. ADB'de türü ([mime]) belirterek, Standart'ta
+     * kumandanın "bağlantı aç" isteğiyle; hangi uygulamanın açacağını TV seçer.
+     */
+    fun openStream(url: String, mime: String) {
+        if (!isAdb()) { atvLink(url); return }
+        fun q(s: String) = "'" + s.replace("'", "'\\''") + "'"
+        val args = "-a android.intent.action.VIEW -d ${q(url)} -t ${q(mime)}"
+        val resolved = sh("cmd package resolve-activity --brief $args 2>&1")
+        if (resolved.contains("frameworkpackagestubs") || resolved.contains("No activity found", true))
+            throw java.io.IOException("TV'de bu yayını açacak bir oynatıcı yok")
+        val out = sh("am start $args 2>&1")
+        if (out.contains("Error", true)) throw java.io.IOException("TV'de bu yayını açacak bir oynatıcı yok")
+    }
+
     /** Metindeki ilk web adresini bulur; şema yoksa https eklenir. */
     fun extractUrl(text: String): String? {
         Regex("""https?://\S+""").find(text)?.let { return it.value.trimEnd('.', ',', ')', '"', '\'') }

@@ -44,7 +44,8 @@ enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIM
     APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER,
     PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS,
     CONN_TEST, DIAG_LOG, NET_SCAN, ALL_TVS,
-    SLEEP_TIMER, WAKE_TIME, SCREEN_TIME, VOLUME_CAP }
+    SLEEP_TIMER, WAKE_TIME, SCREEN_TIME, VOLUME_CAP,
+    SCREEN_REC, MIRROR, PHONE_SPEAKER }
 
 /** Pencere içindeki sonuç satırı. */
 internal data class ToolResult(val ok: Boolean, val text: String)
@@ -97,6 +98,9 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
                 ToolId.WAKE_TIME -> WakeTimeTool()
                 ToolId.SCREEN_TIME -> ScreenTimeTool()
                 ToolId.VOLUME_CAP -> VolumeCapTool()
+                ToolId.SCREEN_REC -> ScreenRecTool()
+                ToolId.MIRROR -> LiveTool(screen = true)
+                ToolId.PHONE_SPEAKER -> LiveTool(screen = false)
                 ToolId.APP_MANAGER, ToolId.FILE_BROWSER, ToolId.DEBLOAT, ToolId.TERMINAL, ToolId.LOGS -> {}
             }
         }
@@ -132,6 +136,9 @@ private fun description(id: ToolId) = when (id) {
     ToolId.WAKE_TIME -> "Belirlenen saatte TV açılır"
     ToolId.SCREEN_TIME -> "Günlük süre ve gece saatleri"
     ToolId.VOLUME_CAP -> "Ses bu seviyeyi geçmez"
+    ToolId.SCREEN_REC -> "TV ekranını videoya çeker"
+    ToolId.MIRROR -> "Telefonun ekranı ve sesi TV'de görünür"
+    ToolId.PHONE_SPEAKER -> "Telefonun sesi TV'nin hoparlöründen çalar"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */

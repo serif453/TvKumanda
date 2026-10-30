@@ -3,4 +3,6 @@
     <cache-path name="shots" path="shots/" />
     <!-- Teşhis kaydı paylaşılırken geçici metin dosyası -->
     <cache-path name="diag" path="diag/" />
+    <!-- Ekran kaydı videosu paylaşılırken -->
+    <cache-path name="rec" path="rec/" />
 </paths>

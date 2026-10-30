@@ -53,7 +53,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - **Sistem:** sistem bilgisi, RAM boşaltma, önbellek temizleme, yeniden başlatma
 - **Uygulamalar:** uygulama yöneticisi, APK yükleme, uygulama yedekleme, gereksiz uygulamaları kapatma ⚠
 - **Dosyalar:** TV'ye dosya gönderme, TV dosya gezgini, TV'nin kendi oynatıcısında açma (deneysel)
-- **Ekran:** ekran görüntüsü, animasyon hızı ⚠
+- **Ekran:** ekran görüntüsü, ekran kaydı (deneysel; TV ekranı videoya çekilir, en fazla 3 dk, ses yok, ADB), animasyon hızı ⚠
 - **Gelişmiş:** özel DNS ⚠, ana ekran değiştirme ⚠, ADB komut satırı, sistem kayıtları
 - **İçerik ve tuşlar:** linki TV'de açma, panodan yazma, medya tuşları, sistem kısayolları
 - **Zamanlama ve güç:** uyku zamanlayıcısı (ADB'de son dakikada ses yavaşça kısılır), zamanlı açma (Wi-Fi ile uyandırma,
@@ -64,8 +64,13 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
   ses aç/kıs, ana ekran), bağlantı testi (Wi-Fi, VPN, TV'nin kapıları ve gecikme;
   sorun varsa tek cümlelik çözüm), teşhis kaydı (bağlanma, Cast ve araç hatalarının günlüğü; IP'ler gizlenerek paylaşılabilir)
 
+- **Deneysel (telefondan TV'ye canlı yayın):** ekran yansıtma (telefonun ekranı ve sesi TV'de görünür) ve telefonu TV
+  hoparlörüne bağlama (telefonda çalan ses TV'den gelir). İkisi de ADB gerektirmez. TV'de 2-5 saniye gecikme olur;
+  slayt, fotoğraf, müzik ve podcast için uygundur, oyun ya da video izlerken ses senkronu için değil. Telefon sesini
+  yakalamak Android 10 ve üstünü ister; bazı uygulamalar (ör. Spotify) sesinin yakalanmasına izin vermez
+
 ### Henüz hazır olmayanlar
-Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi, ekran kaydı, ekran yansıtma ve telefonu TV hoparlörüne bağlama.
+Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi.
 
 ## Kurulum
 

@@ -92,6 +92,23 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Teşhis kaydı: `DiagLog.kt` — son 500 olay `filesDir/teshis.log`'da, çökme yakalayıcısı dahil. Bağlanma, eşleştirme,
   kopma, Cast hataları ve her araç hatası (`io()` içinden) yazılır. Paylaşırken IP'lerin son hanesi varsayılan olarak
   gizlenir. Dosya adı, video adı gibi kişisel bilgiler kayda yazılmaz.
+- Ekran kaydı: `ScreenRec.kt` — TV'nin `screenrecord` komutu ADB ile arka planda (`setsid nohup`) başlar, uygulamadan
+  bağımsız sürer; uygulama açılınca `status()` süren ya da alınmamış kaydı bulur. Dosya TV'de `/data/local/tmp/tvk_rec.mp4`,
+  bitince telefona çekilip silinir. En fazla 180 sn (Android sınırı), ses yok. Durdurma `kill -2` (dosya düzgün kapansın).
+  16:9 ekranda `--size 1280x720` (4K TV'de dev dosya/kodlayıcı hatası olmasın), başka oranda boyut komuta bırakılır.
+  UI: `LiveSheets.kt` içinde `ScreenRecTool`.
+- Canlı yayın (ekran yansıtma + telefonu TV hoparlörü yap): ikisi aynı motoru kullanır, ADB gerekmez.
+  - `LiveService.kt`: `mediaProjection` türünde ön plan hizmeti. Ekran → `MediaCodec` H.264 (VirtualDisplay yüzeyi, uzun kenar
+    en çok 1280, 16'nın katı, 4 Mbps, 1 sn anahtar kare, durağan ekranda `repeat-previous-frame-after`); ses →
+    `AudioPlaybackCaptureConfiguration` (Android 10+, RECORD_AUDIO ister) → AAC-LC 128 kbps. Durum `LiveStream` nesnesinde.
+  - `LiveTs.kt`: saf MPEG-TS paketleyici (`TsMuxer`; PAT/PMT her anahtar karede, PCR görüntü PID'inde, PTS = zaman + 1 sn pay),
+    `Adts` başlığı, `LiveSize`. ffmpeg ile doğrulandı (hatasız çözülür, yayının ortasından katılan oynatıcı da çalışır).
+  - `LiveServer.kt`: bitmeyen HTTP yanıtı (`/live.ts` video/mp2t, `/live.aac` audio/aac). Görüntüde yeni izleyici ilk
+    anahtar kareden başlar; yetişemeyen izleyicinin kuyruğu atılır, sonraki anahtar kareden devam eder.
+  - TV'ye gönderme (`LiveSend`): önce DLNA (bağlı TV'nin IP'sine uyan oynatıcı), olmazsa ADB'de `am start VIEW -t <tür>`,
+    Standart'ta kumandanın "bağlantı aç" isteği. Hiçbiri açmazsa kullanıcı adresi kopyalayıp TV'deki oynatıcıya (VLC) yapıştırır.
+  - **Gerçek TV'de henüz denenmedi** (Philips'in canlı TS/ADTS'yi hangi yoldan açacağı bilinmiyor). Gecikme 2-5 sn beklenir.
+    Telefon sesini kısma seçeneği yok (yakalamanın ses seviyesinden etkilenip etkilenmediği belirsiz).
 - Kısayollar: `ShortcutsScreen.kt` — şimdilik yalnızca görünüm.
 
 ### Cast
@@ -103,7 +120,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir.
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`.
 
 ## Bilinen kısıtlar
 
@@ -115,7 +132,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 ## Yapılacaklar
 
 ### Planlanan (Serif'in sırası)
-- Araçlar'da hazır olmayanlar: ekran kaydı; ekran yansıtma; telefonu TV hoparlörüne bağlama.
+- Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
 - Ayarlar: sol üstte küçük düğme; ortada TV adı (kayıtlı TV'ler ve bağlantı türü).
