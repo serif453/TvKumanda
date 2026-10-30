@@ -160,6 +160,13 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 ### Planlanan (Serif'in sırası)
 - **Yol haritası (30 Ekim 2026):** ~2 gün daha özellik → optimizasyon ve genel kontrol (Serif yaptıracak; sağlamlık:
   çökme kalkanı, anlaşılır hata mesajları, tüm araçların tek tek denenmesi) → cila. MKV/TS dönüştürme 1.0 sonrasına.
+- **Sıradaki iş (Serif onayladı, 30 Ekim):** Performans penceresinin en üstüne "Genel bakış" kartı. İçerik: güç (açık/uyku),
+  ekrandaki uygulama, ADB gecikmesi (ms; mevcut ölçüm komutunun süresi), açık kalma süresi (`/proc/uptime`), depolama
+  çubuğu (`df /data`). "Sistem yükü": mevcut işlemci/bellek kartları + "RAM boşalt" düğmesi (`TvTools.freeRam`) + "En çok
+  işlemci kullananlar" ilk 5 (ad, işlemci %, RAM) + "Tümünü gör" → Çalışan uygulamalar. Hafif olanlar (uptime, df, gecikme)
+  saniyelik `PerfStats.COMMAND`'a eklenir; güç ve ekrandaki uygulama yalnızca açılışta ve "Yenile"de (5 sn'de bir değil).
+  "Picture stream" ve gece otomatik temizlik yok (temizlik istenirse ayrı iş, nöbetçiye). Örnek: Serif'in gönderdiği
+  "Manage the TV → Health → Now" ekran görüntüsü.
 - Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
