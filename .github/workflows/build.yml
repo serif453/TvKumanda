@@ -6,8 +6,8 @@ on:
     # Gerekirse Actions > APK Derle > Run workflow ile elle derlenebilir.
     paths-ignore:
       - 'README.md'
-      - '.github/release-notes/**'
-      - '.github/workflows/eski-notlari-guncelle.yml'
+      - 'LICENSE'
+      - 'CLAUDE.md'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,8 @@ jobs:
         run: |
           # Yalnızca başarıyla yayınlanmış sürümler sayılır; hata veren derleme numara tüketmez.
           last=$(git tag -l 'v0.*' | sed 's/^v0\.//' | grep -E '^[0-9]+$' | sort -n | tail -1)
-          next=$(( ${last:-0} + 1 ))
+          # Bu repoda henüz sürüm yokken numara eski repodan devam eder (oradaki son sürüm 0.95'ti).
+          next=$(( ${last:-95} + 1 ))
           echo "APP_VERSION=$next" >> "$GITHUB_ENV"
           echo "PREV_TAG=${last:+v0.$last}" >> "$GITHUB_ENV"
           echo "Sıradaki sürüm: 0.$next (önceki: ${last:+v0.$last})"
@@ -40,7 +41,8 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      # Dış eylemler sabit bir sürüme kilitli: sonradan değiştirilseler bile bu derlemeye bulaşamaz.
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           gradle-version: "8.7"
 
@@ -78,7 +80,9 @@ jobs:
 
       - name: Sürüm notlarını hazırla
         run: |
+          # Önceki sürüm yoksa (bu repodaki ilk sürüm) yalnızca son değişiklik yazılır.
           range=${PREV_TAG:+$PREV_TAG..}HEAD
+          [ -z "$PREV_TAG" ] && range="-1 HEAD"
           {
             echo "Değişiklikler:"
             echo
@@ -87,7 +91,7 @@ jobs:
           cat notes.md
 
       - name: Release olarak yayınla (telefondan direkt indirilebilir)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: v0.${{ env.APP_VERSION }}
           name: TV Kumanda 0.${{ env.APP_VERSION }}
