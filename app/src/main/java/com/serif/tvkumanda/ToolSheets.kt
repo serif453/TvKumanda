@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -238,27 +239,71 @@ private fun UsageBar(label: String, used: Long, total: Long, text: String) {
 private fun SystemInfoTool() {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    val info by produceState<Result<TvTools.SystemInfo>?>(null) { value = io { TvTools.systemInfo() } }
+    val info by produceState<Result<SysInfo.Report>?>(null) { value = io { TvTools.systemInfo() } }
+    var showRaw by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    val maxH = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.72f).dp
     val r = info
     when {
-        r == null -> Loading()
+        r == null -> Loading("TV'den bilgiler okunuyor…")
         r.isFailure -> ResultLine(ToolResult(false, errorText(r.exceptionOrNull()!!)))
         else -> {
             val si = r.getOrThrow()
-            si.mem?.let { UsageBar("RAM", it.usedKb, it.totalKb, "${TvTools.mb(it.usedKb)} / ${TvTools.mb(it.totalKb)}"); Spacer(Modifier.height(12.dp)) }
-            si.disk?.let { UsageBar("Depolama", it.usedKb, it.totalKb, "${TvTools.gb(it.usedKb)} / ${TvTools.gb(it.totalKb)}"); Spacer(Modifier.height(14.dp)) }
-            Column(Modifier.clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(horizontal = 14.dp, vertical = 6.dp)) {
-                si.rows.filter { it.first != "RAM" && it.first != "Depolama" }.forEach { (k, v) ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-                        Text(k, color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.width(130.dp))
-                        Text(v, color = Pal.Text, fontSize = 13.sp)
+            Column(Modifier.heightIn(max = maxH).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                for (b in si.bars) {
+                    val text = if (b.label == "RAM") "${SysInfo.mb(b.usedKb)} / ${SysInfo.mb(b.totalKb)}" else "${SysInfo.gb(b.usedKb)} / ${SysInfo.gb(b.totalKb)}"
+                    UsageBar(b.label, b.usedKb, b.totalKb, text)
+                    Spacer(Modifier.height(12.dp))
+                }
+                for (sec in si.sections) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(sec.title, color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(horizontal = 14.dp, vertical = 6.dp)) {
+                        sec.rows.forEach { (k, v) ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                                Text(k, color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.width(130.dp))
+                                Text(v, color = Pal.Text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+                SecondaryButton(if (showRaw) "Ham bilgileri gizle" else "Ham bilgileri göster", Modifier.fillMaxWidth()) { showRaw = !showRaw }
+                if (showRaw) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        si.raw, color = Pal.Sub, fontSize = 10.sp, lineHeight = 13.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Pal.Btn).padding(10.dp)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Kopyala", Modifier.weight(1f)) {
+                        clipboard.setText(AnnotatedString(si.summary()))
+                        Toast.makeText(context, "Kopyalandı", Toast.LENGTH_SHORT).show()
+                    }
+                    SecondaryButton("Dosya olarak paylaş", Modifier.weight(1f)) {
+                        runCatching {
+                            val dir = File(context.cacheDir, "diag").apply { mkdirs() }
+                            dir.listFiles()?.forEach { it.delete() }
+                            val f = File(dir, "TV-bilgileri.txt").apply { writeText(SysInfo.shareText(si)) }
+                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                                .putExtra(Intent.EXTRA_STREAM, uri)
+                                .putExtra(Intent.EXTRA_SUBJECT, "TV bilgileri")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            context.startActivity(Intent.createChooser(send, "TV bilgilerini paylaş"))
+                        }.onFailure { result = ToolResult(false, errorText(it)) }
                     }
                 }
-            }
-            Spacer(Modifier.height(16.dp))
-            MainButton("Kopyala") {
-                clipboard.setText(AnnotatedString(si.rows.joinToString("\n") { "${it.first}: ${it.second}" }))
-                Toast.makeText(context, "Kopyalandı", Toast.LENGTH_SHORT).show()
+                Text(
+                    "Paylaşılan dosyada IP, MAC ve seri numarası gizlenir.",
+                    color = Pal.Sub, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)
+                )
+                ResultLine(result)
             }
         }
     }

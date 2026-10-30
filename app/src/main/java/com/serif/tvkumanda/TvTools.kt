@@ -43,12 +43,6 @@ object TvTools {
         val usedKb get() = (totalKb - freeKb).coerceAtLeast(0)
     }
 
-    data class SystemInfo(
-        val rows: List<Pair<String, String>>,
-        val mem: MemInfo?,
-        val disk: DiskInfo?
-    )
-
     fun memInfo(): MemInfo? = parseMem(sh("cat /proc/meminfo"))
 
     private fun parseMem(text: String): MemInfo? {
@@ -68,62 +62,8 @@ object TvTools {
         return DiskInfo(nums[0], nums[2])
     }
 
-    fun systemInfo(): SystemInfo {
-        // Tek komutta tüm bilgiler; bölümler işaretlerle ayrılır
-        val out = sh(
-            "echo '##P'; getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release; " +
-                "getprop ro.build.version.sdk; getprop ro.build.version.security_patch; getprop ro.soc.model; getprop ro.board.platform; " +
-                "echo '##C'; grep -m1 -i -E 'Hardware|model name' /proc/cpuinfo; nproc; " +
-                "echo '##M'; cat /proc/meminfo; " +
-                "echo '##D'; df -k /data; " +
-                "echo '##W'; wm size; " +
-                "echo '##N'; ip -4 -o addr show 2>/dev/null; " +
-                "echo '##S'; dumpsys wifi 2>/dev/null | grep -m1 'mWifiInfo'; " +
-                "echo '##U'; cat /proc/uptime"
-        )
-        val sections = HashMap<String, StringBuilder>()
-        var cur = ""
-        for (line in out.lines()) {
-            if (line.startsWith("##")) { cur = line.removePrefix("##").trim(); sections.getOrPut(cur) { StringBuilder() } }
-            else sections[cur]?.append(line)?.append('\n')
-        }
-        fun section(tag: String): String = sections[tag]?.toString()?.trim().orEmpty()
-        val p = section("P").lines().map { it.trim() }
-        fun prop(i: Int) = p.getOrNull(i).orEmpty()
-        val rows = ArrayList<Pair<String, String>>()
-
-        val maker = prop(0).replaceFirstChar { it.uppercase() }
-        rows += "Marka ve model" to listOf(maker, prop(1)).filter { it.isNotBlank() }.joinToString(" ")
-        rows += "Android sürümü" to "Android ${prop(2)} (API ${prop(3)})"
-        if (prop(4).isNotBlank()) rows += "Güvenlik yaması" to prop(4)
-
-        val cpuLines = section("C").lines()
-        val cpuName = cpuLines.firstOrNull { it.contains(":") }?.substringAfter(":")?.trim().orEmpty()
-        val cores = cpuLines.lastOrNull()?.trim()?.toIntOrNull()
-        val chip = listOf(prop(5), cpuName, prop(6)).firstOrNull { it.isNotBlank() }.orEmpty()
-        rows += "İşlemci" to listOfNotNull(chip.ifBlank { null }, cores?.let { "$it çekirdek" }).joinToString(" · ").ifBlank { "Bilinmiyor" }
-
-        val mem = parseMem(section("M"))
-        mem?.let { rows += "RAM" to "${mb(it.usedKb)} / ${mb(it.totalKb)} kullanılıyor" }
-        val disk = parseDisk(section("D"))
-        disk?.let { rows += "Depolama" to "${gb(it.usedKb)} / ${gb(it.totalKb)} dolu" }
-
-        Regex("""(\d+)x(\d+)""").findAll(section("W")).lastOrNull()?.let { rows += "Ekran çözünürlüğü" to "${it.groupValues[1]} × ${it.groupValues[2]}" }
-
-        val net = section("N").lines().filter { !it.contains(" lo ") && it.contains("inet ") }
-        val ipLine = net.firstOrNull { it.contains("wlan") } ?: net.firstOrNull()
-        val ip = ipLine?.let { Regex("""inet (\d+\.\d+\.\d+\.\d+)""").find(it)?.groupValues?.get(1) }
-        val iface = ipLine?.trim()?.split(Regex("\\s+"))?.getOrNull(1)
-        val ssid = Regex("""SSID: "?([^",]+)"?""").find(section("S"))?.groupValues?.get(1)?.trim()
-            ?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
-        when {
-            iface?.startsWith("eth") == true -> rows += "Ağ" to "Kablolu (Ethernet)${ip?.let { " · $it" } ?: ""}"
-            ip != null -> rows += "Ağ" to listOfNotNull(ssid?.let { "Wi-Fi: $it" } ?: "Wi-Fi", ip).joinToString(" · ")
-        }
-
-        section("U").split(' ').firstOrNull()?.toDoubleOrNull()?.let { rows += "Açık kalma süresi" to duration(it.toLong()) }
-        return SystemInfo(rows, mem, disk)
-    }
+    /** Sistem bilgisi aracı: tek komut, çıktının yorumu `SysInfo`'da. */
+    fun systemInfo(): SysInfo.Report = SysInfo.build(sh(SysInfo.COMMAND))
 
     // ---------------- RAM ----------------
 
@@ -259,14 +199,5 @@ object TvTools {
         b < 1024 * 1024 -> "${b / 1024} KB"
         b < 1024L * 1024 * 1024 -> "%.1f MB".format(b / 1048576.0)
         else -> "%.1f GB".format(b / 1073741824.0)
-    }
-
-    private fun duration(sec: Long): String {
-        val d = sec / 86400; val h = (sec % 86400) / 3600; val m = (sec % 3600) / 60
-        return when {
-            d > 0 -> "$d gün $h saat"
-            h > 0 -> "$h saat $m dakika"
-            else -> "$m dakika"
-        }
     }
 }
