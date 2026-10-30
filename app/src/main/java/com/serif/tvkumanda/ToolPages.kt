@@ -52,6 +52,9 @@ fun ToolPageHost() {
     when (ToolPages.page) {
         ToolId.APP_MANAGER -> AppManagerPage { ToolPages.page = null }
         ToolId.FILE_BROWSER -> FileBrowserPage(ToolPages.startDir) { ToolPages.page = null; ToolPages.startDir = null }
+        ToolId.DEBLOAT -> DebloatPage { ToolPages.page = null }
+        ToolId.TERMINAL -> TerminalPage { ToolPages.page = null }
+        ToolId.LOGS -> LogsPage { ToolPages.page = null }
         else -> {}
     }
 }
@@ -59,7 +62,7 @@ fun ToolPageHost() {
 // ---------------- Ortak parçalar ----------------
 
 @Composable
-private fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+internal fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize().background(Pal.Bg).pointerInput(Unit) { detectTapGestures { } }) {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -77,7 +80,7 @@ private fun PageScaffold(title: String, onBack: () -> Unit, actions: @Composable
 }
 
 @Composable
-private fun FilterChipRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+internal fun FilterChipRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEachIndexed { i, o ->
             val sel = i == selected
@@ -91,7 +94,7 @@ private fun FilterChipRow(options: List<String>, selected: Int, onSelect: (Int) 
 }
 
 @Composable
-private fun SearchBox(value: String, onChange: (String) -> Unit, hint: String) {
+internal fun SearchBox(value: String, onChange: (String) -> Unit, hint: String) {
     OutlinedTextField(
         value = value, onValueChange = onChange, singleLine = true,
         placeholder = { Text(hint, color = Pal.Sub) },
@@ -114,7 +117,7 @@ private fun AppIcon(icon: ImageBitmap?, size: androidx.compose.ui.unit.Dp = 40.d
 
 /** İlerleme çubuğu (değer < 0 ise belirsiz). */
 @Composable
-private fun Progress(stage: String, value: Float) {
+internal fun Progress(stage: String, value: Float) {
     Text(stage, color = Pal.Text, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(8.dp))
     if (value < 0) LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)), color = Pal.Blue, trackColor = Pal.Btn)
@@ -125,7 +128,7 @@ private fun Progress(stage: String, value: Float) {
     }
 }
 
-private fun share(context: android.content.Context, uri: Uri, mime: String) {
+internal fun share(context: android.content.Context, uri: Uri, mime: String) {
     val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(send, "Paylaş"))
 }

@@ -41,7 +41,8 @@ import java.io.File
 
 /** İşlevi hazır olan araçlar. */
 enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
-    APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER }
+    APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER,
+    PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS }
 
 /** Pencere içindeki sonuç satırı. */
 internal data class ToolResult(val ok: Boolean, val text: String)
@@ -84,7 +85,9 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
                     onDismiss(); ToolPages.startDir = TvFiles.TV_DOWNLOAD; ToolPages.page = ToolId.FILE_BROWSER
                 }
                 // Tam ekran sayfa olarak açılır
-                ToolId.APP_MANAGER, ToolId.FILE_BROWSER -> {}
+                ToolId.PRIVATE_DNS -> DnsTool()
+                ToolId.HOME_SWITCH -> HomeTool()
+                ToolId.APP_MANAGER, ToolId.FILE_BROWSER, ToolId.DEBLOAT, ToolId.TERMINAL, ToolId.LOGS -> {}
             }
         }
     }
@@ -106,6 +109,11 @@ private fun description(id: ToolId) = when (id) {
     ToolId.APP_BACKUP -> "Uygulamanın APK'sını telefona kaydeder"
     ToolId.SEND_FILES -> "Telefondan TV'ye dosya gönderir"
     ToolId.FILE_BROWSER -> "TV'deki klasörler"
+    ToolId.PRIVATE_DNS -> "TV'nin kullandığı DNS sunucusu"
+    ToolId.HOME_SWITCH -> "Ana Sayfa tuşunun açtığı ekran"
+    ToolId.DEBLOAT -> "Kullanılmayan hazır uygulamalar"
+    ToolId.TERMINAL -> "TV'de komut çalıştır"
+    ToolId.LOGS -> "TV'nin sistem kayıtları"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */

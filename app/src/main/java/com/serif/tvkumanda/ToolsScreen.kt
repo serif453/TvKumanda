@@ -46,7 +46,7 @@ private val toolGroups = listOf(
     )),
     ToolGroup("Uygulamalar", listOf(
         Tool("Uygulama yöneticisi", Icons.Outlined.Apps, adb = true, id = ToolId.APP_MANAGER),
-        Tool("Gereksiz uygulamaları kapat", Icons.Outlined.Block, adb = true, warning = true),
+        Tool("Gereksiz uygulamaları kapat", Icons.Outlined.Block, adb = true, warning = true, id = ToolId.DEBLOAT),
         Tool("APK yükle", Icons.Outlined.InstallMobile, adb = true, id = ToolId.APK_INSTALL),
         Tool("Uygulama yedekle", Icons.Outlined.Backup, adb = true, id = ToolId.APP_BACKUP)
     )),
@@ -62,10 +62,10 @@ private val toolGroups = listOf(
         Tool("Animasyon hızı", Icons.Outlined.Animation, adb = true, warning = true, id = ToolId.ANIMATION)
     )),
     ToolGroup("Gelişmiş", listOf(
-        Tool("Özel DNS", Icons.Outlined.Dns, adb = true, warning = true),
-        Tool("Ana ekran değiştir", Icons.Outlined.Home, adb = true, warning = true),
-        Tool("ADB komut satırı", Icons.Outlined.Terminal, adb = true),
-        Tool("Sistem kayıtları", Icons.Outlined.Article, adb = true)
+        Tool("Özel DNS", Icons.Outlined.Dns, adb = true, warning = true, id = ToolId.PRIVATE_DNS),
+        Tool("Ana ekran değiştir", Icons.Outlined.Home, adb = true, warning = true, id = ToolId.HOME_SWITCH),
+        Tool("ADB komut satırı", Icons.Outlined.Terminal, adb = true, id = ToolId.TERMINAL),
+        Tool("Sistem kayıtları", Icons.Outlined.Article, adb = true, id = ToolId.LOGS)
     )),
     ToolGroup("Zamanlama ve güç", listOf(
         Tool("Uyku zamanlayıcısı", Icons.Outlined.Bedtime),
@@ -155,7 +155,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
                                 else -> null
                             }
                             if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            else if (tool.id == ToolId.APP_MANAGER || tool.id == ToolId.FILE_BROWSER) ToolPages.page = tool.id
+                            else if (tool.id in setOf(ToolId.APP_MANAGER, ToolId.FILE_BROWSER, ToolId.DEBLOAT, ToolId.TERMINAL, ToolId.LOGS)) ToolPages.page = tool.id
                             else open = tool
                         }
                     }
