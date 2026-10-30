@@ -147,6 +147,17 @@ class MainActivity : ComponentActivity() {
         TvTools.currentIp = { currentIp }
         TvTools.savedTvs = { savedTvs }
         TvTools.isPaired = { ip -> atv.isPaired(ip) }
+        TvTools.connectedIp = { if (state == ConnState.CONNECTED) currentIp else "" }
+        TvTools.connectTo = { ip, m ->
+            runOnUiThread {
+                if (m != method) {
+                    prefs.edit().putString("method", m.name).apply()
+                    switchMethod(m)
+                }
+                prefs.edit().putString("ip", ip).apply()
+                connect(ip)
+            }
+        }
         TvTools.diagInfo = {
             listOf(
                 "Bağlantı türü" to methodLabel() + if (method == ConnMethod.ADB && fastMode) " (hızlı mod)" else "",

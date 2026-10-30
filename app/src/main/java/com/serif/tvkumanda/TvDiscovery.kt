@@ -15,7 +15,7 @@ data class FoundTv(val name: String, val ip: String)
  * (Standart bağlantının servisi; ADB modundaki TV'ler de aynı cihazlar olduğu için
  * bulunan IP her iki yöntemle de kullanılabilir).
  */
-class TvDiscovery(context: Context) {
+class TvDiscovery(context: Context, private val serviceType: String = SERVICE_TYPE) {
 
     private val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val main = Handler(Looper.getMainLooper())
@@ -43,7 +43,7 @@ class TvDiscovery(context: Context) {
             }
         }
         listener = l
-        runCatching { nsd.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, l) }
+        runCatching { nsd.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, l) }
     }
 
     fun stop() {
@@ -76,7 +76,9 @@ class TvDiscovery(context: Context) {
                     resolving = false
                     val ip = (info.host as? Inet4Address)?.hostAddress ?: info.host?.hostAddress
                     if (ip != null && listener != null) {
-                        found[info.serviceName] = FoundTv(info.serviceName, ip)
+                        // Chromecast cihazları asıl adlarını "fn" alanında verir
+                        val fn = runCatching { info.attributes["fn"]?.toString(Charsets.UTF_8) }.getOrNull()?.ifBlank { null }
+                        found[info.serviceName] = FoundTv(fn ?: info.serviceName, ip)
                         publish()
                     }
                     resolveNext()
@@ -93,6 +95,8 @@ class TvDiscovery(context: Context) {
 
     companion object {
         const val SERVICE_TYPE = "_androidtvremote2._tcp."
+        /** Chromecast ve yerleşik Chromecast'li cihazlar (ağ tarayıcı için). */
+        const val CAST_SERVICE_TYPE = "_googlecast._tcp."
     }
 }
 

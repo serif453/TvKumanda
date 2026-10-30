@@ -56,12 +56,13 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - **Ekran:** ekran görüntüsü, animasyon hızı ⚠
 - **Gelişmiş:** özel DNS ⚠, ana ekran değiştirme ⚠, ADB komut satırı, sistem kayıtları
 - **İçerik ve tuşlar:** linki TV'de açma, panodan yazma, medya tuşları, sistem kısayolları
-- **Ağ ve test** (ADB gerekmez, TV'ye bağlı olmadan da açılır): bağlantı testi (Wi-Fi, VPN, TV'nin kapıları ve gecikme;
+- **Ağ ve test** (ADB gerekmez, TV'ye bağlı olmadan da açılır): ağ tarayıcı (ağdaki TV'ler üstte, diğer cihazlar
+  altta; bulunan TV'ye oradan bağlanılır), bağlantı testi (Wi-Fi, VPN, TV'nin kapıları ve gecikme;
   sorun varsa tek cümlelik çözüm), teşhis kaydı (bağlanma, Cast ve araç hatalarının günlüğü; IP'ler gizlenerek paylaşılabilir)
 
 ### Henüz hazır olmayanlar
 Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi, zamanlama ve güç araçları (uyku zamanlayıcısı vb.),
-ağ tarayıcı, tüm TV'lere komut, ekran kaydı, ekran yansıtma ve telefonu TV hoparlörüne bağlama.
+tüm TV'lere komut, ekran kaydı, ekran yansıtma ve telefonu TV hoparlörüne bağlama.
 
 ## Kurulum
 

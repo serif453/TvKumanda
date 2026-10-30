@@ -69,8 +69,9 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Cast: `CastScreen.kt`, `MediaLibrary.kt`, `FullPlayer.kt`.
 - Araçlar: `ToolsScreen.kt` (kutucuklar), `ToolSheets.kt` / `ToolPages.kt` / `AdvancedTools.kt` (pencereler),
   `TvTools.kt` / `TvFiles.kt` / `TvAdvanced.kt` (ADB komutları). **`id`'si olmayan kutucuk henüz hazır değildir.**
-  - Ağ ve test: `NetSheets.kt` (pencereler, `PhoneNet`: Wi-Fi/VPN durumu), `ConnCheck.kt` (bağlantı testinin saf
-    mantığı: kapı yoklama 6466/6467/5555 + sonuç satırları). Bu grubun kutucukları `offline = true`: TV'ye bağlı
+  - Ağ ve test: `NetSheets.kt` (pencereler, `PhoneNet`: Wi-Fi/VPN/modem adresi), `ConnCheck.kt` (bağlantı testinin saf
+    mantığı: kapı yoklama 6466/6467/5555 + sonuç satırları), `NetScan.kt` (ağ tarayıcı: telefonun /24'ünde 8 kapı,
+    128 paralel deneme; adlar mDNS Android TV + `_googlecast` "fn", DLNA ve ters DNS'ten). Bu grubun kutucukları `offline = true`: TV'ye bağlı
     olmadan da açılır, çünkü en çok bağlantı çalışmadığında lazım.
 - Teşhis kaydı: `DiagLog.kt` — son 500 olay `filesDir/teshis.log`'da, çökme yakalayıcısı dahil. Bağlanma, eşleştirme,
   kopma, Cast hataları ve her araç hatası (`io()` içinden) yazılır. Paylaşırken IP'lerin son hanesi varsayılan olarak
@@ -97,8 +98,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 
 ### Planlanan (Serif'in sırası)
 - Araçlar'da hazır olmayanlar: ekran kaydı; zamanlama ve güç (uyku zamanlayıcısı, zamanlı açma, ekran süresi, ses sınırı);
-  ağ ve test (ağ tarayıcı, tüm TV'lere komut); ekran yansıtma; telefonu TV hoparlörüne bağlama.
-  - Ağ tarayıcı (Serif onayladı): TV'ler üstte, diğer cihazlar altta kapalı bölümde; dokununca Standart/ADB ile bağlan.
+  ağ ve test (tüm TV'lere komut); ekran yansıtma; telefonu TV hoparlörüne bağlama.
   - Tüm TV'lere komut: Serif'in tek TV'si var, yine de eklenecek; sonra kendisi test edecek.
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).

@@ -31,7 +31,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import java.io.File
 import java.net.Inet4Address
 import java.text.SimpleDateFormat
@@ -42,7 +48,11 @@ import java.util.Locale
 
 /** Telefonun hangi ağlara bağlı olduğu (Wi-Fi, VPN, mobil veri) ve Wi-Fi adresi. */
 internal object PhoneNet {
-    data class Info(val wifi: Boolean, val vpn: Boolean, val cellular: Boolean, val ip: String?, val prefix: Int?)
+    data class Info(
+        val wifi: Boolean, val vpn: Boolean, val cellular: Boolean, val ip: String?, val prefix: Int?,
+        /** Modemin (ağ geçidinin) adresi. */
+        val gateway: String? = null
+    )
 
     fun read(context: Context): Info {
         val cm = context.applicationContext.getSystemService(ConnectivityManager::class.java)
@@ -52,6 +62,7 @@ internal object PhoneNet {
         var cellular = false
         var ip: String? = null
         var prefix: Int? = null
+        var gateway: String? = null
         @Suppress("DEPRECATION")
         val networks = runCatching { cm.allNetworks.toList() }.getOrDefault(emptyList())
         for (n in networks) {
@@ -60,14 +71,16 @@ internal object PhoneNet {
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) cellular = true
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
                 wifi = true
-                val addr = cm.getLinkProperties(n)?.linkAddresses?.firstOrNull { it.address is Inet4Address }
+                val props = cm.getLinkProperties(n)
+                val addr = props?.linkAddresses?.firstOrNull { it.address is Inet4Address }
                 if (addr != null && ip == null) {
                     ip = addr.address.hostAddress
                     prefix = addr.prefixLength
+                    gateway = props?.routes?.firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway?.hostAddress
                 }
             }
         }
-        return Info(wifi, vpn, cellular, ip, prefix)
+        return Info(wifi, vpn, cellular, ip, prefix, gateway)
     }
 
     fun label(i: Info): String = buildList {
@@ -305,5 +318,206 @@ internal fun DiagLogTool() {
             }.onFailure { result = ToolResult(false, errorText(it)) }
         }
         ResultLine(result)
+    }
+}
+
+// ---------------- Ağ tarayıcı ----------------
+
+@Composable
+internal fun NetScanTool(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tvDiscovery = remember { TvDiscovery(context) }
+    val castDiscovery = remember { TvDiscovery(context, TvDiscovery.CAST_SERVICE_TYPE) }
+    var scanner by remember { mutableStateOf<NetScan.Scanner?>(null) }
+    var scanning by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+    var range by remember { mutableStateOf("") }
+    var limited by remember { mutableStateOf(false) }
+    var devices by remember { mutableStateOf<List<NetScan.Device>>(emptyList()) }
+    var showOthers by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    val saved = remember { TvTools.savedTvs().map { it.ip }.toSet() }
+    val connectedIp = remember { TvTools.connectedIp() }
+    // Pencere kapanınca tarama da durur
+    DisposableEffect(Unit) { onDispose { scanner?.cancel(); tvDiscovery.stop(); castDiscovery.stop() } }
+
+    fun start() {
+        val net = PhoneNet.read(context)
+        val phoneIp = net.ip
+        val prefix = net.prefix
+        if (!net.wifi || phoneIp == null || prefix == null) {
+            result = ToolResult(false, "Telefon Wi-Fi'a bağlı değil. Tarama için TV ile aynı Wi-Fi ağına bağlan.")
+            return
+        }
+        result = null; finished = false; devices = emptyList(); progress = 0f; scanning = true
+        range = NetScan.rangeLabel(phoneIp, prefix)
+        limited = prefix < 24
+        val s = NetScan.Scanner().also { scanner = it }
+        // Adlar: Android TV ve Chromecast cihazları kendilerini mDNS ile duyurur
+        val tvNames = ConcurrentHashMap<String, String>()
+        val castNames = ConcurrentHashMap<String, String>()
+        tvDiscovery.start { list -> list.forEach { tvNames[it.ip] = it.name } }
+        castDiscovery.start { list -> list.forEach { castNames[it.ip] = it.name } }
+        scope.launch {
+            val dlnaJob = async(Dispatchers.IO) { runCatching { DlnaClient(context).discover() }.getOrDefault(emptyList()) }
+            val scanJob = async(Dispatchers.IO) { s.run(NetScan.hosts(phoneIp, prefix)) }
+            // Bulunanlar tarama sürerken de listede görünür
+            while (scanJob.isActive) {
+                progress = s.progress()
+                devices = NetScan.combine(s.found(), phoneIp, net.gateway, HashMap(tvNames), HashMap(castNames), emptyMap(), emptyMap())
+                delay(300)
+            }
+            val hosts = scanJob.await()
+            progress = 1f
+            val dlna = dlnaJob.await().associate { it.ip to it.name }
+            val named = tvNames.keys + castNames.keys + dlna.keys
+            val netNames = withContext(Dispatchers.IO) { NetScan.reverseNames(hosts.map { it.ip }.filter { it !in named }) }
+            devices = NetScan.combine(hosts, phoneIp, net.gateway, HashMap(tvNames), HashMap(castNames), dlna, netNames)
+            tvDiscovery.stop()
+            castDiscovery.stop()
+            scanning = false
+            finished = true
+            DiagLog.log("Ağ tarayıcı ($range): ${devices.size} cihaz, ${devices.count { it.isTv }} TV")
+        }
+    }
+
+    val tvs = devices.filter { it.isTv }
+    val others = devices.filterNot { it.isTv }
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("Telefonun Wi-Fi ağındaki cihazları bulur. Bulunan TV'ye dokunmadan buradan bağlanabilirsin.", color = Pal.Sub, fontSize = 13.sp)
+        Spacer(Modifier.height(14.dp))
+        if (scanning) {
+            Text("Taranıyor: $range · %${(progress * 100).toInt()}", color = Pal.Sub, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { progress }, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)),
+                color = Pal.Blue, trackColor = Pal.Btn
+            )
+            Spacer(Modifier.height(14.dp))
+        }
+        MainButton(if (scanning) "Taranıyor…" else if (finished) "Yeniden tara" else "Taramayı başlat", enabled = !scanning) { start() }
+        ResultLine(result)
+
+        if (scanning || finished) {
+            Spacer(Modifier.height(18.dp))
+            Text("TV'ler (${tvs.size})", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            if (tvs.isEmpty()) {
+                Text(
+                    if (scanning) "Aranıyor…" else "Ağda Android TV bulunamadı. TV açık ve telefonla aynı Wi-Fi ağında mı?",
+                    color = Pal.Sub, fontSize = 13.sp
+                )
+            }
+            tvs.forEach { d ->
+                ScanTvCard(d, saved = d.ip in saved, connected = d.ip == connectedIp) { m ->
+                    TvTools.connectTo(d.ip, m)
+                    Toast.makeText(context, "Bağlanılıyor: ${d.name ?: d.ip}", Toast.LENGTH_SHORT).show()
+                    onClose()
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { showOthers = !showOthers }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Diğer cihazlar (${others.size})", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Icon(if (showOthers) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = Pal.Sub, modifier = Modifier.size(20.dp))
+            }
+            if (showOthers && others.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    others.forEach { OtherDeviceRow(it) }
+                }
+            }
+            if (finished) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    (if (limited) "Ağ büyük olduğu için yalnızca $range tarandı. " else "") +
+                        "Adını duyurmayan cihazlar yalnızca adresiyle görünür; Android başka cihazların donanım adresini " +
+                        "okumaya izin vermiyor. Güvenlik duvarı açık bilgisayarlar listede çıkmayabilir.",
+                    color = Pal.Sub, fontSize = 12.sp, lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScanTvCard(d: NetScan.Device, saved: Boolean, connected: Boolean, onConnect: (ConnMethod) -> Unit) {
+    val standardOk = d.mdnsTv || ConnCheck.PORT_REMOTE in d.open
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Tv, null, tint = Pal.Text, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(d.name ?: "Android TV", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(d.ip, color = Pal.Sub, fontSize = 12.sp)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        ScanBadges(d.badges() + listOfNotNull(if (connected) "Bağlı" else null, if (saved && !connected) "Kayıtlı" else null))
+        Spacer(Modifier.height(12.dp))
+        if (connected) {
+            Text("Şu an bu TV'ye bağlısın.", color = Pal.Sub, fontSize = 12.sp)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Bağlan", color = Pal.Sub, fontSize = 13.sp)
+                SecondaryButton(if (standardOk) "Standart" else "Standart kapalı", Modifier.weight(1f), enabled = standardOk) { onConnect(ConnMethod.STANDARD) }
+                SecondaryButton(if (d.adbOpen) "ADB" else "ADB kapalı", Modifier.weight(1f), enabled = d.adbOpen) { onConnect(ConnMethod.ADB) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OtherDeviceRow(d: NetScan.Device) {
+    val icon = when {
+        d.self -> Icons.Outlined.PhoneAndroid
+        d.gateway -> Icons.Outlined.Router
+        8009 in d.open -> Icons.Outlined.Cast
+        d.dlna -> Icons.Outlined.Speaker
+        else -> Icons.Outlined.DevicesOther
+    }
+    val title = d.name ?: when {
+        d.self -> "Bu telefon"
+        d.gateway -> "Modem"
+        else -> "Bilinmeyen cihaz"
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = Pal.Sub, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Pal.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(d.ip, color = Pal.Sub, fontSize = 12.sp)
+        }
+        val badges = d.badges().filter { it != title }
+        if (badges.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            ScanBadges(badges.take(2))
+        }
+    }
+}
+
+@Composable
+private fun ScanBadges(labels: List<String>) {
+    if (labels.isEmpty()) return
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        labels.forEach { label ->
+            val color = when (label) {
+                "Android TV", "ADB açık" -> Pal.Blue
+                "Chromecast" -> Pal.Purple
+                "DLNA", "Bağlı" -> Pal.Green
+                "Modem" -> Pal.Amber
+                else -> Pal.Sub
+            }
+            Text(
+                label, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 7.dp, vertical = 2.dp)
+            )
+        }
     }
 }

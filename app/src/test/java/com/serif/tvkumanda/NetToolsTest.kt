@@ -151,3 +151,61 @@ class NetToolsTest {
         assertFalse(text.contains("192.168.1.50"))
     }
 }
+
+class NetScanTest {
+
+    @Test
+    fun hostsCoverSubnetWithoutPhone() {
+        val h = NetScan.hosts("192.168.1.20", 24)
+        assertEquals(253, h.size)
+        assertEquals("192.168.1.1", h.first())
+        assertEquals("192.168.1.254", h.last())
+        assertFalse("192.168.1.20" in h)
+    }
+
+    @Test
+    fun bigNetworksAreLimitedToOwnSlash24() {
+        val h = NetScan.hosts("10.0.5.9", 16)
+        assertEquals(253, h.size)
+        assertTrue(h.all { it.startsWith("10.0.5.") })
+        assertEquals("10.0.5.0/24", NetScan.rangeLabel("10.0.5.9", 16))
+    }
+
+    @Test
+    fun shortNames() {
+        assertEquals("DESKTOP-AB12", NetScan.shortName("DESKTOP-AB12.lan", "192.168.1.5"))
+        assertEquals(null, NetScan.shortName("192.168.1.5", "192.168.1.5"))
+    }
+
+    @Test
+    fun combineGroupsAndNames() {
+        val devices = NetScan.combine(
+            hosts = listOf(
+                NetScan.Host("192.168.1.50", setOf(6466, 8009)),
+                NetScan.Host("192.168.1.9", setOf(80)),
+                NetScan.Host("192.168.1.1", setOf(80, 443))
+            ),
+            selfIp = "192.168.1.20", gatewayIp = "192.168.1.1",
+            tvNames = mapOf("192.168.1.50" to "Philips TV"),
+            castNames = mapOf("192.168.1.60" to "Mutfak hoparlörü"),
+            dlnaNames = mapOf("192.168.1.50" to "Philips DMR"),
+            netNames = mapOf("192.168.1.9" to "DESKTOP-AB12")
+        )
+        assertEquals(listOf("192.168.1.1", "192.168.1.9", "192.168.1.20", "192.168.1.50", "192.168.1.60"), devices.map { it.ip })
+        val tv = devices.first { it.ip == "192.168.1.50" }
+        assertTrue(tv.isTv)
+        assertEquals("Philips TV", tv.name)
+        assertEquals(listOf("Android TV", "Chromecast", "DLNA"), tv.badges())
+        assertFalse(devices.first { it.ip == "192.168.1.60" }.isTv)
+        assertEquals(listOf("Modem"), devices.first().badges())
+        assertTrue(devices.first { it.ip == "192.168.1.20" }.self)
+    }
+
+    @Test
+    fun scannerFindsLocalhost() {
+        val s = NetScan.Scanner(timeoutMs = 300, parallel = 8)
+        val found = s.run(listOf("127.0.0.1"))
+        assertEquals(listOf("127.0.0.1"), found.map { it.ip })
+        assertEquals(1f, s.progress())
+    }
+}

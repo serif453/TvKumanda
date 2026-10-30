@@ -24,6 +24,10 @@ object TvTools {
     var currentIp: () -> String = { "" }
     var savedTvs: () -> List<SavedTv> = { emptyList() }
     var isPaired: (String) -> Boolean = { false }
+    /** Bağlı TV'nin adresi; bağlı değilse boş. */
+    var connectedIp: () -> String = { "" }
+    /** Ağ tarayıcıdan seçilen TV'ye, seçilen yöntemle bağlanır. */
+    var connectTo: (String, ConnMethod) -> Unit = { _, _ -> }
     /** Teşhis kaydının başındaki bağlantı bilgisi. */
     var diagInfo: () -> List<Pair<String, String>> = { emptyList() }
 
