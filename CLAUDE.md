@@ -153,6 +153,8 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 ## Yapılacaklar
 
 ### Planlanan (Serif'in sırası)
+- **Yol haritası (30 Ekim 2026):** ~2 gün daha özellik → optimizasyon ve genel kontrol (Serif yaptıracak; sağlamlık:
+  çökme kalkanı, anlaşılır hata mesajları, tüm araçların tek tek denenmesi) → cila. MKV/TS dönüştürme 1.0 sonrasına.
 - Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
