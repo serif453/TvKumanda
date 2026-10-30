@@ -94,6 +94,27 @@ object PerfStats {
     const val APPS_COMMAND = "echo '##S'; grep '^cpu ' /proc/stat; echo '##P'; " +
         "ps -A -o PID,RSS,TIME+,NAME 2>/dev/null || { ps -A -o PID,RSS,NAME 2>/dev/null; echo '##T'; cat /proc/[0-9]*/stat 2>/dev/null; }"
 
+    /** Ana ekranda simgesi olan (açılabilen) uygulamalar; kısa liste boşsa uzun çıktıdan. */
+    const val LAUNCHABLE_COMMAND = "o=$(cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER 2>/dev/null); " +
+        "[ -n \"\$o\" ] && echo \"\$o\" || cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER 2>/dev/null | grep packageName="
+
+    /** "com.x/.Main" ya da "packageName=com.x" satırlarından paket adları. */
+    fun parseLaunchable(out: String): Set<String> =
+        (Regex("""([A-Za-z][\w]*(?:\.[\w]+)+)/""").findAll(out).map { it.groupValues[1] } +
+            Regex("""packageName=([\w.]+)""").findAll(out).map { it.groupValues[1] }).toSet()
+
+    /**
+     * Listeyi ikiye ayırır: kullanıcının uygulamaları (ana ekranda simgesi olan ya da sonradan kurulan) ve sistem.
+     * Philips'te YouTube/Netflix gibi uygulamalar fabrikadan sistem uygulaması olarak gelir; simgeleri olduğu için
+     * kullanıcı tarafında sayılır. Bilgi henüz gelmediyse [protected] olanlar sisteme, kalanlar kullanıcıya.
+     */
+    fun isUserApp(pkg: String, launchable: Set<String>?, installedByUser: Boolean?, protected: Boolean): Boolean = when {
+        launchable == null && installedByUser == null -> !protected
+        pkg in launchable.orEmpty() -> true
+        installedByUser == true -> true
+        else -> false
+    }
+
     /** Ekrandaki uygulama. */
     const val FOREGROUND_COMMAND = "dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity'"
 

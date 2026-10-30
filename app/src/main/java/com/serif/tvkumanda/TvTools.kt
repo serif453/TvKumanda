@@ -71,6 +71,7 @@ object TvTools {
     /** Çalışan uygulamalar için süreç ölçümü ve uygulama başına gerçek bellek (PSS). */
     fun procSnap(): PerfStats.ProcSnap = PerfStats.parseProcs(sh(PerfStats.APPS_COMMAND))
     fun appPss(): Map<String, Long> = PerfStats.parsePss(sh(PerfStats.PSS_COMMAND))
+    fun launchableApps(): Set<String> = PerfStats.parseLaunchable(sh(PerfStats.LAUNCHABLE_COMMAND))
     fun foregroundApp(): String? = PerfStats.parseForeground(sh(PerfStats.FOREGROUND_COMMAND))
 
     /** TV'nin kendi "Uygulama bilgisi" ekranı (önbellek temizleme, izinler orada). */

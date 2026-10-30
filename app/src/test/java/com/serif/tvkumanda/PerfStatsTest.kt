@@ -1,6 +1,7 @@
 package com.serif.tvkumanda
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -148,5 +149,21 @@ class PerfStatsTest {
         val out = out("1 0 0 1 0 0 0 0", listOf("1 0 0 1")) + "##H\nbattery\tcpu-thermal\tgpu\t71000\t52000\t48000\n"
         assertEquals(52, PerfStats.view(null, PerfStats.parse(out)).tempC)
         assertNull(PerfStats.temperature(null))
+    }
+
+    @Test fun anaEkranUygulamalari() {
+        val brief = "com.google.android.youtube.tv/com.google.android.apps.youtube.tv.activity.ShellActivity\n" +
+            "com.netflix.ninja/.MainActivity\n2 activities found"
+        assertEquals(setOf("com.google.android.youtube.tv", "com.netflix.ninja"), PerfStats.parseLaunchable(brief))
+        assertEquals(setOf("org.videolan.vlc"), PerfStats.parseLaunchable("      packageName=org.videolan.vlc"))
+    }
+
+    @Test fun kullaniciMiSistemMi() {
+        val l = setOf("com.google.android.youtube.tv")
+        assertTrue(PerfStats.isUserApp("com.google.android.youtube.tv", l, false, false)) // fabrikadan ama simgeli
+        assertTrue(PerfStats.isUserApp("org.example.servis", l, true, false))            // sonradan kurulan
+        assertFalse(PerfStats.isUserApp("com.google.android.gms", l, false, true))       // arka plan hizmeti
+        assertFalse(PerfStats.isUserApp("com.android.systemui", null, null, true))       // bilgi gelmeden: korunan
+        assertTrue(PerfStats.isUserApp("org.example.x", null, null, false))
     }
 }

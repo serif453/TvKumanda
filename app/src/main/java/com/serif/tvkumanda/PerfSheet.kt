@@ -59,6 +59,7 @@ private object PerfCache {
     private var owner: Any? = null
     private val pkgLock = Mutex()
     var packages: Map<String, TvPackage>? = null
+    var launchable: Set<String>? = null
     var apps: List<PerfStats.AppUse>? = null
     var snap: PerfStats.ProcSnap? = null
     var snapAt = 0L
@@ -71,7 +72,7 @@ private object PerfCache {
     fun check() {
         val now = TvTools.adb
         if (owner !== now) {
-            owner = now; packages = null; apps = null; snap = null; pss = null; foreground = null
+            owner = now; packages = null; launchable = null; apps = null; snap = null; pss = null; foreground = null
             cpuHist.clear(); memHist.clear()
         }
     }
@@ -83,6 +84,7 @@ private object PerfCache {
 
     /** Uygulama adları: bağlantı başına bir kez okunur. */
     suspend fun ensurePackages() = pkgLock.withLock {
+        if (launchable == null) io { TvTools.launchableApps() }.onSuccess { launchable = it }
         if (packages == null) io { TvFiles.packages() }.onSuccess { l -> packages = l.associateBy { it.pkg } }
     }
 
@@ -188,6 +190,8 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
     // Önbellekte liste varsa hemen göster, sonra tazele
     var apps by remember { mutableStateOf(PerfCache.apps) }
     var packages by remember { mutableStateOf(PerfCache.packages) }
+    var launchable by remember { mutableStateOf(PerfCache.launchable) }
+    var showSystem by remember { mutableStateOf(false) }
     var foreground by remember { mutableStateOf(PerfCache.foreground) }
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<ToolResult?>(null) }
@@ -197,7 +201,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
     val stopped = remember { mutableStateMapOf<String, Boolean>() }
     val opened = remember { SystemClock.elapsedRealtime() }
 
-    LaunchedEffect(Unit) { PerfCache.ensurePackages(); packages = PerfCache.packages }
+    LaunchedEffect(Unit) { PerfCache.ensurePackages(); packages = PerfCache.packages; launchable = PerfCache.launchable }
     LaunchedEffect(Unit) {
         var prev = PerfCache.freshSnap()
         if (prev != null) delay(1000) // önbellekteki ölçümle işlemci farkı için kısa bekleme yeter
@@ -273,44 +277,64 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
                         .onFailure { stopped.remove(pkg); result = ToolResult(false, errorText(it)) }
                 }
             }
+            fun isUser(pkg: String) = PerfStats.isUserApp(pkg, launchable, packages?.get(pkg)?.let { !it.system }, TvAdvanced.isProtected(pkg))
+            val (userApps, sysApps) = sorted.partition { isUser(it.pkg) }
+            @Composable
+            fun row(a: PerfStats.AppUse) {
+                val protected = TvAdvanced.isProtected(a.pkg)
+                AppRow(
+                    name = label(a.pkg),
+                    a = a,
+                    system = false,
+                    onScreen = a.pkg == fg,
+                    canStop = !protected,
+                    stopping = stopped[a.pkg] == true,
+                    open = expanded == a.pkg,
+                    onToggle = { expanded = if (expanded == a.pkg) null else a.pkg },
+                    onStop = { stop(a.pkg) },
+                    onLaunch = {
+                        expanded = null; result = null
+                        run {
+                            io { TvFiles.open(TvPackage(a.pkg, label(a.pkg), false, false, "", "", 0)) }
+                                .onSuccess { result = ToolResult(true, "${label(a.pkg)} TV'de açıldı"); fgTick++ }
+                                .onFailure { result = ToolResult(false, errorText(it)) }
+                        }
+                    },
+                    onInfo = {
+                        expanded = null; result = null
+                        run {
+                            io { TvTools.openAppInfo(a.pkg) }
+                                .onSuccess { result = ToolResult(true, "Uygulama bilgisi TV'de açıldı") }
+                                .onFailure { result = ToolResult(false, errorText(it)) }
+                        }
+                    }
+                )
+            }
             val maxH = (LocalConfiguration.current.screenHeightDp * if (onBack != null) 0.52f else 0.56f).dp
             LazyColumn(Modifier.heightIn(max = maxH), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(sorted, key = { it.pkg }) { a ->
-                    val protected = TvAdvanced.isProtected(a.pkg)
-                    AppRow(
-                        name = label(a.pkg),
-                        a = a,
-                        system = packages?.get(a.pkg)?.system ?: protected,
-                        onScreen = a.pkg == fg,
-                        canStop = !protected,
-                        stopping = stopped[a.pkg] == true,
-                        open = expanded == a.pkg,
-                        onToggle = { expanded = if (expanded == a.pkg) null else a.pkg },
-                        onStop = { stop(a.pkg) },
-                        onLaunch = {
-                            expanded = null; result = null
-                            run {
-                                io { TvFiles.open(TvPackage(a.pkg, label(a.pkg), false, false, "", "", 0)) }
-                                    .onSuccess { result = ToolResult(true, "${label(a.pkg)} TV'de açıldı"); fgTick++ }
-                                    .onFailure { result = ToolResult(false, errorText(it)) }
-                            }
-                        },
-                        onInfo = {
-                            expanded = null; result = null
-                            run {
-                                io { TvTools.openAppInfo(a.pkg) }
-                                    .onSuccess { result = ToolResult(true, "Uygulama bilgisi TV'de açıldı") }
-                                    .onFailure { result = ToolResult(false, errorText(it)) }
-                            }
-                        }
-                    )
+                if (userApps.isEmpty()) item("bos") {
+                    Text("Şu an arka planda çalışan uygulama yok.", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+                }
+                items(userApps, key = { it.pkg }) { row(it) }
+                if (sysApps.isNotEmpty()) item("sistem_dugme") {
+                    SecondaryButton(
+                        if (showSystem) "Sistem uygulamalarını gizle" else "Sistem uygulamalarını göster (${sysApps.size})",
+                        Modifier.fillMaxWidth()
+                    ) { showSystem = !showSystem }
+                }
+                if (showSystem && sysApps.isNotEmpty()) {
+                    item("sistem_baslik") {
+                        Text("Sistem uygulamaları", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 4.dp))
+                    }
+                    items(sysApps, key = { "s_" + it.pkg }) { row(it) }
                 }
             }
             ResultLine(result)
             error?.let { ResultLine(ToolResult(false, it)) }
             Spacer(Modifier.height(12.dp))
-            // Ekrandaki uygulamaya ve sistem parçalarına dokunulmaz
-            val targets = list.filter { !TvAdvanced.isProtected(it.pkg) && it.pkg != fg && stopped[it.pkg] != true }.map { it.pkg }
+            // Yalnızca kullanıcı uygulamaları; ekrandakine ve sistem uygulamalarına dokunulmaz
+            val targets = userApps.filter { !TvAdvanced.isProtected(it.pkg) && it.pkg != fg && stopped[it.pkg] != true }.map { it.pkg }
             SecondaryButton(
                 when {
                     busyAll -> "Durduruluyor…"
@@ -329,7 +353,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text("Durdurulan uygulama açınca yeniden çalışır. Ekrandaki uygulama ve TV'nin çalışması için gereken sistem parçaları toplu durdurmaya girmez.",
+            Text("Durdurulan uygulama açınca yeniden çalışır. Toplu durdurma yalnızca üstteki uygulamalara dokunur; ekrandaki uygulama ve sistem uygulamaları hariç.",
                 color = Pal.Sub, fontSize = 12.sp)
         }
     }

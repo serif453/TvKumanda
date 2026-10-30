@@ -112,8 +112,11 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
     meminfo`; gelene kadar RSS) açılışta ve "Yenile"de.
   - Hız: `PerfCache` (bağlantı başına) uygulama adlarını, son listeyi ve ölçümü tutar; Performans açılınca liste önceden
     hazırlanır. Açılış süresi teşhis kaydına yazılır ("Çalışan uygulamalar: liste N ms").
-  - Durdur = `am force-stop`; `TvAdvanced.isProtected` olanlarda düğme yok. Toplu durdurma iki dokunuşla, ekrandaki uygulama
-    ve korunanlar hariç. Satıra dokununca: TV'de aç, TV'nin "Uygulama bilgisi" ekranı. Uygulama başına önbellek temizleme
+  - Liste ikiye ayrılır (`PerfStats.isUserApp`): üstte kullanıcının uygulamaları = ana ekranda simgesi olan (LEANBACK_LAUNCHER,
+    bağlantı başına bir kez) ya da sonradan kurulan; altta "Sistem uygulamalarını göster" ile açılan sistem bölümü. Philips'te
+    YouTube/Netflix fabrikadan sistem uygulaması geldiği için yalnızca "sistem" etiketine bakılmaz.
+  - Durdur = `am force-stop`; `TvAdvanced.isProtected` olanlarda düğme yok. Toplu durdurma iki dokunuşla, yalnızca üstteki
+    kullanıcı uygulamaları (ekrandaki hariç). Satıra dokununca: TV'de aç, TV'nin "Uygulama bilgisi" ekranı. Uygulama başına önbellek temizleme
     Android 11 kabuğunda yok; o ekrandan yapılır.
 - Ekran kaydı: `ScreenRec.kt` — TV'nin `screenrecord` komutu ADB ile arka planda (`setsid nohup`) başlar, uygulamadan
   bağımsız sürer; uygulama açılınca `status()` süren ya da alınmamış kaydı bulur. Dosya TV'de `/data/local/tmp/tvk_rec.mp4`,
