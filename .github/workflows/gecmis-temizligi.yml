@@ -1,0 +1,138 @@
+name: Geçmiş temizliğini tamamla
+
+# GEÇİCİ. Elle bir kez çalıştırılır: Actions > "Geçmiş temizliğini tamamla" > Run workflow.
+# 1) Eski imza anahtarıyla imzalanmış 12 sürümü ve etiketlerini siler (v1–v5, v0.6, v0.7, v0.10–v0.14).
+# 2) Kalan 80 sürümün etiketini temizlenmiş geçmişteki aynı commit'e taşır. Sürümler, notlar ve APK'lar yerinde kalır.
+# İş bitince bu dosya silinir.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  temizle:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Eski 12 sürümü ve etiketlerini sil
+        run: |
+          for t in v1 v2 v3 v4 v5 v0.6 v0.7 v0.10 v0.11 v0.12 v0.13 v0.14; do
+            if gh release view "$t" -R "$REPO" >/dev/null 2>&1; then
+              gh release delete "$t" -R "$REPO" --yes --cleanup-tag
+              echo "silindi: $t"
+            elif git ls-remote --exit-code origin "refs/tags/$t" >/dev/null; then
+              git push origin ":refs/tags/$t"
+              echo "yalnızca etiket silindi: $t"
+            else
+              echo "zaten yok: $t"
+            fi
+          done
+
+      - name: Kalan 80 etiketi temiz geçmişe taşı
+        run: |
+          refs=""
+          while read -r t sha; do
+            [ -z "$t" ] && continue
+            git cat-file -e "$sha^{commit}" || { echo "::error::$t için commit bulunamadı: $sha"; exit 1; }
+            git tag -f "$t" "$sha" >/dev/null
+            refs="$refs refs/tags/$t"
+          done <<'LISTE'
+          v0.15 7e7161189f47f3c4551d72270f43d4ba9c6d8dc1
+          v0.16 84afc26fdf144480ec46d771f93dab4ce210cb25
+          v0.17 fc148733717eb544a4e4216d68798ab78eb42cfd
+          v0.18 74d0e14c0b31a1adb0a4ef07bb60c1e12133307c
+          v0.19 c27e1e7e70359ce52a431a44d87647da0c56fe0f
+          v0.20 afbe278c6d6ec5125e4647f0b46a3d164440c30c
+          v0.21 44689b529e05f33fb778964310c29c95c9e0a081
+          v0.22 57bfa17d87813fa7d1925936daa86fd95c8c5992
+          v0.23 1fbee57dc39f19b864ba0eb930845258853c5a00
+          v0.24 a33fdd61c4aa365807cbe4924e6faf7b59e29b9d
+          v0.25 2f9183114d17f5cf6fa045be0ae6c0233617acac
+          v0.26 4f12745456bb99cf3b2a8fb4623425d7645c0273
+          v0.27 30c3f77e19966bf42e09b95cede0f5f60ab84db2
+          v0.28 09be7c9612712b867fb3faab9217c4f239f97ecc
+          v0.29 b7f649e27b1ccd042c75784fdcf457ee85e4008a
+          v0.30 ec0e12574435a10bf962fdd59118709e39cd5062
+          v0.31 4792a5147004ff01bf42035961ca214c24abed9c
+          v0.32 dfda1bacfa4a74373b9887310f0ef52cee3e4b36
+          v0.33 860eebf43abe77b727a34d8d4b9f21b0abe8302c
+          v0.34 6263c45e942b11157ebd76188410d499e30bf476
+          v0.35 e8bea11767699470b36bf463a5629fc8cf4b869e
+          v0.36 b669bce683c1fb68a2f7084d489be367a19751a6
+          v0.37 85bfa8ac4afab53496011ce0fe90843c63351490
+          v0.38 85bfa8ac4afab53496011ce0fe90843c63351490
+          v0.39 8cffa4d6b16c18bcaa6850d2b27e75b72ae34e46
+          v0.40 c60f776ebb355c4eabdaaa9b4e1bd354cbd3ea25
+          v0.41 6b5145e8acbf35154f119c713ed4a3ec7434ad1f
+          v0.42 861aae9c3f025d34d0e2aa4f605227b7daec02e3
+          v0.43 5b212aa14eea545091ac3fabe63dd809b7a6e461
+          v0.44 724fe90dd10a6bc97f01ddc2706d92ce279f89f8
+          v0.45 03fb71f935216d0e4ffee2989aabc92665e6032b
+          v0.46 c19d321962ca3e30115095e465299d6576fb28ab
+          v0.47 7b4099cfb39d75aa578e910e21ebfa051856172a
+          v0.48 06518e738c2975c7c97650f3fbfe0d36dc935ab7
+          v0.49 2fa78638adc286ef63389a79f64274e46cbdc256
+          v0.50 ec61cd4062c33aa00923c1dd29f02ce426d8c426
+          v0.51 1d1df22a63f3f93bee7e6a739beb9a9f6c71f15e
+          v0.52 6f2313d8b1d9a26ee56a560e6ede29587d786100
+          v0.53 74fc6ab24575b56512cf73398279fb8197afcc08
+          v0.54 75cae52eea31788db9f7aca9d48267a153f1068c
+          v0.55 2d4dcdaa9c2eb087a32ae33dc94513dfba558b96
+          v0.56 a5689469e31d050f7fd38d72c387653dd26a02ee
+          v0.57 c7f2b46f2eb5e1209b7e9809989adf2085285b19
+          v0.58 47f0b4706a04300360e126c0493b9d2604e01b9b
+          v0.59 30c48421c8963c245048a994f7f2235fb7fbda36
+          v0.60 e8939c608b4c5b89d51da95803cd3b64a625aecf
+          v0.61 66bfe4e6efadf9551a4e284a243433818514b06b
+          v0.62 361aee485b808bb66cd69a2f831be2e4ed709d32
+          v0.63 ff9fb93a021f263100ea5f2b1e0dc7677a707aab
+          v0.64 efa7a56e96363daeb56ad0d51a153e46fe57439b
+          v0.65 73b42a64040372533e4b53e402efd0775ed8f653
+          v0.66 1d8a4aed23b1346cfca3dca905de9a9679358f82
+          v0.67 79d3f00230d08f33fd4a2bcf8c726c9c0edc9ebb
+          v0.68 e0685e6b03f8b215c5d63720ececc8adad16168e
+          v0.69 cf7c73fe3449aee5b168be634a894cf26a83f658
+          v0.70 9472d090f2a48368a8ece7323d686f312a3ed8fa
+          v0.71 5ff82b193e1e2ebf37165d2f8836c2c17e298b8f
+          v0.72 2ad7d92ea55adeaeeaf4cbd7772c53912d39b53b
+          v0.73 8ab9e42f3d4674ab1875c2365a87e68595878501
+          v0.74 3dd6cbf0e732c8a063b61b733857f0870201b082
+          v0.75 54d6fe0728f34a7b01de7237bca615e160c7fc93
+          v0.76 c9379679099211ffcc04b156ac17dbd10a2e5a92
+          v0.77 e55ece75353582473b14063bcfc1dee48c93068e
+          v0.78 8f902ae96e7c53809068e034b894a68f04ebf423
+          v0.79 856b44b5c5f983f4f1c4a375f6fb5a0a5769cc36
+          v0.80 90e8e550594f43f97a763359d60c9c3499a3ea61
+          v0.81 d8b22581aed93f825911d1bb09158adfbf97de8d
+          v0.82 798b4961b412ebea97d6a6c1d5d802eaa5577d25
+          v0.83 bbdb589e9cee67116fe829699ef3d796b49d3c89
+          v0.84 4961dd19afdcf98537ce947786e689c67866c74c
+          v0.85 808aeda595e967841c6b90743a1845b7ad1ec406
+          v0.86 69c25e50b480f1c4c775360e121ebe74b071ecdc
+          v0.87 5b56d7fd0e24bac9c5a4ddc6f4d4255ffaa54dc4
+          v0.88 402598c647f916df82251429836a7731c08c50da
+          v0.89 7c326ecb9214d18b24a881ca20befddcc89aef65
+          v0.90 b6346471061b371de2394c0cf971323ed8a2c8c5
+          v0.91 543c1c3da1af41241eba17035661814a5096d44a
+          v0.92 e4f6dbbfe2acbc49fe5bfcdaf3787b187bada7a2
+          v0.93 2f8bcd33558f3343bfdac3840fcc9bb882ea9ea5
+          v0.94 37e9e7d663d8cd45c39b7b4c8e706e43ba1b4603
+          LISTE
+          echo "taşınacak etiket: $(echo $refs | wc -w)"
+          git push -f origin $refs
+
+      - name: Kontrol
+        run: |
+          git fetch -q -f --prune --prune-tags origin
+          echo "Kalan sürüm: $(gh release list -R "$REPO" -L 500 | wc -l)"
+          echo "Kalan etiket: $(git tag | wc -l)"
+          if git log --all --format='%ae %ce' | grep -qi '@gmail\.com'; then echo "::error::Geçmişte hâlâ gerçek e-posta var"; exit 1; fi
+          if [ -n "$(git log --all --format=%h -- app/debug.keystore)" ]; then echo "::error::Geçmişte hâlâ eski anahtar var"; exit 1; fi
+          echo "Tamam: geçmişte eski anahtar ve gerçek e-posta yok."
