@@ -42,7 +42,8 @@ import java.io.File
 /** İşlevi hazır olan araçlar. */
 enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
     APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER,
-    PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS }
+    PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS,
+    CONN_TEST, DIAG_LOG }
 
 /** Pencere içindeki sonuç satırı. */
 internal data class ToolResult(val ok: Boolean, val text: String)
@@ -87,6 +88,8 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
                 // Tam ekran sayfa olarak açılır
                 ToolId.PRIVATE_DNS -> DnsTool()
                 ToolId.HOME_SWITCH -> HomeTool()
+                ToolId.CONN_TEST -> ConnTestTool()
+                ToolId.DIAG_LOG -> DiagLogTool()
                 ToolId.APP_MANAGER, ToolId.FILE_BROWSER, ToolId.DEBLOAT, ToolId.TERMINAL, ToolId.LOGS -> {}
             }
         }
@@ -114,6 +117,8 @@ private fun description(id: ToolId) = when (id) {
     ToolId.DEBLOAT -> "Kullanılmayan hazır uygulamalar"
     ToolId.TERMINAL -> "TV'de komut çalıştır"
     ToolId.LOGS -> "TV'nin sistem kayıtları"
+    ToolId.CONN_TEST -> "Bağlanamıyorsan sebebini bulur"
+    ToolId.DIAG_LOG -> "Uygulamanın olay günlüğü"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */
@@ -123,7 +128,10 @@ internal fun rememberRunner(): (suspend () -> Unit) -> Unit {
     return remember { { block -> scope.launch { block() } } }
 }
 
-internal suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) { runCatching(block) }
+internal suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) {
+    // Araç hataları teşhis kaydına da yazılır
+    runCatching(block).onFailure { DiagLog.log("Araç hatası: ${it.javaClass.simpleName}: ${it.message.orEmpty()}") }
+}
 
 internal fun errorText(e: Throwable) = "Olmadı: ${e.message ?: e.javaClass.simpleName}"
 

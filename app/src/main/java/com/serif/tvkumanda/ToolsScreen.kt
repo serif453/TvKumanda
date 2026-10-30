@@ -32,6 +32,8 @@ private data class Tool(
     val adb: Boolean = false,
     val experimental: Boolean = false,
     val warning: Boolean = false,
+    /** TV'ye bağlı olmadan da açılır (ağ ve test araçları). */
+    val offline: Boolean = false,
     val id: ToolId? = null
 )
 
@@ -82,10 +84,10 @@ private val toolGroups = listOf(
         Tool("Sistem kısayolları", Icons.Outlined.Keyboard, id = ToolId.SYSTEM_KEYS)
     )),
     ToolGroup("Ağ ve test", listOf(
-        Tool("Ağ tarayıcı", Icons.Outlined.Radar),
-        Tool("Bağlantı testi", Icons.Outlined.NetworkCheck),
-        Tool("Tüm TV'lere komut", Icons.Outlined.Devices),
-        Tool("Teşhis kaydını paylaş", Icons.Outlined.BugReport)
+        Tool("Ağ tarayıcı", Icons.Outlined.Radar, offline = true),
+        Tool("Bağlantı testi", Icons.Outlined.NetworkCheck, offline = true, id = ToolId.CONN_TEST),
+        Tool("Tüm TV'lere komut", Icons.Outlined.Devices, offline = true),
+        Tool("Teşhis kaydını paylaş", Icons.Outlined.BugReport, offline = true, id = ToolId.DIAG_LOG)
     )),
     ToolGroup("Deneysel", listOf(
         Tool("Ekran yansıtma", Icons.Outlined.ScreenShare, experimental = true),
@@ -102,7 +104,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
     open?.let { t -> ToolSheet(t.id!!, t.name, t.icon, adbReady) { open = null } }
     // Bağlantı koparsa açık araç penceresi kapanır
     LaunchedEffect(adbReady, connected) {
-        open?.let { t -> if (!connected || (t.adb && !adbReady)) open = null }
+        open?.let { t -> if ((!connected && !t.offline) || (t.adb && !adbReady)) open = null }
         if (!adbReady) ToolPages.page = null
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -151,7 +153,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
                             val msg = when {
                                 tool.adb && method != ConnMethod.ADB -> "Bu araç ADB bağlantısı gerektirir"
                                 tool.id == null -> "Yakında"
-                                !connected -> "Önce TV'ye bağlan"
+                                !connected && !tool.offline -> "Önce TV'ye bağlan"
                                 else -> null
                             }
                             if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()

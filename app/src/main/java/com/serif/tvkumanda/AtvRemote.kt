@@ -519,6 +519,9 @@ class AtvRemote(private val context: Context) : RemoteLink {
         prefs.edit().remove(pairedKey(ip)).remove(pinKey(ip)).apply()
     }
 
+    /** Bu telefon bu adresteki TV ile daha önce eşleşmiş mi (bağlantı testi için). */
+    fun isPaired(ip: String): Boolean = prefs.getBoolean(pairedKey(ip), false)
+
     // ---------------- TLS ve anahtarlar ----------------
 
     private fun tlsSocket(ip: String, port: Int, trust: X509TrustManager): SSLSocket {

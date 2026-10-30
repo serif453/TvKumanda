@@ -32,6 +32,8 @@ yapıldığını ve **nasıl** çalışılacağını anlatır. Önemli bir karar
 ## Derleme ve sürüm
 
 - Claude oturumlarında Android SDK yok; derleme yalnızca **GitHub Actions**'ta olur (`.github/workflows/build.yml`).
+  Saf (Android'siz) kod ve testleri oturumda Kotlin derleyicisiyle (GitHub Releases'tan, JetBrains/kotlin) ve
+  `/opt/gradle-*/lib/junit-4.13.2.jar` ile yerelde çalıştırılabilir; `main`'e göndermeden hataları yakalar.
 - `main`'e her gönderimde: birim testleri (`testReleaseUnitTest`) + imzalı, küçültülmüş (R8) release APK →
   yeni sürüm `v0.N` olarak Releases'a yüklenir. Hata veren derleme numara tüketmez.
 - Sürüm numarası etiketlerden hesaplanır (son etiket + 1). Bu repo 0.96'dan başladı; 0.1–0.95 eski, gizli
@@ -67,6 +69,12 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Cast: `CastScreen.kt`, `MediaLibrary.kt`, `FullPlayer.kt`.
 - Araçlar: `ToolsScreen.kt` (kutucuklar), `ToolSheets.kt` / `ToolPages.kt` / `AdvancedTools.kt` (pencereler),
   `TvTools.kt` / `TvFiles.kt` / `TvAdvanced.kt` (ADB komutları). **`id`'si olmayan kutucuk henüz hazır değildir.**
+  - Ağ ve test: `NetSheets.kt` (pencereler, `PhoneNet`: Wi-Fi/VPN durumu), `ConnCheck.kt` (bağlantı testinin saf
+    mantığı: kapı yoklama 6466/6467/5555 + sonuç satırları). Bu grubun kutucukları `offline = true`: TV'ye bağlı
+    olmadan da açılır, çünkü en çok bağlantı çalışmadığında lazım.
+- Teşhis kaydı: `DiagLog.kt` — son 500 olay `filesDir/teshis.log`'da, çökme yakalayıcısı dahil. Bağlanma, eşleştirme,
+  kopma, Cast hataları ve her araç hatası (`io()` içinden) yazılır. Paylaşırken IP'lerin son hanesi varsayılan olarak
+  gizlenir. Dosya adı, video adı gibi kişisel bilgiler kayda yazılmaz.
 - Kısayollar: `ShortcutsScreen.kt` — şimdilik yalnızca görünüm.
 
 ### Cast
@@ -89,7 +97,9 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 
 ### Planlanan (Serif'in sırası)
 - Araçlar'da hazır olmayanlar: ekran kaydı; zamanlama ve güç (uyku zamanlayıcısı, zamanlı açma, ekran süresi, ses sınırı);
-  ağ ve test (ağ tarayıcı, bağlantı testi, tüm TV'lere komut, teşhis kaydı); ekran yansıtma; telefonu TV hoparlörüne bağlama.
+  ağ ve test (ağ tarayıcı, tüm TV'lere komut); ekran yansıtma; telefonu TV hoparlörüne bağlama.
+  - Ağ tarayıcı (Serif onayladı): TV'ler üstte, diğer cihazlar altta kapalı bölümde; dokununca Standart/ADB ile bağlan.
+  - Tüm TV'lere komut: Serif'in tek TV'si var, yine de eklenecek; sonra kendisi test edecek.
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
 - Ayarlar: sol üstte küçük düğme; ortada TV adı (kayıtlı TV'ler ve bağlantı türü).

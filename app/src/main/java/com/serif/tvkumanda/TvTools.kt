@@ -20,6 +20,13 @@ object TvTools {
     /** Kumanda sekmesindeki uygulama simgeleri (paket → simge). */
     var appIcons: () -> Map<String, androidx.compose.ui.graphics.ImageBitmap?> = { emptyMap() }
 
+    /** Ağ ve test araçları için köprüler (MainActivity atar). */
+    var currentIp: () -> String = { "" }
+    var savedTvs: () -> List<SavedTv> = { emptyList() }
+    var isPaired: (String) -> Boolean = { false }
+    /** Teşhis kaydının başındaki bağlantı bilgisi. */
+    var diagInfo: () -> List<Pair<String, String>> = { emptyList() }
+
     private fun sh(cmd: String): String = (adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")).shell(cmd)
 
     // ---------------- Sistem bilgisi ----------------

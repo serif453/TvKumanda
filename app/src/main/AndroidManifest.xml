@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Bağlantı testi: telefonun Wi-Fi'da mı, VPN açık mı olduğunu okumak için (kurulumda kendiliğinden verilir) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Sesli komut: ses yalnızca TV'ye ya da telefonun konuşma tanıma servisine gider -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Cast: telefondaki fotoğraf, video ve müzikleri galeride göstermek için (yalnızca okuma) -->

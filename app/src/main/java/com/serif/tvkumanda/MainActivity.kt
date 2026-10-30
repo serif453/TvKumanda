@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DiagLog.init(filesDir)
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
         TvTools.adb = adb
@@ -143,6 +144,23 @@ class MainActivity : ComponentActivity() {
         TvTools.sendText = { t -> runOnUiThread { sendText(t) } }
         TvTools.atvLink = { url -> atv.openLink(url) }
         TvTools.appIcons = { apps.associate { it.pkg to it.icon } }
+        TvTools.currentIp = { currentIp }
+        TvTools.savedTvs = { savedTvs }
+        TvTools.isPaired = { ip -> atv.isPaired(ip) }
+        TvTools.diagInfo = {
+            listOf(
+                "Bağlantı türü" to methodLabel() + if (method == ConnMethod.ADB && fastMode) " (hızlı mod)" else "",
+                "Durum" to when (state) {
+                    ConnState.CONNECTED -> "Bağlı"
+                    ConnState.CONNECTING -> "Bağlanıyor"
+                    ConnState.ERROR -> "Hata: $message"
+                    ConnState.IDLE -> "Bağlı değil"
+                },
+                "TV" to (savedTvs.firstOrNull { it.ip == currentIp }?.name ?: tvName).ifBlank { "-" },
+                "TV adresi" to currentIp.ifBlank { "-" },
+                "Kayıtlı TV" to savedTvs.size.toString()
+            )
+        }
         // TV'de çalan medya: uygulama ekrandayken ve ADB bağlıyken 2 sn'de bir sorulur
         scope.launch {
             while (isActive) {
@@ -254,15 +272,18 @@ class MainActivity : ComponentActivity() {
         state = ConnState.CONNECTING
         message = if (method == ConnMethod.ADB) "Bağlanıyor… TV'de izin isterse onayla" else "Bağlanıyor…"
         val link = remote
+        DiagLog.log("Bağlanılıyor: $ip (${methodLabel()})")
         scope.launch {
             try {
                 val model = withContext(io) { link.connectTo(ip) }
                 onConnected(model, ip)
             } catch (e: AtvRemote.PairingRequired) {
+                DiagLog.log("Eşleştirme gerekli: $ip")
                 startPairing(ip)
             } catch (e: Exception) {
                 state = ConnState.ERROR
                 message = "Bağlanamadı: ${e.message ?: e.javaClass.simpleName}"
+                DiagLog.log("Bağlanamadı: $ip (${methodLabel()}) — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -280,6 +301,7 @@ class MainActivity : ComponentActivity() {
         fastMode = remote.isFast
         state = ConnState.CONNECTED
         message = ip
+        DiagLog.log("Bağlandı: ${model.ifBlank { "?" }} ($ip, ${methodLabel()}${if (method == ConnMethod.ADB) ", hızlı mod: ${if (fastMode) "açık" else "kapalı"}" else ""})")
         apps = emptyList()
         loadApps(ip)
         refreshVolume(0)
@@ -293,6 +315,7 @@ class MainActivity : ComponentActivity() {
         val link = remote
         state = ConnState.CONNECTING
         message = "TV yeniden başlıyor…"
+        DiagLog.log("TV yeniden başlatıldı, açılması bekleniyor: $ip")
         scope.launch {
             delay(25_000)
             repeat(32) {
@@ -307,6 +330,7 @@ class MainActivity : ComponentActivity() {
             }
             state = ConnState.ERROR
             message = "TV yeniden başladıktan sonra bağlanamadı"
+            DiagLog.log("TV yeniden başladıktan sonra bağlanamadı: $ip")
         }
     }
 
@@ -327,6 +351,7 @@ class MainActivity : ComponentActivity() {
         pairing = false
         closeTyping()
         Thread { runCatching { old.close() } }.start()
+        if (state == ConnState.CONNECTED) DiagLog.log("Bağlantı kullanıcı tarafından kapatıldı")
         state = ConnState.IDLE
         fastMode = false
         apps = emptyList()
@@ -352,6 +377,7 @@ class MainActivity : ComponentActivity() {
     private fun switchMethod(m: ConnMethod) {
         val old = remote
         method = m
+        DiagLog.log("Bağlantı türü değişti: ${methodLabel()}")
         pairing = false
         closeTyping()
         Thread { old.close() }.start()
@@ -376,6 +402,7 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 state = ConnState.ERROR
                 message = "Eşleştirme başlatılamadı: ${e.message ?: e.javaClass.simpleName}"
+                DiagLog.log("Eşleştirme başlatılamadı: $ip — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -386,14 +413,17 @@ class MainActivity : ComponentActivity() {
                 withContext(io) { atv.finishPairing(code) }
                 pairing = false
                 message = "Eşleşti, bağlanıyor…"
+                DiagLog.log("Eşleşti: $currentIp")
                 val model = withContext(io) { atv.connectTo(currentIp) }
                 onConnected(model, currentIp)
             } catch (e: AtvRemote.BadCode) {
                 pairingError = e.message ?: "Kod hatalı"   // pencere açık kalır, yeniden denenebilir
+                DiagLog.log("Eşleştirme kodu kabul edilmedi")
             } catch (e: Exception) {
                 pairing = false
                 state = ConnState.ERROR
                 message = "Eşleştirilemedi: ${e.message ?: e.javaClass.simpleName}"
+                DiagLog.log("Eşleştirilemedi: $currentIp — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -409,15 +439,18 @@ class MainActivity : ComponentActivity() {
     private fun onStandardDisconnected() {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
         val ip = currentIp
+        DiagLog.log("Standart bağlantıyı TV kapattı, yeniden bağlanılıyor: $ip")
         scope.launch {
             delay(1000)
             try {
                 val model = withContext(io) { atv.connectTo(ip) }
                 if (method == ConnMethod.STANDARD) tvName = savedTvs.firstOrNull { it.ip == ip }?.display ?: model
+                DiagLog.log("Yeniden bağlandı: $ip")
             } catch (e: Exception) {
                 if (method == ConnMethod.STANDARD) {
                     state = ConnState.ERROR
                     message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
+                    DiagLog.log("Bağlantı koptu: $ip — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
                 }
             }
         }
@@ -461,6 +494,7 @@ class MainActivity : ComponentActivity() {
                 state = ConnState.ERROR
                 fastMode = false
                 message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
+                DiagLog.log("Bağlantı koptu (${methodLabel()}): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -652,6 +686,7 @@ class MainActivity : ComponentActivity() {
                 startCastPolling()
             } catch (e: Exception) {
                 cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
+                DiagLog.log("Cast başlatılamadı (${route.name}, $mime): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -1158,6 +1193,7 @@ class MainActivity : ComponentActivity() {
         CastService.stop(this)
         if (cast.phase != CastPhase.NONE && cast.phase != CastPhase.ENDED && cast.phase != CastPhase.ERROR) {
             cast = cast.copy(phase = CastPhase.ERROR, error = "Chromecast bağlantısı koptu")
+            DiagLog.log("Chromecast bağlantısı oynatma sırasında koptu: $reason")
         }
     }
 
@@ -1203,6 +1239,7 @@ class MainActivity : ComponentActivity() {
                 if (castPollJob?.isActive != true) startCastPolling()
             } catch (e: Exception) {
                 toast("Cast: ${e.message ?: e.javaClass.simpleName}")
+                DiagLog.log("Cast komutu gitmedi (${route.name}): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
     }
@@ -1210,6 +1247,8 @@ class MainActivity : ComponentActivity() {
     // ---------- Sesli komut ----------
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    private fun methodLabel() = if (method == ConnMethod.ADB) "ADB" else "Standart"
 
     private fun onMic() {
         if (micActive) { stopMic(); return }
