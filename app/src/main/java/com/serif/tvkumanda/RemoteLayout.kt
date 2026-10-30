@@ -263,6 +263,7 @@ fun PadCard(
     onMode: (Int) -> Unit,
     onKey: (Int) -> Unit,
     onMouse: (String) -> Unit,
+    onMic: () -> Unit,
     onNumpad: () -> Unit,
     onKeyboard: () -> Unit,
     onTvSettings: () -> Unit,
@@ -275,7 +276,6 @@ fun PadCard(
         modifier.fillMaxWidth().clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape).padding(horizontal = 8.dp, vertical = 10.dp)
     ) {
         val side = 64.dp
-        val pad = minOf(maxWidth - side * 2 - 8.dp, maxHeight)
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
                 SideKey(Icons.Outlined.Input, "Kaynak", enabled = adb) {
@@ -284,11 +284,22 @@ fun PadCard(
                 SideKey(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1) { onMode(if (mode == 1) 0 else 1) }
                 SideKey(Icons.Filled.Keyboard, "Klavye", onClick = onKeyboard)
             }
-            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                when (mode) {
-                    1 -> TouchPad(pad, onKey)
-                    2 -> TrackPad(pad, ui.fastMode, ui.method, onMouse)
-                    else -> DPad(pad, onKey, navy = true)
+            // Orta: daire (yukarıda), sol üstte Sessiz, altta Geri · Ana Sayfa · Mikrofon
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                val small = 42.dp
+                val circle = minOf(maxWidth * 0.84f, maxHeight - small - 8.dp)
+                Box(Modifier.align(Alignment.TopCenter).padding(top = ((maxHeight - small - 8.dp - circle) / 2).coerceAtLeast(0.dp)), contentAlignment = Alignment.Center) {
+                    when (mode) {
+                        1 -> TouchPad(circle, onKey)
+                        2 -> TrackPad(circle, ui.fastMode, ui.method, onMouse)
+                        else -> DPad(circle, onKey, navy = true)
+                    }
+                }
+                SmallKey(AppIcons.VolumeOff, "Sessiz", small, Modifier.align(Alignment.TopStart)) { onKey(Keys.MUTE) }
+                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    SmallKey(AppIcons.Undo, "Geri", small) { onKey(Keys.BACK) }
+                    SmallKey(AppIcons.HomeOutline, "Ana Sayfa", small) { onKey(Keys.HOME) }
+                    MicSmall(ui, small, onMic)
                 }
             }
             Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -378,34 +389,103 @@ private fun MediaKey(icon: ImageVector, label: String, repeat: Boolean = false, 
 
 @Composable
 fun RemoteBottomKeys(ui: UiState, onKey: (Int) -> Unit, onMic: () -> Unit) {
-    val h = 148.dp
-    val gap = 10.dp
-    Row(Modifier.fillMaxWidth().height(h), horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(148.dp), verticalAlignment = Alignment.CenterVertically) {
         Rocker(
             width = 70.dp, bg = Navy.Btn, label = "SES", value = ui.volume?.toString(),
             level = ui.volume?.let { it.toFloat() / ui.volumeMax.coerceAtLeast(1) },
             topIsPlus = true, onUp = { onKey(Keys.VOL_UP) }, onDown = { onKey(Keys.VOL_DOWN) }
         )
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                LabelKey(AppIcons.Undo, "Geri", Modifier.weight(1f)) { onKey(Keys.BACK) }
-                LabelKey(AppIcons.HomeOutline, "Ana Sayfa", Modifier.weight(1f)) { onKey(Keys.HOME) }
-            }
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                LabelKey(AppIcons.VolumeOff, "Sessiz", Modifier.weight(1f)) { onKey(Keys.MUTE) }
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    MicButton(
-                        btnSize = 0.dp, iconSize = 26.dp, active = ui.micActive, level = ui.micLevel,
-                        idle = Navy.AccentSoft, shape = RoundedCornerShape(20.dp), label = "Sesli Ara", onClick = onMic,
-                        fill = true
-                    )
-                }
-            }
-        }
+        Spacer(Modifier.weight(1f))
         Rocker(
             width = 70.dp, bg = Navy.Btn, label = "KANAL", value = null, level = null,
             topIsPlus = false, onUp = { onKey(Keys.CH_UP) }, onDown = { onKey(Keys.CH_DOWN) }
         )
+    }
+}
+
+/** Yön tuşu kartındaki küçük yuvarlak tuş. */
+@Composable
+private fun SmallKey(icon: ImageVector, label: String, size: Dp, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pressed by inter.collectIsPressedAsState()
+    Box(
+        modifier.size(size).graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(CircleShape).background(if (pressed) Navy.BtnPressed else Navy.Btn).border(1.dp, Navy.Border, CircleShape)
+            .pressable(inter, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(size * 0.48f)) }
+}
+
+@Composable
+private fun MicSmall(ui: UiState, size: Dp, onMic: () -> Unit) {
+    Box(Modifier.size(size)) {
+        MicButton(btnSize = size, iconSize = size * 0.48f, active = ui.micActive, level = ui.micLevel, idle = Navy.AccentSoft, label = "Sesli Ara", onClick = onMic)
+    }
+}
+
+// ---------------- TV'de çalan: oynatıcı çubuğu ----------------
+
+private fun hms(ms: Long): String {
+    val t = (ms / 1000).coerceAtLeast(0)
+    return if (t >= 3600) "%d:%02d:%02d".format(t / 3600, (t % 3600) / 60, t % 60) else "%d:%02d".format(t / 60, t % 60)
+}
+
+@Composable
+fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onKey: (Int) -> Unit, onSeek: (Long) -> Unit) {
+    // Çalarken konum her saniye ilerler
+    var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(np.playing, np.at) {
+        while (np.playing) { kotlinx.coroutines.delay(500); now = android.os.SystemClock.elapsedRealtime() }
+    }
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val pos = np.position(now)
+    val dur = np.durationMs
+    val app = apps.firstOrNull { it.pkg == np.pkg }
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape)
+            .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val bmp = app?.icon
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
+                if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(np.title.ifBlank { app?.name ?: "Oynatılıyor" }, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(np.artist.ifBlank { app?.name ?: np.pkg }, color = Navy.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            MediaKey(Icons.Filled.SkipPrevious, "Önceki") { onKey(Keys.PREV) }
+            val inter = remember { MutableInteractionSource() }
+            val scale = pressScale(inter)
+            Box(
+                Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape).background(Navy.Accent)
+                    .pressable(inter, onClick = { onKey(Keys.PLAY_PAUSE) }),
+                contentAlignment = Alignment.Center
+            ) { Icon(if (np.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Oynat/Duraklat", tint = Color.White, modifier = Modifier.size(24.dp)) }
+            MediaKey(Icons.Filled.SkipNext, "Sonraki") { onKey(Keys.NEXT) }
+        }
+        if (dur > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val shown = dragging?.let { (it * dur).toLong() } ?: pos
+                Text(hms(shown), color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                androidx.compose.material3.Slider(
+                    value = dragging ?: (pos.toFloat() / dur).coerceIn(0f, 1f),
+                    onValueChange = { dragging = it },
+                    onValueChangeFinished = { dragging?.let { onSeek((it * dur).toLong()) }; dragging = null },
+                    enabled = np.canSeek,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = Color(0xFFAFC0FF), activeTrackColor = Navy.Accent, inactiveTrackColor = Navy.Btn,
+                        disabledThumbColor = Navy.Sub, disabledActiveTrackColor = Navy.Sub, disabledInactiveTrackColor = Navy.Btn
+                    ),
+                    modifier = Modifier.weight(1f).height(28.dp)
+                )
+                Text(hms(dur), color = Navy.Sub, fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(52.dp))
+            }
+        } else Spacer(Modifier.height(6.dp))
     }
 }
 

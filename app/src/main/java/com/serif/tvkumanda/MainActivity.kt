@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private var tvName by mutableStateOf("")
     private var fastMode by mutableStateOf(false)
     private var apps by mutableStateOf<List<TvApp>>(emptyList())
+    private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var volume by mutableStateOf<Int?>(null)
     private var volumeMax by mutableStateOf(100)
     private var volumeJob: Job? = null
@@ -142,6 +143,16 @@ class MainActivity : ComponentActivity() {
         TvTools.sendText = { t -> runOnUiThread { sendText(t) } }
         TvTools.atvLink = { url -> atv.openLink(url) }
         TvTools.appIcons = { apps.associate { it.pkg to it.icon } }
+        // TV'de çalan medya: uygulama ekrandayken ve ADB bağlıyken 2 sn'de bir sorulur
+        scope.launch {
+            while (isActive) {
+                delay(2000)
+                val visible = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                nowPlaying = if (visible && state == ConnState.CONNECTED && method == ConnMethod.ADB && fastMode)
+                    withContext(io) { runCatching { adb.nowPlaying() }.getOrNull() }
+                else null
+            }
+        }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
@@ -168,7 +179,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick),
+                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick, nowPlaying),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -198,6 +209,7 @@ class MainActivity : ComponentActivity() {
                         if (currentIp == tv.ip) savedTvs.firstOrNull { it.ip == tv.ip }?.let { tvName = it.display }
                     },
                     onDisconnect = ::disconnect,
+                    onSeekTv = { ms -> scope.launch(io) { runCatching { adb.seekTo(ms) } }; nowPlaying = nowPlaying?.copy(positionMs = ms, at = android.os.SystemClock.elapsedRealtime()) },
                     onWake = { tv -> scope.launch(io) { val ok = runCatching { WakeOnLan.send(tv.mac, tv.ip) }.isSuccess; runOnUiThread { toast(if (ok) "Uyandırma sinyali gönderildi; TV açılınca bağlanabilirsin" else "Uyandırma sinyali gönderilemedi") } } },
                     onPairCancel = ::cancelPairing,
                     onOpenTyping = { openTyping(atv.imeText) },
@@ -1432,10 +1444,11 @@ data class UiState(
     val imeReady: Boolean,
     val typingHint: String = "",
     /** Artınca alt menü Cast sekmesine geçer (Paylaş ile dosya gelince). */
-    val castTabTick: Int = 0
+    val castTabTick: Int = 0,
+    /** TV'de çalan medya (yalnızca ADB). */
+    val nowPlaying: NowPlaying? = null
 )
 
-/** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */
 /**
  * Kayıtlı bir TV. Aynı TV (aynı IP) tek kayıttır; [method] en son çalışan bağlantı türüdür.
  * [nick] kullanıcının verdiği ad (boşsa model adı), [mac] Wi-Fi ile uyandırmak için (ADB'de öğrenilir).

@@ -150,6 +150,7 @@ fun RemoteScreen(
     onForgetSaved: (SavedTv) -> Unit,
     onRenameSaved: (SavedTv, String) -> Unit = { _, _ -> },
     onDisconnect: () -> Unit = {},
+    onSeekTv: (Long) -> Unit = {},
     onWake: (SavedTv) -> Unit = {},
     onMic: () -> Unit,
     onOpenTyping: () -> Unit,
@@ -245,13 +246,18 @@ fun RemoteScreen(
         Spacer(Modifier.height(12.dp))
         // Yön tuşu kartı kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
         PadCard(
-            ui, padMode, { padMode = it }, onKey, onMouse,
+            ui, padMode, { padMode = it }, onKey, onMouse, onMic,
             onNumpad = { sheet = Sheet.NUMPAD },
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onTvSettings = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } } },
             modifier = Modifier.weight(1f)
         )
+        // TV'de bir şey çalınca: oynatıcı çubuğu (medya çubuğunun hemen üstünde)
+        ui.nowPlaying?.let { np ->
+            Spacer(Modifier.height(12.dp))
+            NowPlayingBar(np, ui.apps, onKey, onSeekTv)
+        }
         Spacer(Modifier.height(12.dp))
         MediaBar(onKey)
         Spacer(Modifier.height(12.dp))

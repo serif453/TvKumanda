@@ -11,6 +11,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -82,6 +86,10 @@ public final class KeyServer {
                     listApps();
                 } else if (line.equals("P")) {
                     listPackages();
+                } else if (line.equals("N")) {
+                    nowPlaying();
+                } else if (line.startsWith("s ")) {
+                    seekTo(Long.parseLong(line.substring(2).trim()));
                 }
             } catch (Throwable ignored) {
             }
@@ -357,5 +365,64 @@ public final class KeyServer {
         sb.append("END\n");
         System.out.print(sb);
         System.out.flush();
+    }
+
+    // ---------------- Şu an çalan (oynatıcı çubuğu) ----------------
+
+    /** Çalan (yoksa duraklatılmış) medya oturumu. Kabuk kullanıcısı MEDIA_CONTENT_CONTROL iznine sahip. */
+    private static MediaController activeController() throws Exception {
+        MediaSessionManager m = (MediaSessionManager) context().getSystemService(Context.MEDIA_SESSION_SERVICE);
+        List<MediaController> list = m.getActiveSessions(null);
+        MediaController best = null;
+        for (MediaController c : list) {
+            PlaybackState st = c.getPlaybackState();
+            if (st == null) continue;
+            int s = st.getState();
+            if (s == PlaybackState.STATE_PLAYING) return c;
+            if (best == null && (s == PlaybackState.STATE_PAUSED || s == PlaybackState.STATE_BUFFERING)) best = c;
+        }
+        return best;
+    }
+
+    private static String meta(MediaMetadata md, String... keys) {
+        if (md == null) return "";
+        for (String k : keys) {
+            CharSequence v = md.getText(k);
+            if (v != null && v.length() > 0) return clean(v);
+        }
+        return "";
+    }
+
+    private static void nowPlaying() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            MediaController c = activeController();
+            if (c != null) {
+                PlaybackState st = c.getPlaybackState();
+                MediaMetadata md = c.getMetadata();
+                String title = meta(md, MediaMetadata.METADATA_KEY_TITLE, MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+                String artist = meta(md, MediaMetadata.METADATA_KEY_ARTIST, MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, MediaMetadata.METADATA_KEY_ALBUM_ARTIST, MediaMetadata.METADATA_KEY_ALBUM);
+                long dur = md == null ? -1 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
+                long pos = st.getPosition();
+                if (st.getState() == PlaybackState.STATE_PLAYING && st.getLastPositionUpdateTime() > 0) {
+                    pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
+                }
+                sb.append("NP\t").append(c.getPackageName()).append('\t').append(title).append('\t').append(artist).append('\t')
+                  .append(dur).append('\t').append(pos).append('\t').append(st.getState()).append('\t').append(st.getActions()).append('\n');
+            }
+        } catch (Throwable t) {
+            sb.append("ERR\t").append(clean(String.valueOf(t))).append('\n');
+        }
+        sb.append("END\n");
+        System.out.print(sb);
+        System.out.flush();
+    }
+
+    private static void seekTo(long ms) {
+        try {
+            MediaController c = activeController();
+            if (c != null) c.getTransportControls().seekTo(ms);
+        } catch (Throwable ignored) {
+        }
     }
 }

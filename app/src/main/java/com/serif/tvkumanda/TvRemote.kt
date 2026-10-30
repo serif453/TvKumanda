@@ -164,8 +164,12 @@ class TvRemote(private val context: Context) : RemoteLink {
         return listAppsFromShell()
     }
 
-    /** Tuş sunucusuna bir liste komutu gönderip "END" gelene kadar satırları okur. */
-    private fun serverLines(cmd: String, timeoutSec: Long = 20): List<String>? {
+    private val serverLock = Any()
+
+    /** Tuş sunucusuna bir liste komutu gönderip "END" gelene kadar satırları okur (aynı anda tek okuma). */
+    private fun serverLines(cmd: String, timeoutSec: Long = 20): List<String>? = synchronized(serverLock) { serverLinesLocked(cmd, timeoutSec) }
+
+    private fun serverLinesLocked(cmd: String, timeoutSec: Long): List<String>? {
         val s = fast ?: return null
         if (!sendFast(cmd)) return null
         val task = waiter.submit<List<String>> {
@@ -186,7 +190,6 @@ class TvRemote(private val context: Context) : RemoteLink {
     }
 
     /** Kurulu tüm paketler (uygulama yöneticisi). */
-    @Synchronized
     fun listPackages(): List<TvPackage> {
         val lines = runCatching { serverLines("P", 40) }.getOrNull()
         if (lines != null && lines.isNotEmpty()) {
@@ -208,30 +211,28 @@ class TvRemote(private val context: Context) : RemoteLink {
         }.filter { it.pkg != context.packageName }
     }
 
+    /** TV'de şu an çalan medya (yardımcı yoksa ya da bir şey çalmıyorsa null). */
+    fun nowPlaying(): NowPlaying? {
+        val lines = runCatching { serverLines("N", 4) }.getOrNull() ?: return null
+        val p = lines.firstOrNull { it.startsWith("NP\t") }?.split('\t') ?: return null
+        if (p.size < 8) return null
+        return NowPlaying(
+            pkg = p[1], title = p[2], artist = p[3],
+            durationMs = p[4].toLongOrNull() ?: -1, positionMs = p[5].toLongOrNull() ?: 0,
+            playing = p[6] == "3", canSeek = ((p[7].toLongOrNull() ?: 0) and 256L) != 0L,
+            at = android.os.SystemClock.elapsedRealtime()
+        )
+    }
+
+    /** Çalan medyada [ms] konumuna atlar. */
+    fun seekTo(ms: Long) { sendFast("s $ms") }
+
     /** Dosya aktarımı için ADB bağlantısı (uzun aktarımlar kilit tutmasın diye doğrudan verilir). */
     fun dadbOrThrow(): Dadb = dadb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
 
     /** Tuş sunucusundan uygulamaları TV'nin gösterdiği ad ve simgeleriyle alır. */
     private fun listAppsFromServer(): List<TvApp>? {
-        val s = fast ?: return null
-        if (!sendFast("a")) return null
-        val task = waiter.submit<List<String>> {
-            val out = ArrayList<String>()
-            while (true) {
-                val l = s.source.readUtf8Line() ?: break
-                if (l == "END") break
-                out.add(l)
-            }
-            out
-        }
-        val lines = try {
-            task.get(20, TimeUnit.SECONDS)
-        } catch (e: java.util.concurrent.TimeoutException) {
-            // Yarım kalan liste akışı bozar: sunucu kapatılıp temiz şekilde yeniden başlatılır,
-            // böylece bekleyen okuma da serbest kalır.
-            restartFastMode(s)
-            throw e
-        }
+        val lines = serverLines("a") ?: return null
         runCatching { cacheFile(host).writeText(lines.joinToString("\n")) }
         return parseServerApps(lines)
     }
@@ -390,6 +391,18 @@ fun buildTextCommand(text: String): String {
         }
     }
     return "input text '$sb'"
+}
+
+/** TV'de çalan medya; [at] bilginin alındığı an (konumu ilerletmek için). */
+data class NowPlaying(
+    val pkg: String, val title: String, val artist: String,
+    val durationMs: Long, val positionMs: Long, val playing: Boolean, val canSeek: Boolean, val at: Long
+) {
+    /** Şu anki tahmini konum. */
+    fun position(now: Long = android.os.SystemClock.elapsedRealtime()): Long {
+        val p = if (playing) positionMs + (now - at) else positionMs
+        return if (durationMs > 0) p.coerceIn(0, durationMs) else p.coerceAtLeast(0)
+    }
 }
 
 /** Uygulama yöneticisindeki bir paket. */
