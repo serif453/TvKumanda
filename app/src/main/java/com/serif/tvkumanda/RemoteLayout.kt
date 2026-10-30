@@ -284,18 +284,23 @@ fun PadCard(
                 SideKey(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1) { onMode(if (mode == 1) 0 else 1) }
                 SideKey(Icons.Filled.Keyboard, "Klavye", onClick = onKeyboard)
             }
-            // Orta: daire (yukarıda), sol üstte Sessiz, altta Geri · Ana Sayfa · Mikrofon
+            // Orta: üstte Ses kıs · Sessiz · Ses aç, ortada daire, altta Geri · Ana Sayfa · Mikrofon
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
                 val small = 42.dp
-                val circle = minOf(maxWidth * 0.84f, maxHeight - small - 8.dp)
-                Box(Modifier.align(Alignment.TopCenter).padding(top = ((maxHeight - small - 8.dp - circle) / 2).coerceAtLeast(0.dp)), contentAlignment = Alignment.Center) {
+                val rows = (small + 8.dp) * 2
+                val circle = minOf(maxWidth, maxHeight - rows)
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    SmallKey(Icons.Filled.VolumeDown, "Ses kıs", small, repeat = true) { onKey(Keys.VOL_DOWN) }
+                    SmallKey(AppIcons.VolumeOff, "Sessiz", small) { onKey(Keys.MUTE) }
+                    SmallKey(Icons.Filled.VolumeUp, "Ses aç", small, repeat = true) { onKey(Keys.VOL_UP) }
+                }
+                Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
                     when (mode) {
                         1 -> TouchPad(circle, onKey)
                         2 -> TrackPad(circle, ui.fastMode, ui.method, onMouse)
                         else -> DPad(circle, onKey, navy = true)
                     }
                 }
-                SmallKey(AppIcons.VolumeOff, "Sessiz", small, Modifier.align(Alignment.TopStart)) { onKey(Keys.MUTE) }
                 Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SmallKey(AppIcons.Undo, "Geri", small) { onKey(Keys.BACK) }
                     SmallKey(AppIcons.HomeOutline, "Ana Sayfa", small) { onKey(Keys.HOME) }
@@ -405,14 +410,14 @@ fun RemoteBottomKeys(ui: UiState, onKey: (Int) -> Unit, onMic: () -> Unit) {
 
 /** Yön tuşu kartındaki küçük yuvarlak tuş. */
 @Composable
-private fun SmallKey(icon: ImageVector, label: String, size: Dp, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun SmallKey(icon: ImageVector, label: String, size: Dp, modifier: Modifier = Modifier, repeat: Boolean = false, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val pressed by inter.collectIsPressedAsState()
     Box(
         modifier.size(size).graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CircleShape).background(if (pressed) Navy.BtnPressed else Navy.Btn).border(1.dp, Navy.Border, CircleShape)
-            .pressable(inter, onClick = onClick),
+            .pressable(inter, repeat = repeat, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(size * 0.48f)) }
 }

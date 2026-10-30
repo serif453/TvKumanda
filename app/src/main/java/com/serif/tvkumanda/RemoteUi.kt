@@ -260,8 +260,6 @@ fun RemoteScreen(
         }
         Spacer(Modifier.height(12.dp))
         MediaBar(onKey)
-        Spacer(Modifier.height(12.dp))
-        RemoteBottomKeys(ui, onKey, onMic)
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }
