@@ -49,7 +49,8 @@ fun TvSheet(
     onForget: (SavedTv) -> Unit,
     onRename: (SavedTv, String) -> Unit,
     onDisconnect: () -> Unit,
-    onWake: (SavedTv) -> Unit
+    onWake: (SavedTv) -> Unit,
+    onClose: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val discovery = remember { TvDiscovery(context) }
@@ -100,6 +101,9 @@ fun TvSheet(
                 }
             }
         }
+
+        // ---- IR kumandalar (telefonda IR verici varsa) ----
+        IrSection { id -> onClose(); IrUi.page = id }
 
         // ---- Ağda bulunan TV'ler ----
         SectionLabel("AĞDA BULUNANLAR")

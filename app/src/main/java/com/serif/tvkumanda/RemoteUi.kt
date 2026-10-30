@@ -272,6 +272,8 @@ fun RemoteScreen(
 
     // Tam ekran DLNA Sunucu sayfası (Cast sekmesindeki karttan açılır)
     if (DlnaServerUi.pageOpen) DlnaServerPage(mediaLibrary) { DlnaServerUi.pageOpen = false }
+    // Tam ekran IR kumanda sayfaları (TV seçimi penceresinden açılır)
+    IrPageHost()
     // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini)
     if (tab == Tab.TOOLS) ToolPageHost()
 
@@ -305,7 +307,7 @@ fun RemoteScreen(
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake)
+                    Sheet.CONNECT -> TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake) { sheet = Sheet.NONE }
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }

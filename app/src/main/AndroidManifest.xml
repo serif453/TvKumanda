@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Telefonun kızılötesi vericisiyle eski tip TV kumandası (IR yoksa düğme gizlenir) -->
+    <uses-permission android:name="android.permission.TRANSMIT_IR" />
+    <uses-feature android:name="android.hardware.consumerir" android:required="false" />
     <!-- Bağlantı testi: telefonun Wi-Fi'da mı, VPN açık mı olduğunu okumak için (kurulumda kendiliğinden verilir) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Zamanlı açma ve uyku zamanlayıcısı: alarm tam vaktinde çalışsın; telefon yeniden başlayınca geri kurulsun -->

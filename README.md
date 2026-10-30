@@ -66,6 +66,10 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
   ses aç/kıs, ana ekran), bağlantı testi (Wi-Fi, VPN, TV'nin kapıları ve gecikme;
   sorun varsa tek cümlelik çözüm), teşhis kaydı (bağlanma, Cast ve araç hatalarının günlüğü; IP'ler gizlenerek paylaşılabilir)
 
+- **IR kumanda** (telefonda kızılötesi verici varsa): TV seçimi penceresinden "IR kumanda ekle" → marka seç → kodu dene.
+  100'den fazla marka; Wi-Fi ve bağlantı gerekmez, eski TV'lerde de çalışır. Yalnızca klasik tuşlar (güç, ses, kanal, yön,
+  rakamlar, oynatma); yazı yazma ve araçlar IR'da yok. Kodlar [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB)'den (CC0)
+
 - **Deneysel (telefondan TV'ye canlı yayın):** ekran yansıtma (telefonun ekranı ve sesi TV'de görünür) ve telefonu TV
   hoparlörüne bağlama (telefonda çalan ses TV'den gelir). İkisi de ADB gerektirmez. TV'de 2-5 saniye gecikme olur;
   slayt, fotoğraf, müzik ve podcast için uygundur, oyun ya da video izlerken ses senkronu için değil. Telefon sesini

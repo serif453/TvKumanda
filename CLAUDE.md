@@ -136,6 +136,18 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   - **Gerçek TV'de henüz denenmedi** (Philips'in canlı TS/ADTS'yi hangi yoldan açacağı bilinmiyor). Gecikme 2-5 sn beklenir.
     Telefon sesini kısma seçeneği yok (yakalamanın ses seviyesinden etkilenip etkilenmediği belirsiz).
 - Kısayollar: `ShortcutsScreen.kt` — şimdilik yalnızca görünüm.
+- **IR kumanda** (telefonun kızılötesi vericisi, `ConsumerIrManager`; IR yoksa bölüm hiç görünmez):
+  - `IrCodec.kt` (saf): kod → süre dizisi. NEC, NECext, Samsung32, RC5, RC5X, RC6, SIRC(12/15/20), Kaseikyo, RCA, Pioneer
+    ve ham (W). Adres/komut anlamı Flipper Zero kodlayıcılarıyla birebir (kodlar o cihazla kaydedildi). RC5/RC6 değişim biti
+    her yeni basışta değişir, basılı tutunca değişmez. `IrCodecTest` bilinen kodlarla karşılaştırır (LG 20DF10EF, Samsung
+    E0E040BF, Sony A90, Panasonic) ve gerçek veritabanının her kodunu kodlar.
+  - Veritabanı `app/src/main/assets/ir/tv.txt`: `tools/ir_db_build.py` ile Flipper-IRDB `TVs/` klasöründen (CC0) üretilir.
+    Tuş adları ortak ada çevrilir (vol_up, ch_up, ok…); aynı markanın kumandaları güç+ses koduna göre kod setlerine
+    birleşir, çok kumandadan gelen set önce denenir. Vestel markası veritabanında yok (Telefunken/Toshiba/Finlux önerilir).
+  - `IrRemote.kt`: TV seçimi penceresinde "IR KUMANDALAR" bölümü, ekleme (marka → kod seti deneme: sesi aç, gerekirse güç →
+    ad), tam ekran IR kumanda. Kayıtlar `ayarlar` → `ir_kumandalar` (marka adı + kod seti sırası). Gönderim tek iş
+    parçacığında; desteklenmeyen taşıyıcı frekansı en yakın desteklenene çekilir. Serif'in Honor telefonunda IR var;
+    gerçek TV'de henüz denenmedi.
 
 ### Cast
 - Chromecast: `CastClient.kt` (Cast v2, Default Media Receiver `CC1AD845`), dosyalar `MediaServer.kt` (rastgele
@@ -146,7 +158,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`.
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest`.
 
 ## Bilinen kısıtlar
 
