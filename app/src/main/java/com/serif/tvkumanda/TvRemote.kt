@@ -157,6 +157,13 @@ class TvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    /**
+     * Başka bir TV'ye kalıcı bağlantı ve hızlı mod kurmadan tek komut gönderir (tüm TV'lere komut için).
+     * Bu nesnenin açık bağlantısına dokunmaz; aynı ADB anahtarı kullanılır.
+     */
+    fun oneShot(ip: String, command: String): String =
+        Dadb.create(ip, 5555, keyPair).use { it.shell(command).output }
+
     /** TV'deki başlatılabilir uygulamaları listeler. Kilit tutmaz, tuş gönderimini bekletmez. */
     override fun listApps(): List<TvApp> {
         // Önce TV'deki sunucudan gerçek adlar ve simgeler; olmazsa eski yöntem

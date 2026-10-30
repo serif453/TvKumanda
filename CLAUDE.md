@@ -71,7 +71,10 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   `TvTools.kt` / `TvFiles.kt` / `TvAdvanced.kt` (ADB komutları). **`id`'si olmayan kutucuk henüz hazır değildir.**
   - Ağ ve test: `NetSheets.kt` (pencereler, `PhoneNet`: Wi-Fi/VPN/modem adresi), `ConnCheck.kt` (bağlantı testinin saf
     mantığı: kapı yoklama 6466/6467/5555 + sonuç satırları), `NetScan.kt` (ağ tarayıcı: telefonun /24'ünde 8 kapı,
-    128 paralel deneme; adlar mDNS Android TV + `_googlecast` "fn", DLNA ve ters DNS'ten). Bu grubun kutucukları `offline = true`: TV'ye bağlı
+    128 paralel deneme; adlar mDNS Android TV + `_googlecast` "fn", DLNA ve ters DNS'ten), `AllTvs.kt` + `AllTvSender`
+    (tüm TV'lere komut: her kayıtlı TV'ye en son yöntemiyle geçici bağlantı; ADB'de `TvRemote.oneShot`, hızlı mod
+    kurulmaz; bağlı TV'de mevcut bağlantı kullanılır. "Kapat" = uyku tuşu 223, "Aç" = WoL + 224).
+    Serif'in tek TV'si var; birden fazla TV'de denenmedi. Bu grubun kutucukları `offline = true`: TV'ye bağlı
     olmadan da açılır, çünkü en çok bağlantı çalışmadığında lazım.
 - Teşhis kaydı: `DiagLog.kt` — son 500 olay `filesDir/teshis.log`'da, çökme yakalayıcısı dahil. Bağlanma, eşleştirme,
   kopma, Cast hataları ve her araç hatası (`io()` içinden) yazılır. Paylaşırken IP'lerin son hanesi varsayılan olarak
@@ -87,7 +90,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı. Saf (Android'siz) kod test edilir.
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir.
 
 ## Bilinen kısıtlar
 
@@ -98,8 +101,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 
 ### Planlanan (Serif'in sırası)
 - Araçlar'da hazır olmayanlar: ekran kaydı; zamanlama ve güç (uyku zamanlayıcısı, zamanlı açma, ekran süresi, ses sınırı);
-  ağ ve test (tüm TV'lere komut); ekran yansıtma; telefonu TV hoparlörüne bağlama.
-  - Tüm TV'lere komut: Serif'in tek TV'si var, yine de eklenecek; sonra kendisi test edecek.
+  ekran yansıtma; telefonu TV hoparlörüne bağlama.
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
 - Ayarlar: sol üstte küçük düğme; ortada TV adı (kayıtlı TV'ler ve bağlantı türü).

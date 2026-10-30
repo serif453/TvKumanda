@@ -209,3 +209,26 @@ class NetScanTest {
         assertEquals(1f, s.progress())
     }
 }
+
+class AllTvsTest {
+
+    @Test
+    fun reasonsAreReadable() {
+        assertEquals("TV cevap vermiyor (kapalı ya da uykuda)", AllTvs.reason(SocketTimeoutException("x"), adb = false))
+        assertEquals("ADB kapalı", AllTvs.reason(ConnectException("ECONNREFUSED (Connection refused)"), adb = true))
+        assertEquals("TV bulunamadı (adresi değişmiş olabilir)", AllTvs.reason(ConnectException("EHOSTUNREACH (No route to host)"), adb = false))
+        assertTrue(AllTvs.reason(IllegalStateException("ADB hazır değil"), adb = true).endsWith("ADB hazır değil"))
+    }
+
+    @Test
+    fun summaryCountsSuccesses() {
+        val s = AllTvs.summary(AllTvs.Command.OFF, listOf(AllTvs.Outcome(true, ""), AllTvs.Outcome(false, ""), AllTvs.Outcome(true, "")))
+        assertEquals("Kapat: 2/3 TV'ye gitti", s)
+    }
+
+    @Test
+    fun offIsSleepNotPowerToggle() {
+        assertEquals(223, AllTvs.Command.OFF.key)
+        assertEquals(224, AllTvs.Command.ON.key)
+    }
+}

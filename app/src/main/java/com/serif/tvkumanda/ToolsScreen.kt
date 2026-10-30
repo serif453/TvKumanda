@@ -86,7 +86,7 @@ private val toolGroups = listOf(
     ToolGroup("Ağ ve test", listOf(
         Tool("Ağ tarayıcı", Icons.Outlined.Radar, offline = true, id = ToolId.NET_SCAN),
         Tool("Bağlantı testi", Icons.Outlined.NetworkCheck, offline = true, id = ToolId.CONN_TEST),
-        Tool("Tüm TV'lere komut", Icons.Outlined.Devices, offline = true),
+        Tool("Tüm TV'lere komut", Icons.Outlined.Devices, offline = true, id = ToolId.ALL_TVS),
         Tool("Teşhis kaydını paylaş", Icons.Outlined.BugReport, offline = true, id = ToolId.DIAG_LOG)
     )),
     ToolGroup("Deneysel", listOf(

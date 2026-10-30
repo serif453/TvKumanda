@@ -43,7 +43,7 @@ import java.io.File
 enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
     APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER,
     PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS,
-    CONN_TEST, DIAG_LOG, NET_SCAN }
+    CONN_TEST, DIAG_LOG, NET_SCAN, ALL_TVS }
 
 /** Pencere içindeki sonuç satırı. */
 internal data class ToolResult(val ok: Boolean, val text: String)
@@ -91,6 +91,7 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
                 ToolId.CONN_TEST -> ConnTestTool()
                 ToolId.DIAG_LOG -> DiagLogTool()
                 ToolId.NET_SCAN -> NetScanTool(onDismiss)
+                ToolId.ALL_TVS -> AllTvsTool()
                 ToolId.APP_MANAGER, ToolId.FILE_BROWSER, ToolId.DEBLOAT, ToolId.TERMINAL, ToolId.LOGS -> {}
             }
         }
@@ -121,6 +122,7 @@ private fun description(id: ToolId) = when (id) {
     ToolId.CONN_TEST -> "Bağlanamıyorsan sebebini bulur"
     ToolId.DIAG_LOG -> "Uygulamanın olay günlüğü"
     ToolId.NET_SCAN -> "Ağdaki TV'leri ve cihazları bulur"
+    ToolId.ALL_TVS -> "Kayıtlı TV'lerin hepsine aynı anda"
 }
 
 /** Arka planda TV işi çalıştırmak için küçük yardımcı. */

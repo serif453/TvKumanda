@@ -34,10 +34,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.io.File
 import java.net.Inet4Address
 import java.text.SimpleDateFormat
@@ -519,5 +524,184 @@ private fun ScanBadges(labels: List<String>) {
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 7.dp, vertical = 2.dp)
             )
         }
+    }
+}
+
+// ---------------- Tüm TV'lere komut ----------------
+
+/** Kayıtlı bir TV'ye tek komut gönderir; her TV en fazla birkaç saniye beklenir. */
+internal object AllTvSender {
+    private val pool = Executors.newCachedThreadPool { r -> Thread(r, "tum-tvler").apply { isDaemon = true } }
+
+    fun send(context: Context, tv: SavedTv, cmd: AllTvs.Command): AllTvs.Outcome {
+        val f = pool.submit<AllTvs.Outcome> { sendBlocking(context.applicationContext, tv, cmd) }
+        return try {
+            f.get(12, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            f.cancel(true)
+            AllTvs.Outcome(false, if (tv.method == ConnMethod.ADB) "Zaman aşımı (TV'de izin sorusu bekliyor olabilir)" else "Zaman aşımı: TV cevap vermedi")
+        } catch (e: ExecutionException) {
+            AllTvs.Outcome(false, AllTvs.reason(e.cause ?: e, tv.method == ConnMethod.ADB))
+        }
+    }
+
+    private fun sendBlocking(context: Context, tv: SavedTv, cmd: AllTvs.Command): AllTvs.Outcome {
+        // "Aç": önce Wi-Fi ile uyandırma (TV'nin adresi ADB bağlantısında öğrenilir)
+        val woke = cmd == AllTvs.Command.ON && tv.mac.isNotBlank() && runCatching { WakeOnLan.send(tv.mac, tv.ip) }.isSuccess
+        // Şu an bağlı olan TV'de mevcut bağlantı kullanılır; ikinci bir bağlantı onu koparabilir
+        if (tv.ip == TvTools.connectedIp()) {
+            TvTools.sendKey(cmd.key)
+            return AllTvs.Outcome(true, "Gönderildi")
+        }
+        val r = runCatching {
+            if (tv.method == ConnMethod.ADB) {
+                val adb = TvTools.adb ?: throw IllegalStateException("ADB hazır değil")
+                adb.oneShot(tv.ip, "input keyevent ${cmd.key}")
+            } else {
+                val link = AtvRemote(context)
+                try {
+                    link.connectTo(tv.ip)
+                    link.key(cmd.key)
+                    Thread.sleep(300)   // tuş TV'ye ulaşmadan bağlantı kapanmasın
+                } finally {
+                    runCatching { link.close() }
+                }
+            }
+        }
+        return when {
+            r.isSuccess -> AllTvs.Outcome(true, "Gönderildi")
+            woke -> AllTvs.Outcome(true, "Wi-Fi ile uyandırma sinyali gönderildi")
+            cmd == AllTvs.Command.ON -> AllTvs.Outcome(
+                false,
+                AllTvs.reason(r.exceptionOrNull()!!, tv.method == ConnMethod.ADB) +
+                    if (tv.mac.isBlank()) ". Kapalı TV'yi uyandırmak için TV'ye en az bir kez ADB ile bağlanılmış olmalı" else ""
+            )
+            else -> AllTvs.Outcome(false, AllTvs.reason(r.exceptionOrNull()!!, tv.method == ConnMethod.ADB))
+        }
+    }
+}
+
+private fun commandIcon(c: AllTvs.Command) = when (c) {
+    AllTvs.Command.OFF -> Icons.Outlined.PowerSettingsNew
+    AllTvs.Command.ON -> Icons.Outlined.Power
+    AllTvs.Command.MUTE -> Icons.Outlined.VolumeOff
+    AllTvs.Command.VOL_UP -> Icons.Outlined.VolumeUp
+    AllTvs.Command.VOL_DOWN -> Icons.Outlined.VolumeDown
+    AllTvs.Command.HOME -> Icons.Outlined.Home
+}
+
+@Composable
+internal fun AllTvsTool() {
+    val context = LocalContext.current
+    val run = rememberRunner()
+    val tvs = remember { TvTools.savedTvs() }
+    var selected by remember { mutableStateOf(tvs.map { it.ip }.toSet()) }
+    // Adres → sonuç; değer null ise gönderiliyor
+    var outcomes by remember { mutableStateOf<Map<String, AllTvs.Outcome?>>(emptyMap()) }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+
+    if (tvs.isEmpty()) {
+        Text(
+            "Kayıtlı TV yok. Önce bir TV'ye bağlan ya da Ağ tarayıcıyla bul; bağlandığın her TV buraya eklenir.",
+            color = Pal.Sub, fontSize = 13.sp
+        )
+        return
+    }
+
+    fun send(cmd: AllTvs.Command) {
+        val targets = tvs.filter { it.ip in selected }
+        if (targets.isEmpty()) return
+        busy = true; result = null
+        outcomes = targets.associate { it.ip to null }
+        run {
+            coroutineScope {
+                targets.forEach { tv ->
+                    launch {
+                        val o = withContext(Dispatchers.IO) { AllTvSender.send(context, tv, cmd) }
+                        outcomes = outcomes + (tv.ip to o)
+                    }
+                }
+            }
+            val all = outcomes.values.filterNotNull()
+            val text = AllTvs.summary(cmd, all)
+            result = ToolResult(all.all { it.ok }, text)
+            DiagLog.log("Tüm TV'lere komut — $text")
+            busy = false
+        }
+    }
+
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text(
+            "Seçili TV'lere aynı anda komut gönderir. Her TV'ye en son bağlandığın yöntemle (Standart ya da ADB) kısa bir bağlantı açılır.",
+            color = Pal.Sub, fontSize = 13.sp
+        )
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Pal.Btn).padding(horizontal = 8.dp, vertical = 4.dp)) {
+            tvs.forEach { tv ->
+                val on = tv.ip in selected
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = !busy) { selected = if (on) selected - tv.ip else selected + tv.ip }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = on, onCheckedChange = null, enabled = !busy,
+                        colors = CheckboxDefaults.colors(checkedColor = Pal.Blue, uncheckedColor = Pal.Sub, checkmarkColor = Color.White),
+                        modifier = Modifier.padding(horizontal = 6.dp)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(tv.display, color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${tv.ip} · ${if (tv.method == ConnMethod.ADB) "ADB" else "Standart"}", color = Pal.Sub, fontSize = 12.sp)
+                        if (tv.ip in outcomes) {
+                            val o = outcomes[tv.ip]
+                            Text(
+                                o?.text ?: "Gönderiliyor…",
+                                color = when { o == null -> Pal.Sub; o.ok -> Pal.Green; else -> Pal.Red },
+                                fontSize = 12.sp, lineHeight = 16.sp
+                            )
+                        }
+                    }
+                    if (tv.ip in outcomes) {
+                        val o = outcomes[tv.ip]
+                        Spacer(Modifier.width(8.dp))
+                        if (o == null) CircularProgressIndicator(Modifier.size(16.dp), color = Pal.Sub, strokeWidth = 2.dp)
+                        else Icon(
+                            if (o.ok) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline, null,
+                            tint = if (o.ok) Pal.Green else Pal.Red, modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        val enabled = !busy && selected.isNotEmpty()
+        for (row in AllTvs.Command.entries.chunked(3)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (c in row) {
+                    Column(
+                        Modifier.weight(1f).height(84.dp).clip(RoundedCornerShape(16.dp)).background(Pal.Btn)
+                            .clickable(enabled = enabled) { send(c) }
+                            .padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(commandIcon(c), c.label, tint = if (enabled) Pal.Text else Pal.Sub, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text(c.label, color = if (enabled) Pal.Text else Pal.Sub, fontSize = 12.sp)
+                    }
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        ResultLine(result)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "\"Kapat\" TV'yi uyku moduna alır. \"Aç\" kapalı TV'yi Wi-Fi ile uyandırır; bu yalnızca en az bir kez ADB ile " +
+                "bağlanılmış TV'lerde mümkün, diğerleri yalnızca uykudaysa açılabilir.",
+            color = Pal.Sub, fontSize = 12.sp, lineHeight = 16.sp
+        )
     }
 }
