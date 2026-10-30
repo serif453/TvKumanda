@@ -148,6 +148,9 @@ fun RemoteScreen(
     onPairCancel: () -> Unit,
     onPickSaved: (SavedTv) -> Unit,
     onForgetSaved: (SavedTv) -> Unit,
+    onRenameSaved: (SavedTv, String) -> Unit = { _, _ -> },
+    onDisconnect: () -> Unit = {},
+    onWake: (SavedTv) -> Unit = {},
     onMic: () -> Unit,
     onOpenTyping: () -> Unit,
     onCloseTyping: () -> Unit,
@@ -216,7 +219,12 @@ fun RemoteScreen(
             .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        TopBarV2(ui, navy = tab == Tab.REMOTE, onSettings = { sheet = Sheet.CONNECT }, onPicker = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) })
+        val ctx = LocalContext.current
+        TopBarV2(
+            ui, navy = tab == Tab.REMOTE,
+            onSettings = { android.widget.Toast.makeText(ctx, "Yakında: TV Kumanda ayarları", android.widget.Toast.LENGTH_SHORT).show() },
+            onPicker = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) }
+        )
 
         if (tab == Tab.CAST) {
             CastScreen(
@@ -289,11 +297,11 @@ fun RemoteScreen(
         ModalBottomSheet(
             onDismissRequest = { sheet = Sheet.NONE },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color(0xFF242426)
+            containerColor = if (sheet == Sheet.CONNECT) Navy.Card else Color(0xFF242426)
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> ConnectSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved)
+                    Sheet.CONNECT -> TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake)
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }

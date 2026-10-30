@@ -188,9 +188,17 @@ class MainActivity : ComponentActivity() {
                     onPickSaved = ::connectSaved,
                     onMic = ::onMic,
                     onForgetSaved = { tv ->
-                        savedTvs = savedTvs.filterNot { it.ip == tv.ip && it.method == tv.method }
+                        if (state == ConnState.CONNECTED && currentIp == tv.ip) disconnect()
+                        savedTvs = savedTvs.filterNot { it.ip == tv.ip }
                         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
                     },
+                    onRenameSaved = { tv, nick ->
+                        savedTvs = savedTvs.map { if (it.ip == tv.ip) it.copy(nick = nick.trim()) else it }
+                        prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
+                        if (currentIp == tv.ip) savedTvs.firstOrNull { it.ip == tv.ip }?.let { tvName = it.display }
+                    },
+                    onDisconnect = ::disconnect,
+                    onWake = { tv -> scope.launch(io) { val ok = runCatching { WakeOnLan.send(tv.mac, tv.ip) }.isSuccess; runOnUiThread { toast(if (ok) "Uyandırma sinyali gönderildi; TV açılınca bağlanabilirsin" else "Uyandırma sinyali gönderilemedi") } } },
                     onPairCancel = ::cancelPairing,
                     onOpenTyping = { openTyping(atv.imeText) },
                     onCloseTyping = ::closeTyping,
@@ -249,10 +257,14 @@ class MainActivity : ComponentActivity() {
 
     private fun onConnected(model: String, ip: String) {
         // Başarılı her bağlantı kayıtlı TV listesinin en başına yazılır
-        savedTvs = listOf(SavedTv(ip, model.ifBlank { ip }, method)) +
-            savedTvs.filterNot { it.ip == ip && it.method == method }
+        val old = savedTvs.firstOrNull { it.ip == ip }
+        // Model adı ADB'den daha temiz geliyor; Standart bağlantı eski adı ezmez
+        val name = if (old != null && method == ConnMethod.STANDARD) old.name else model.ifBlank { old?.name ?: ip }
+        val saved = SavedTv(ip, name, method, old?.nick ?: "", old?.mac ?: "")
+        savedTvs = listOf(saved) + savedTvs.filterNot { it.ip == ip }
         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
-        tvName = model
+        tvName = saved.display
+        if (method == ConnMethod.ADB && saved.mac.isBlank()) learnMac(ip)
         fastMode = remote.isFast
         state = ConnState.CONNECTED
         message = ip
@@ -295,6 +307,33 @@ class MainActivity : ComponentActivity() {
         // Aynı yöntemde eski bağlantıyı connectTo() kendisi, aynı iş parçacığında kapatır
         prefs.edit().putString("ip", tv.ip).apply()
         connect(tv.ip)
+    }
+
+    /** Bağlantıyı kapatır (kayıt durur). */
+    private fun disconnect() {
+        val old = remote
+        pairing = false
+        closeTyping()
+        Thread { runCatching { old.close() } }.start()
+        state = ConnState.IDLE
+        fastMode = false
+        apps = emptyList()
+        volume = null
+        message = "Bağlı değil"
+    }
+
+    /** TV'nin ağ kartının adresini (MAC) öğrenip kaydeder; Wi-Fi ile uyandırmak için gerekir. */
+    private fun learnMac(ip: String) {
+        scope.launch(io) {
+            val mac = runCatching {
+                val out = adb.shell("for i in \$(ls /sys/class/net); do a=\$(ip -4 -o addr show \$i 2>/dev/null | grep -c '$ip/'); [ \"\$a\" != 0 ] && cat /sys/class/net/\$i/address; done")
+                out.lines().map { it.trim() }.firstOrNull { Regex("([0-9a-f]{2}:){5}[0-9a-f]{2}").matches(it) }
+            }.getOrNull() ?: return@launch
+            runOnUiThread {
+                savedTvs = savedTvs.map { if (it.ip == ip) it.copy(mac = mac) else it }
+                prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
+            }
+        }
     }
 
     /** Yöntem değişince açık bağlantı kapatılır; diğer yönteme otomatik geçiş yapılmaz. */
@@ -362,7 +401,7 @@ class MainActivity : ComponentActivity() {
             delay(1000)
             try {
                 val model = withContext(io) { atv.connectTo(ip) }
-                if (method == ConnMethod.STANDARD) tvName = model
+                if (method == ConnMethod.STANDARD) tvName = savedTvs.firstOrNull { it.ip == ip }?.display ?: model
             } catch (e: Exception) {
                 if (method == ConnMethod.STANDARD) {
                     state = ConnState.ERROR
@@ -1397,22 +1436,60 @@ data class UiState(
 )
 
 /** Kayıtlı TV: IP + bağlantı yöntemi birlikte anahtardır; aynı TV her yöntem için ayrı kaydedilir. */
-data class SavedTv(val ip: String, val name: String, val method: ConnMethod) {
+/**
+ * Kayıtlı bir TV. Aynı TV (aynı IP) tek kayıttır; [method] en son çalışan bağlantı türüdür.
+ * [nick] kullanıcının verdiği ad (boşsa model adı), [mac] Wi-Fi ile uyandırmak için (ADB'de öğrenilir).
+ */
+data class SavedTv(val ip: String, val name: String, val method: ConnMethod, val nick: String = "", val mac: String = "") {
+    val display: String get() = nick.ifBlank { name.removePrefix("TPV ").ifBlank { ip } }
+
     companion object {
         fun load(json: String?): List<SavedTv> = runCatching {
             val arr = org.json.JSONArray(json ?: "[]")
-            (0 until arr.length()).map {
+            val all = (0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
                 SavedTv(
                     o.getString("ip"),
                     o.optString("name", o.getString("ip")),
-                    runCatching { ConnMethod.valueOf(o.optString("method", "ADB")) }.getOrDefault(ConnMethod.ADB)
+                    runCatching { ConnMethod.valueOf(o.optString("method", "ADB")) }.getOrDefault(ConnMethod.ADB),
+                    o.optString("nick", ""),
+                    o.optString("mac", "")
+                )
+            }
+            // Eski sürümler aynı TV'yi her bağlantı türü için ayrı kaydediyordu: tek kayıtta birleştirilir
+            all.groupBy { it.ip }.map { (_, list) ->
+                val first = list.first()
+                first.copy(
+                    name = list.firstOrNull { it.method == ConnMethod.ADB }?.name ?: first.name,
+                    nick = list.firstNotNullOfOrNull { it.nick.ifBlank { null } } ?: "",
+                    mac = list.firstNotNullOfOrNull { it.mac.ifBlank { null } } ?: ""
                 )
             }
         }.getOrDefault(emptyList())
 
         fun save(list: List<SavedTv>): String = org.json.JSONArray().apply {
-            list.forEach { put(org.json.JSONObject().put("ip", it.ip).put("name", it.name).put("method", it.method.name)) }
+            list.forEach {
+                put(org.json.JSONObject().put("ip", it.ip).put("name", it.name).put("method", it.method.name).put("nick", it.nick).put("mac", it.mac))
+            }
         }.toString()
+    }
+}
+
+/** Wake-on-LAN: kapalı (bekleme modundaki) TV'ye "uyan" paketi gönderir. */
+object WakeOnLan {
+    fun send(mac: String, ip: String) {
+        val m = mac.split(':', '-').map { it.toInt(16).toByte() }
+        require(m.size == 6) { "MAC adresi bilinmiyor" }
+        val packet = ByteArray(6) { 0xFF.toByte() } + (0 until 16).flatMap { m }.toByteArray()
+        val targets = listOf("255.255.255.255", ip.substringBeforeLast('.') + ".255", ip)
+        java.net.DatagramSocket().use { s ->
+            s.broadcast = true
+            repeat(3) {
+                for (t in targets) for (port in listOf(9, 7)) runCatching {
+                    s.send(java.net.DatagramPacket(packet, packet.size, java.net.InetAddress.getByName(t), port))
+                }
+                Thread.sleep(100)
+            }
+        }
     }
 }
