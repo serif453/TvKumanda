@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Bağlantı testi: telefonun Wi-Fi'da mı, VPN açık mı olduğunu okumak için (kurulumda kendiliğinden verilir) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Zamanlı açma ve uyku zamanlayıcısı: alarm tam vaktinde çalışsın; telefon yeniden başlayınca geri kurulsun -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Sesli komut: ses yalnızca TV'ye ya da telefonun konuşma tanıma servisine gider -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Cast: telefondaki fotoğraf, video ve müzikleri galeride göstermek için (yalnızca okuma) -->
@@ -70,6 +73,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <receiver
+            android:name=".TimerReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".TimerBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".DlnaServerService"
             android:exported="false"

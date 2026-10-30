@@ -533,10 +533,10 @@ private fun ScanBadges(labels: List<String>) {
 internal object AllTvSender {
     private val pool = Executors.newCachedThreadPool { r -> Thread(r, "tum-tvler").apply { isDaemon = true } }
 
-    fun send(context: Context, tv: SavedTv, cmd: AllTvs.Command): AllTvs.Outcome {
+    fun send(context: Context, tv: SavedTv, cmd: AllTvs.Command, timeoutSec: Long = 12): AllTvs.Outcome {
         val f = pool.submit<AllTvs.Outcome> { sendBlocking(context.applicationContext, tv, cmd) }
         return try {
-            f.get(12, TimeUnit.SECONDS)
+            f.get(timeoutSec, TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
             f.cancel(true)
             AllTvs.Outcome(false, if (tv.method == ConnMethod.ADB) "Zaman aşımı (TV'de izin sorusu bekliyor olabilir)" else "Zaman aşımı: TV cevap vermedi")
@@ -555,7 +555,8 @@ internal object AllTvSender {
         }
         val r = runCatching {
             if (tv.method == ConnMethod.ADB) {
-                val adb = TvTools.adb ?: throw IllegalStateException("ADB hazır değil")
+                // Uygulama kapalıyken (zamanlayıcı alarmı) ana bağlantı nesnesi yoktur; geçici olanı kullanılır
+                val adb = TvTools.adb ?: TvRemote(context)
                 adb.oneShot(tv.ip, "input keyevent ${cmd.key}")
             } else {
                 val link = AtvRemote(context)

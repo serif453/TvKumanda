@@ -70,10 +70,11 @@ private val toolGroups = listOf(
         Tool("Sistem kayıtları", Icons.Outlined.Article, adb = true, id = ToolId.LOGS)
     )),
     ToolGroup("Zamanlama ve güç", listOf(
-        Tool("Uyku zamanlayıcısı", Icons.Outlined.Bedtime),
-        Tool("Zamanlı açma", Icons.Outlined.Alarm),
-        Tool("Ekran süresi sınırı", Icons.Outlined.HourglassBottom),
-        Tool("Ses sınırı", Icons.Outlined.VolumeDown)
+        Tool("Uyku zamanlayıcısı", Icons.Outlined.Bedtime, id = ToolId.SLEEP_TIMER),
+        // TV kapalıyken kurulur; iş telefonun alarmıyla yapılır
+        Tool("Zamanlı açma", Icons.Outlined.Alarm, offline = true, id = ToolId.WAKE_TIME),
+        Tool("Ekran süresi sınırı", Icons.Outlined.HourglassBottom, adb = true, id = ToolId.SCREEN_TIME),
+        Tool("Ses sınırı", Icons.Outlined.VolumeDown, adb = true, id = ToolId.VOLUME_CAP)
     )),
     ToolGroup("İçerik açma", listOf(
         Tool("Bağlantıyı TV'de aç", Icons.Outlined.Link, id = ToolId.OPEN_LINK),

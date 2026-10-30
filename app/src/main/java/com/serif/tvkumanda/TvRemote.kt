@@ -157,6 +157,25 @@ class TvRemote(private val context: Context) : RemoteLink {
         }
     }
 
+    /** TV'deki uygulama dosyasının yolu (nöbetçinin hangi sürümle çalıştığını karşılaştırmak için). */
+    val serverApkPath: String get() = serverPath
+
+    /**
+     * Uygulamanın APK'sından TV'de bağlantıdan bağımsız, arka planda çalışan bir program başlatır
+     * (ör. nöbetçi). Bağlantı kapansa da çalışmaya devam eder; TV tamamen yeniden başlarsa durur.
+     */
+    @Synchronized
+    fun startTvProgram(mainClass: String) {
+        val d = dadb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
+        val path = serverPath
+        if (d.shell("[ -f $path ] && echo yes").output.trim() != "yes") {
+            d.shell("rm -f /data/local/tmp/tvkumanda-*.apk")
+            d.push(File(context.applicationInfo.sourceDir), path)
+        }
+        val run = "app_process / $mainClass >/dev/null 2>&1 </dev/null &"
+        d.shell("cd /data/local/tmp; export CLASSPATH=$path; if command -v setsid >/dev/null 2>&1; then setsid nohup $run else nohup $run fi")
+    }
+
     /**
      * Başka bir TV'ye kalıcı bağlantı ve hızlı mod kurmadan tek komut gönderir (tüm TV'lere komut için).
      * Bu nesnenin açık bağlantısına dokunmaz; aynı ADB anahtarı kullanılır.

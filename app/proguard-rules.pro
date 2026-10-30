@@ -2,6 +2,9 @@
 -keep class com.serif.tvkumanda.KeyServer { public static void main(java.lang.String[]); }
 -keep class com.serif.tvkumanda.KeyServer* { *; }
 
+# TV'de arka planda çalışan nöbetçi (uyku zamanlayıcısı, ses ve ekran süresi sınırı): adı ve main() değişmemeli
+-keep class com.serif.tvkumanda.Watcher { public static void main(java.lang.String[]); }
+
 # ADB istemcisi (dadb) olduğu gibi kalsın
 -keep class dadb.** { *; }
 

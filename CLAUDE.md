@@ -76,6 +76,15 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
     kurulmaz; bağlı TV'de mevcut bağlantı kullanılır. "Kapat" = uyku tuşu 223, "Aç" = WoL + 224).
     Serif'in tek TV'si var; birden fazla TV'de denenmedi. Bu grubun kutucukları `offline = true`: TV'ye bağlı
     olmadan da açılır, çünkü en çok bağlantı çalışmadığında lazım.
+- Zamanlama ve güç: `TimerSheets.kt` (pencereler). Serif bu araçları kendisi kullanmayacak; seçimler Claude'a bırakıldı.
+  - **Nöbetçi** `Watcher.java`: saf Java, TV'de `app_process` ile bağlantıdan bağımsız çalışır (`TvRemote.startTvProgram`,
+    `setsid nohup`). Ayarlar `/data/local/tmp/tvkumanda-nobetci.conf` (uygulama yazar, `WatcherConfig.kt`), durum
+    `.state` (nöbetçi yazar: pid, apk, bugünkü ekran süresi). 3 sn'de bir tur; ekran durumu 30 sn'de bir
+    `dumpsys power`. İş kalmayınca kendiliğinden kapanır. `TvWatcher.kt` yönetir; her ADB bağlantısında
+    `ensureRunning()` (TV yeniden başladıysa ya da uygulama güncellendiyse yeniden başlatır). ProGuard'da adı korunur.
+  - Telefon alarmları `PhoneTimers.kt`: zamanlı açma (WoL + uyandırma tuşu, `AllTvSender` ile) ve Standart'ta uyku
+    zamanlayıcısı. `setAlarmClock` (Android 12+ için alarm izni; yoksa birkaç dakika gecikebilen alarm),
+    telefon yeniden başlayınca `TimerBootReceiver` geri kurar.
 - Teşhis kaydı: `DiagLog.kt` — son 500 olay `filesDir/teshis.log`'da, çökme yakalayıcısı dahil. Bağlanma, eşleştirme,
   kopma, Cast hataları ve her araç hatası (`io()` içinden) yazılır. Paylaşırken IP'lerin son hanesi varsayılan olarak
   gizlenir. Dosya adı, video adı gibi kişisel bilgiler kayda yazılmaz.
@@ -96,12 +105,13 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 
 - Yalnızca kodlu "Kablosuz hata ayıklama" sunan TV'lerde ADB eşleştirmesi yok (yalnızca 5555).
 - Korumalı içerik (Netflix vb.) ekran görüntüsünde siyah çıkar.
+- Nöbetçi TV tamamen yeniden başlayınca durur (ADB bağlantısında geri gelir). Philips uyku modundayken çalışmaya devam
+  edip etmediği denenmedi; zamanlı açma için telefon o saatte ev Wi-Fi'ında olmalı.
 
 ## Yapılacaklar
 
 ### Planlanan (Serif'in sırası)
-- Araçlar'da hazır olmayanlar: ekran kaydı; zamanlama ve güç (uyku zamanlayıcısı, zamanlı açma, ekran süresi, ses sınırı);
-  ekran yansıtma; telefonu TV hoparlörüne bağlama.
+- Araçlar'da hazır olmayanlar: ekran kaydı; ekran yansıtma; telefonu TV hoparlörüne bağlama.
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
 - Ayarlar: sol üstte küçük düğme; ortada TV adı (kayıtlı TV'ler ve bağlantı türü).
@@ -118,5 +128,6 @@ Kendi planlanan özellikler bittikten sonra:
 7. Widget ve hızlı ayar kutucukları.
 8. Çökme kalkanı (bir hata tüm uygulamayı kapatmasın).
 
-**Önemli karar (zamanlama grubundan önce):** uyku zamanlayıcısı ve sınırlar telefonda çalışırsa telefon uyuyunca
-durur. Kalıcı olmaları için TV'de çalışan küçük bir yardımcı uygulama gerekebilir.
+**Zamanlama kararı:** TV'ye ayrı uygulama kurulmadı. Uyku zamanlayıcısı (ADB), ses sınırı ve ekran süresi sınırı TV'deki
+nöbetçide çalışır. Philips uyku modunda arka plan işlemlerini durduruyorsa ya da nöbetçi güvenilmez çıkarsa, TV'ye küçük
+bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, Serif'e ayrıca sorulacak.

@@ -309,6 +309,10 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putString("tvs", SavedTv.save(savedTvs)).apply()
         tvName = saved.display
         if (method == ConnMethod.ADB && saved.mac.isBlank()) learnMac(ip)
+        // TV yeniden başladıysa nöbetçi durmuştur; açık bir ayar varsa yeniden başlatılır
+        if (method == ConnMethod.ADB) scope.launch(Dispatchers.IO) {
+            runCatching { TvWatcher.ensureRunning() }.onFailure { DiagLog.log("Nöbetçi başlatılamadı: ${it.message.orEmpty()}") }
+        }
         fastMode = remote.isFast
         state = ConnState.CONNECTED
         message = ip

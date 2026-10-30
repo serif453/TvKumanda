@@ -56,14 +56,16 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - **Ekran:** ekran görüntüsü, animasyon hızı ⚠
 - **Gelişmiş:** özel DNS ⚠, ana ekran değiştirme ⚠, ADB komut satırı, sistem kayıtları
 - **İçerik ve tuşlar:** linki TV'de açma, panodan yazma, medya tuşları, sistem kısayolları
+- **Zamanlama ve güç:** uyku zamanlayıcısı (ADB'de son dakikada ses yavaşça kısılır), zamanlı açma (Wi-Fi ile uyandırma,
+  tek sefer ya da her gün), ses sınırı (ADB), ekran süresi sınırı (günlük süre ve gece saatleri, ADB). ADB'li araçları TV'de
+  arka planda çalışan küçük bir "nöbetçi" yürütür; telefon kapalıyken de geçerlidir
 - **Ağ ve test** (ADB gerekmez, TV'ye bağlı olmadan da açılır): ağ tarayıcı (ağdaki TV'ler üstte, diğer cihazlar
   altta; bulunan TV'ye oradan bağlanılır), tüm TV'lere komut (kayıtlı TV'leri aynı anda kapat, aç, sessize al,
   ses aç/kıs, ana ekran), bağlantı testi (Wi-Fi, VPN, TV'nin kapıları ve gecikme;
   sorun varsa tek cümlelik çözüm), teşhis kaydı (bağlanma, Cast ve araç hatalarının günlüğü; IP'ler gizlenerek paylaşılabilir)
 
 ### Henüz hazır olmayanlar
-Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi, zamanlama ve güç araçları (uyku zamanlayıcısı vb.),
-ekran kaydı, ekran yansıtma ve telefonu TV hoparlörüne bağlama.
+Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi, ekran kaydı, ekran yansıtma ve telefonu TV hoparlörüne bağlama.
 
 ## Kurulum
 
