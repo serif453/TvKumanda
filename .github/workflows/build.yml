@@ -62,7 +62,8 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -o pipefail
-          gradle testReleaseUnitTest assembleRelease --no-daemon 2>&1 | tee build.log || {
+          # Süre raporu: en uzun süren adımlar derleme sayfasında not olarak görünür
+          gradle --init-script .github/gradle/sure-raporu.gradle testReleaseUnitTest assembleRelease --no-daemon 2>&1 | tee build.log || {
             grep -E "^e: |error:|FAILED|Exception" build.log | head -20 | while read -r l; do echo "::error::$l"; done
             exit 1
           }

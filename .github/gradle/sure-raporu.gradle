@@ -1,0 +1,20 @@
+// Derleme süre raporu: her Gradle adımının ne kadar sürdüğünü ölçer, en uzun 8'ini
+// GitHub'ın derleme sayfasında not (annotation) olarak gösterir. Uygulamaya hiçbir etkisi yoktur.
+def started = [:]
+def took = [:]
+def buildStart = System.currentTimeMillis()
+
+gradle.taskGraph.beforeTask { task -> started[task.path] = System.currentTimeMillis() }
+gradle.taskGraph.afterTask { task, state ->
+    def s = started[task.path]
+    if (s != null) took[task.path] = System.currentTimeMillis() - s
+}
+
+gradle.buildFinished {
+    def total = (System.currentTimeMillis() - buildStart) / 1000
+    def top = took.sort { -it.value }.take(8)
+    println "::notice title=Derleme süresi::Toplam ${total} sn"
+    top.each { path, ms ->
+        println "::notice title=Derleme adımı::${path} — ${String.format('%.1f', ms / 1000.0)} sn"
+    }
+}
