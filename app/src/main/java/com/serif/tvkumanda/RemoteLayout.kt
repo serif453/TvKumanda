@@ -272,10 +272,17 @@ fun PadCard(
     val context = LocalContext.current
     val adb = ui.method == ConnMethod.ADB
     val shape = RoundedCornerShape(30.dp)
-    BoxWithConstraints(
-        modifier.fillMaxWidth().clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape).padding(horizontal = 8.dp, vertical = 10.dp)
-    ) {
+    // Kart, içeriği kadar yer kaplar (daire + üst ve alt sıralar); kalan boşluk aşağıda kalır
+    BoxWithConstraints(modifier.fillMaxWidth()) {
         val side = 64.dp
+        val small = 42.dp
+        val gap = 6.dp
+        val rows = small * 2 + gap * 2 + 14.dp          // üst sıradaki ses seviyesi yazısı dahil
+        val circle = minOf(maxWidth - 16.dp - side * 2, maxHeight - 20.dp - rows).coerceAtLeast(120.dp)
+        val cardH = circle + rows + 20.dp
+    Box(
+        Modifier.fillMaxWidth().height(cardH).clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape).padding(horizontal = 8.dp, vertical = 10.dp)
+    ) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
                 SideKey(Icons.Outlined.Input, "Kaynak", enabled = adb) {
@@ -284,28 +291,27 @@ fun PadCard(
                 SideKey(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1) { onMode(if (mode == 1) 0 else 1) }
                 SideKey(Icons.Filled.Keyboard, "Klavye", onClick = onKeyboard)
             }
-            // Orta: üstte Ses kıs · Sessiz · Ses aç, ortada daire, altta Geri · Ana Sayfa · Mikrofon
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-                val small = 42.dp
-                val rows = (small + 8.dp) * 2 + 14.dp   // üst sırada ses seviyesi yazısı için pay
-                val circle = minOf(maxWidth, maxHeight - rows)
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            // Orta: üstte Ses kıs · Sessiz · Ses aç, ortada daire, altta Geri · Ana Sayfa · Mikrofon (aralarda boşluk yok)
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SmallKey(Icons.Filled.VolumeDown, "Ses kıs", small, repeat = true) { onKey(Keys.VOL_DOWN) }
                     // Sessiz, altında küçük ses seviyesi
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         SmallKey(AppIcons.VolumeOff, "Sessiz", small) { onKey(Keys.MUTE) }
-                        Text(ui.volume?.toString() ?: " ", color = Navy.Sub, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 12.sp)
+                        Text(ui.volume?.toString() ?: " ", color = Navy.Sub, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp, modifier = Modifier.height(14.dp))
                     }
                     SmallKey(Icons.Filled.VolumeUp, "Ses aç", small, repeat = true) { onKey(Keys.VOL_UP) }
                 }
-                Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
+                Spacer(Modifier.height(gap))
+                Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
                     when (mode) {
                         1 -> TouchPad(circle, onKey)
                         2 -> TrackPad(circle, ui.fastMode, ui.method, onMouse)
                         else -> DPad(circle, onKey, navy = true)
                     }
                 }
-                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Spacer(Modifier.height(gap))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SmallKey(AppIcons.Undo, "Geri", small) { onKey(Keys.BACK) }
                     SmallKey(AppIcons.HomeOutline, "Ana Sayfa", small) { onKey(Keys.HOME) }
                     MicSmall(ui, small, onMic)
@@ -319,6 +325,7 @@ fun PadCard(
                 SideKey(Icons.Outlined.Settings, "Ayarlar", onClick = onTvSettings)
             }
         }
+    }
     }
 }
 

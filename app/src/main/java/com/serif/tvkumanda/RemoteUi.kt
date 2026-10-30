@@ -251,7 +251,7 @@ fun RemoteScreen(
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onTvSettings = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } } },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f, fill = false)
         )
         // TV'de bir şey çalınca: oynatıcı çubuğu (medya çubuğunun hemen üstünde)
         ui.nowPlaying?.let { np ->
