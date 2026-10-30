@@ -52,7 +52,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 
 - **Sistem:** sistem bilgisi (cihaz, işlemci çekirdekleri ve 32/64 bit uygulama türü, sıcaklık, bellek, depolama ve USB,
   ekran modu, yenileme hızları ve HDR, Wi-Fi sinyali ve bandı, uygulama sayısı; ham döküm ve IP/MAC/seri numarası gizlenmiş
-  dosya olarak paylaşma), performans (canlı işlemci ve çekirdek kullanımı, bellek; çalışan uygulamaların bellek ve işlemci kullanımı, durdurma), RAM boşaltma, önbellek temizleme, yeniden başlatma
+  dosya olarak paylaşma), performans (canlı işlemci, çekirdek, bellek ve sıcaklık; son 1 dakika grafiği), çalışan uygulamalar (bellek ve işlemci kullanımı, ekrandaki uygulama, durdurma, toplu durdurma, TV'de açma ve uygulama bilgisi), RAM boşaltma, önbellek temizleme, yeniden başlatma
 - **Uygulamalar:** uygulama yöneticisi, APK yükleme, uygulama yedekleme, gereksiz uygulamaları kapatma ⚠
 - **Dosyalar:** TV'ye dosya gönderme, TV dosya gezgini, TV'nin kendi oynatıcısında açma (deneysel)
 - **Ekran:** ekran görüntüsü, ekran kaydı (deneysel; TV ekranı videoya çekilir, en fazla 3 dk, ses yok, ADB), animasyon hızı ⚠

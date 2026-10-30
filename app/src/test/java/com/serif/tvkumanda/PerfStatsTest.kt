@@ -122,4 +122,31 @@ class PerfStatsTest {
         assertEquals(242345L, v["com.google.android.youtube.tv"]!!.kb)
         assertEquals(200000L, v["com.google.android.apps.tv.launcherx"]!!.kb) // PSS'de yoksa RSS
     }
+
+    @Test fun tekPsIleSure() {
+        val a = PerfStats.parseProcs("##S\ncpu  1000 0 0 0 0 0 0 0\n##P\nPID    RSS     TIME+ NAME\n500  300000  0:01.00 com.google.android.youtube.tv\n700 4000 1:00.00 surfaceflinger\n")
+        val b = PerfStats.parseProcs("##S\ncpu  2000 0 0 0 0 0 0 0\n##P\nPID    RSS     TIME+ NAME\n500  300000  0:03.50 com.google.android.youtube.tv\n700 4000 1:00.00 surfaceflinger\n")
+        assertEquals(100L, a.ticks[500])
+        assertEquals("com.google.android.youtube.tv", a.names[500])
+        val v = PerfStats.apps(a, b, null).single()
+        assertEquals(25.0, v.cpu!!, 0.001) // 250 / 1000
+    }
+
+    @Test fun sureBicimleri() {
+        assertEquals(234L, PerfStats.timePlus("0:02.34"))
+        assertEquals((3600 + 62) * 100L + 5, PerfStats.timePlus("1:01:02.05"))
+        assertEquals((86400 + 3723) * 100L + 45, PerfStats.timePlus("1-01:02:03.45"))
+        assertNull(PerfStats.timePlus("abc"))
+    }
+
+    @Test fun ekrandakiUygulama() {
+        assertEquals("com.google.android.youtube.tv", PerfStats.parseForeground("  mResumedActivity: ActivityRecord{1a2b3c u0 com.google.android.youtube.tv/com.google.android.apps.youtube.tv.activity.ShellActivity t42}"))
+        assertNull(PerfStats.parseForeground(""))
+    }
+
+    @Test fun sicaklik() {
+        val out = out("1 0 0 1 0 0 0 0", listOf("1 0 0 1")) + "##H\nbattery\tcpu-thermal\tgpu\t71000\t52000\t48000\n"
+        assertEquals(52, PerfStats.view(null, PerfStats.parse(out)).tempC)
+        assertNull(PerfStats.temperature(null))
+    }
 }

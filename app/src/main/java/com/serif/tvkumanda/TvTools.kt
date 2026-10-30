@@ -71,6 +71,20 @@ object TvTools {
     /** Çalışan uygulamalar için süreç ölçümü ve uygulama başına gerçek bellek (PSS). */
     fun procSnap(): PerfStats.ProcSnap = PerfStats.parseProcs(sh(PerfStats.APPS_COMMAND))
     fun appPss(): Map<String, Long> = PerfStats.parsePss(sh(PerfStats.PSS_COMMAND))
+    fun foregroundApp(): String? = PerfStats.parseForeground(sh(PerfStats.FOREGROUND_COMMAND))
+
+    /** TV'nin kendi "Uygulama bilgisi" ekranı (önbellek temizleme, izinler orada). */
+    fun openAppInfo(pkg: String) {
+        require(PerfStats.pkgOf(pkg) == pkg) { "Geçersiz paket" }
+        val out = sh("am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$pkg 2>&1")
+        if (out.contains("Error", true) || out.contains("Exception", true)) throw java.io.IOException("Uygulama bilgisi açılamadı")
+    }
+
+    /** Birden çok uygulamayı tek komutta durdurur; yalnızca geçerli paket adları. */
+    fun forceStopAll(pkgs: List<String>) {
+        val ok = pkgs.filter { PerfStats.pkgOf(it) == it }
+        if (ok.isNotEmpty()) sh(ok.joinToString("; ") { "am force-stop $it" })
+    }
 
     // ---------------- RAM ----------------
 

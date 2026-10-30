@@ -103,9 +103,16 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Performans: `PerfStats.kt` (saf: tek komutla `/proc/stat` cpu satırları, MemTotal/MemAvailable, `cpu/present`; iki ölçüm
   farkından yüzde, iowait boşta sayılır; listede olmayan çekirdek "Kapalı") + `PerfSheet.kt` (bellek kartı, 2'li ızgarada
   halkalar). Pencere açıkken 1 sn'de bir ADB ile okur, kapanınca durur. Görünüm Serif'in gönderdiği ekran görüntüsünden.
-  Kartlara dokununca "Çalışan uygulamalar" (Bellek/İşlemci sıralı): `ps -A` + `/proc/[pid]/stat` farkı 2 sn'de bir (işlemci,
-  tüm işlemcinin yüzdesi), `dumpsys meminfo` PSS 5 sn'de bir (yoksa RSS); süreçler paket adına toplanır. "Durdur" =
-  `am force-stop`; `TvAdvanced.isProtected` olanlarda düğme yok.
+  Sıcaklık: `paste` ile tüm thermal_zone'lar tek süreçte, seçim `SysInfo.temperature` ile aynı. "Son 1 dakika" grafiği
+  (işlemci + bellek, 60 ölçüm). Kartlara dokununca "Çalışan uygulamalar" (Bellek/İşlemci sıralı); Sistem'de ayrı kutucuk da var.
+  - Ölçüm: tek `ps -A -o PID,RSS,TIME+,NAME` (TIME+ = jiffy; ps bilmiyorsa `/proc/[pid]/stat`) 2 sn'de bir; işlemci tüm
+    işlemcinin yüzdesi; süreçler paket adına toplanır. Ağır olanlar liste ekrana geldikten sonra 5 sn'de bir: ekrandaki
+    uygulama (`dumpsys activity activities`) ve PSS (`dumpsys meminfo`; gelene kadar RSS).
+  - Hız: `PerfCache` (bağlantı başına) uygulama adlarını, son listeyi ve ölçümü tutar; Performans açılınca liste önceden
+    hazırlanır. Açılış süresi teşhis kaydına yazılır ("Çalışan uygulamalar: liste N ms").
+  - Durdur = `am force-stop`; `TvAdvanced.isProtected` olanlarda düğme yok. Toplu durdurma iki dokunuşla, ekrandaki uygulama
+    ve korunanlar hariç. Satıra dokununca: TV'de aç, TV'nin "Uygulama bilgisi" ekranı. Uygulama başına önbellek temizleme
+    Android 11 kabuğunda yok; o ekrandan yapılır.
 - Ekran kaydı: `ScreenRec.kt` — TV'nin `screenrecord` komutu ADB ile arka planda (`setsid nohup`) başlar, uygulamadan
   bağımsız sürer; uygulama açılınca `status()` süren ya da alınmamış kaydı bulur. Dosya TV'de `/data/local/tmp/tvk_rec.mp4`,
   bitince telefona çekilip silinir. En fazla 180 sn (Android sınırı), ses yok. Durdurma `kill -2` (dosya düzgün kapansın).
