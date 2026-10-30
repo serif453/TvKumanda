@@ -1080,10 +1080,7 @@ internal fun MicButton(btnSize: Dp, iconSize: Dp, active: Boolean, level: Float,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(AppIcons.Mic, null, tint = if (label != null && !active) Color(0xFFAFC0FF) else tint, modifier = Modifier.size(iconSize))
-                if (label != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(if (active) "Dinliyor…" else label, color = if (active) Pal.Red else Color(0xFFAFC0FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+
             }
         }
     }

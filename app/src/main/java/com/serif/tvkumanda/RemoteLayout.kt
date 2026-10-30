@@ -324,8 +324,6 @@ private fun SideKey(
             if (content != null) content()
             else if (icon != null) Icon(icon, label, tint = if (selected) Color(0xFFAFC0FF) else Pal.Text, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = if (selected) Color(0xFFAFC0FF) else Navy.Sub, fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }
 
@@ -397,7 +395,7 @@ fun RemoteBottomKeys(ui: UiState, onKey: (Int) -> Unit, onMic: () -> Unit) {
                 LabelKey(AppIcons.VolumeOff, "Sessiz", Modifier.weight(1f)) { onKey(Keys.MUTE) }
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     MicButton(
-                        btnSize = 0.dp, iconSize = 24.dp, active = ui.micActive, level = ui.micLevel,
+                        btnSize = 0.dp, iconSize = 26.dp, active = ui.micActive, level = ui.micLevel,
                         idle = Navy.AccentSoft, shape = RoundedCornerShape(20.dp), label = "Sesli Ara", onClick = onMic,
                         fill = true
                     )
@@ -423,8 +421,6 @@ private fun LabelKey(icon: ImageVector, label: String, modifier: Modifier, onCli
             .pressable(inter, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(26.dp))
     }
 }
