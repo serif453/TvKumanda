@@ -45,7 +45,7 @@ yapıldığını ve **nasıl** çalışılacağını anlatır. Önemli bir karar
 - Dış eylemler (gradle/actions, softprops/action-gh-release) commit kimliğiyle kilitli; sürüm yükseltirken
   yeni kimlik `git ls-remote` ile alınır.
 - Derleme hızlandırma: Gradle 6 GB, Kotlin 3 GB bellek (herkese açık repoda makine 16 GB), derleme önbelleği açık
-  (`gradle.properties`). Lint kapatılmaz (Serif'in kararı).
+  (`gradle.properties`). Lint kapatılmaz; simge kütüphanesi (material-icons-extended) yerinde kalır (Serif'in kararları).
 - Süre raporu: `.github/gradle/sure-raporu.gradle` en uzun 8 Gradle adımını derleme sayfasına not olarak yazar;
   `gh api repos/serif453/TvKumanda/check-runs/<job id>/annotations` ile okunur (derleme kayıtlarına oturumdan erişilemiyor).
   Uygulama kodu değişmeyen derlemede her şey önbellekten gelir (~45 sn); gerçek ölçüm kod değişen derlemede alınır.
