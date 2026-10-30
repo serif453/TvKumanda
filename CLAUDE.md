@@ -19,7 +19,8 @@ yapıldığını ve **nasıl** çalışılacağını anlatır. Önemli bir karar
 - Önce işlevler, sona görünüş: özellikler basitten karmaşığa adım adım eklenir; arayüz cilası en son.
 - Serif en titiz kullanıcıdır: yarım ya da kalitesiz bir şey göstermektense eksik olduğunu söyle.
 - `main`'e gönderdikten sonra **derlemenin bitmesi beklenmez**: "gönderildi, birkaç dakikaya sürüm çıkar" deyip iş biter.
-  Derleme hata verirse Serif söyler (Serif'in kararı; beklemek gereksiz uzatıyordu).
+  Derleme hata verirse Serif söyler (Serif'in kararı; beklemek gereksiz uzatıyordu). Bunun yerine birkaç dakika sonrasına
+  kontrol kurulur (send_later); sürüm çıkınca Serif'e "çıktı" denip sürüm sayfasının linki paylaşılır.
 - Yeni bir özellik eklerken README'deki özellik listesi ve "Henüz hazır olmayanlar" da güncellenir.
 
 ### Commit kuralları
