@@ -65,6 +65,9 @@ object TvTools {
     /** Sistem bilgisi aracı: tek komut, çıktının yorumu `SysInfo`'da. */
     fun systemInfo(): SysInfo.Report = SysInfo.build(sh(SysInfo.COMMAND))
 
+    /** Performans aracı için tek ölçüm (işlemci sayaçları + bellek). */
+    fun perfSample(): PerfStats.Sample = PerfStats.parse(sh(PerfStats.COMMAND))
+
     // ---------------- RAM ----------------
 
     /** Arka plandaki uygulamaları kapatır; boşalan miktarı (KB) döndürür. */

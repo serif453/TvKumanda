@@ -41,7 +41,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** İşlevi hazır olan araçlar. */
-enum class ToolId { SYSTEM_INFO, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
+enum class ToolId { SYSTEM_INFO, PERFORMANCE, FREE_RAM, CLEAR_CACHE, REBOOT, SCREENSHOT, ANIMATION, MEDIA_KEYS, SYSTEM_KEYS, CLIPBOARD, OPEN_LINK,
     APP_MANAGER, APK_INSTALL, APP_BACKUP, SEND_FILES, FILE_BROWSER,
     PRIVATE_DNS, HOME_SWITCH, DEBLOAT, TERMINAL, LOGS,
     CONN_TEST, DIAG_LOG, NET_SCAN, ALL_TVS,
@@ -74,6 +74,7 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
             Spacer(Modifier.height(18.dp))
             when (id) {
                 ToolId.SYSTEM_INFO -> SystemInfoTool()
+                ToolId.PERFORMANCE -> PerformanceTool()
                 ToolId.FREE_RAM -> FreeRamTool()
                 ToolId.CLEAR_CACHE -> ClearCacheTool()
                 ToolId.REBOOT -> RebootTool(onDismiss)
@@ -110,6 +111,7 @@ fun ToolSheet(id: ToolId, name: String, icon: ImageVector, adb: Boolean, onDismi
 
 private fun description(id: ToolId) = when (id) {
     ToolId.SYSTEM_INFO -> "TV'nin donanım ve yazılım bilgileri"
+    ToolId.PERFORMANCE -> "İşlemci ve bellek kullanımı, canlı"
     ToolId.FREE_RAM -> "Arka planda bekleyen uygulamaları kapatır"
     ToolId.CLEAR_CACHE -> "Uygulamaların geçici dosyalarını siler"
     ToolId.REBOOT -> "TV'yi kapatıp yeniden açar"

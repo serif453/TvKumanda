@@ -97,6 +97,9 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   ARM çekirdek kodları ada çevrilir (0xd09 = Cortex-A73). Ham dökümde seri no/MAC gibi anahtarlar "gizlendi"; paylaşılan
   dosyada ayrıca IP son hane ve MAC son yarısı gizlenir. Pil bilgisi bilerek yok (TV'de pil yok, Android sahte değer verir).
   Serif'in TV'si: Philips (TPV) 2021/22 UHD, MediaTek MT5895, 4 × Cortex-A73, Android 11, yalnızca 32 bit uygulama, 2.7 GB RAM.
+- Performans: `PerfStats.kt` (saf: tek komutla `/proc/stat` cpu satırları, MemTotal/MemAvailable, `cpu/present`; iki ölçüm
+  farkından yüzde, iowait boşta sayılır; listede olmayan çekirdek "Kapalı") + `PerfSheet.kt` (bellek kartı, 2'li ızgarada
+  halkalar). Pencere açıkken 1 sn'de bir ADB ile okur, kapanınca durur. Görünüm Serif'in gönderdiği ekran görüntüsünden.
 - Ekran kaydı: `ScreenRec.kt` — TV'nin `screenrecord` komutu ADB ile arka planda (`setsid nohup`) başlar, uygulamadan
   bağımsız sürer; uygulama açılınca `status()` süren ya da alınmamış kaydı bulur. Dosya TV'de `/data/local/tmp/tvk_rec.mp4`,
   bitince telefona çekilip silinir. En fazla 180 sn (Android sınırı), ses yok. Durdurma `kill -2` (dosya düzgün kapansın).
@@ -125,7 +128,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`.
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`.
 
 ## Bilinen kısıtlar
 

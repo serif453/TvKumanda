@@ -42,6 +42,7 @@ private data class ToolGroup(val title: String, val tools: List<Tool>)
 private val toolGroups = listOf(
     ToolGroup("Sistem", listOf(
         Tool("Sistem bilgisi", Icons.Outlined.Info, adb = true, id = ToolId.SYSTEM_INFO),
+        Tool("Performans", Icons.Outlined.Speed, adb = true, id = ToolId.PERFORMANCE),
         Tool("RAM boşalt", Icons.Outlined.Memory, adb = true, id = ToolId.FREE_RAM),
         Tool("Önbellek temizle", Icons.Outlined.CleaningServices, adb = true, id = ToolId.CLEAR_CACHE),
         Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true, id = ToolId.REBOOT)
