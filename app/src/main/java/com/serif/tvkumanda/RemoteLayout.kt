@@ -287,11 +287,15 @@ fun PadCard(
             // Orta: üstte Ses kıs · Sessiz · Ses aç, ortada daire, altta Geri · Ana Sayfa · Mikrofon
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
                 val small = 42.dp
-                val rows = (small + 8.dp) * 2
+                val rows = (small + 8.dp) * 2 + 14.dp   // üst sırada ses seviyesi yazısı için pay
                 val circle = minOf(maxWidth, maxHeight - rows)
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     SmallKey(Icons.Filled.VolumeDown, "Ses kıs", small, repeat = true) { onKey(Keys.VOL_DOWN) }
-                    SmallKey(AppIcons.VolumeOff, "Sessiz", small) { onKey(Keys.MUTE) }
+                    // Sessiz, altında küçük ses seviyesi
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SmallKey(AppIcons.VolumeOff, "Sessiz", small) { onKey(Keys.MUTE) }
+                        Text(ui.volume?.toString() ?: " ", color = Navy.Sub, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 12.sp)
+                    }
                     SmallKey(Icons.Filled.VolumeUp, "Ses aç", small, repeat = true) { onKey(Keys.VOL_UP) }
                 }
                 Box(Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
