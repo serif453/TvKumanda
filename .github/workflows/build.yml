@@ -2,6 +2,12 @@ name: APK Derle
 
 on:
   push:
+    # Yalnızca bu dosyalar değiştiyse uygulama değişmez; derleme ve yeni sürüm yapılmaz.
+    # Gerekirse Actions > APK Derle > Run workflow ile elle derlenebilir.
+    paths-ignore:
+      - 'README.md'
+      - '.github/release-notes/**'
+      - '.github/workflows/eski-notlari-guncelle.yml'
   workflow_dispatch:
 
 permissions:
