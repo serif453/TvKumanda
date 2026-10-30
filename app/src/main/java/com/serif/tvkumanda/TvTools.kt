@@ -68,6 +68,10 @@ object TvTools {
     /** Performans aracı için tek ölçüm (işlemci sayaçları + bellek). */
     fun perfSample(): PerfStats.Sample = PerfStats.parse(sh(PerfStats.COMMAND))
 
+    /** Çalışan uygulamalar için süreç ölçümü ve uygulama başına gerçek bellek (PSS). */
+    fun procSnap(): PerfStats.ProcSnap = PerfStats.parseProcs(sh(PerfStats.APPS_COMMAND))
+    fun appPss(): Map<String, Long> = PerfStats.parsePss(sh(PerfStats.PSS_COMMAND))
+
     // ---------------- RAM ----------------
 
     /** Arka plandaki uygulamaları kapatır; boşalan miktarı (KB) döndürür. */

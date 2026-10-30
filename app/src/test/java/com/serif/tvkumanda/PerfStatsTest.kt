@@ -67,4 +67,59 @@ class PerfStatsTest {
     @Test fun sayacSifirlaninca() {
         assertNull(PerfStats.percent(PerfStats.Ticks(1000, 500), PerfStats.Ticks(900, 400)))
     }
+
+    // ---------------- Çalışan uygulamalar ----------------
+
+    private fun procs(total: Long, yt: Long, ytSvc: Long, launcher: Long) = """
+        ##S
+        cpu  $total 0 0 0 0 0 0 0 0 0
+        ##P
+        PID    RSS NAME
+        1      2000 /init
+        500  300000 com.google.android.youtube.tv
+        501   50000 com.google.android.youtube.tv:service
+        600  200000 com.google.android.apps.tv.launcherx
+        700    4000 surfaceflinger
+        ##T
+        1 (init) S 0 0 0 0 -1 0 0 0 0 0 5 5 0 0
+        500 (outube.tv) S 1 0 0 0 -1 0 0 0 0 0 $yt 0 0 0
+        501 (e.tv:service) S 1 0 0 0 -1 0 0 0 0 0 $ytSvc 0 0 0
+        600 (Launcher (x) y) S 1 0 0 0 -1 0 0 0 0 0 ${launcher / 2} ${launcher / 2} 0 0
+        700 (surfaceflinger) S 1 0 0 0 -1 0 0 0 0 0 900 0 0 0
+    """.trimIndent()
+
+    @Test fun paketAdi() {
+        assertEquals("com.x.y", PerfStats.pkgOf("com.x.y:remote"))
+        assertNull(PerfStats.pkgOf("surfaceflinger"))
+        assertNull(PerfStats.pkgOf("/system/bin/sh"))
+        assertNull(PerfStats.pkgOf("app_process"))
+    }
+
+    @Test fun uygulamaBellekVeIslemci() {
+        val a = PerfStats.parseProcs(procs(1000, 100, 10, 40))
+        val b = PerfStats.parseProcs(procs(2000, 250, 60, 140))
+        val first = PerfStats.apps(null, a, null).associateBy { it.pkg }
+        assertEquals(2, first.size) // init ve surfaceflinger uygulama değil
+        assertNull(first["com.google.android.youtube.tv"]!!.cpu)
+        assertEquals(350000L, first["com.google.android.youtube.tv"]!!.kb) // iki sürecin RSS toplamı
+        val v = PerfStats.apps(a, b, null).associateBy { it.pkg }
+        assertEquals(20.0, v["com.google.android.youtube.tv"]!!.cpu!!, 0.001) // (150 + 50) / 1000
+        assertEquals(10.0, v["com.google.android.apps.tv.launcherx"]!!.cpu!!, 0.001) // parantezli ad
+    }
+
+    @Test fun pssVarsaOKullanilir() {
+        val pss = PerfStats.parsePss("""
+            Total PSS by process:
+                212,345K: com.google.android.youtube.tv (pid 500 / activities)
+                 30,000K: com.google.android.youtube.tv:service (pid 501)
+                 10,000K: surfaceflinger (pid 700)
+            Total PSS by OOM adjustment:
+        """.trimIndent())
+        assertEquals(242345L, pss["com.google.android.youtube.tv"])
+        assertNull(pss["surfaceflinger"])
+        val a = PerfStats.parseProcs(procs(1000, 100, 10, 40))
+        val v = PerfStats.apps(null, a, pss).associateBy { it.pkg }
+        assertEquals(242345L, v["com.google.android.youtube.tv"]!!.kb)
+        assertEquals(200000L, v["com.google.android.apps.tv.launcherx"]!!.kb) // PSS'de yoksa RSS
+    }
 }
