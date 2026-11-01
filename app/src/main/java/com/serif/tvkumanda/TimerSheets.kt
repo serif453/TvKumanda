@@ -348,66 +348,6 @@ internal fun WakeTimeTool() {
     }
 }
 
-// ---------------- 3. Ses sınırı ----------------
-
-@Composable
-internal fun VolumeCapTool() {
-    val run = rememberRunner()
-    var status by remember { mutableStateOf<TvWatcher.Status?>(null) }
-    var vol by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    var on by remember { mutableStateOf(false) }
-    var cap by remember { mutableStateOf(20f) }
-    var busy by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<ToolResult?>(null) }
-    LaunchedEffect(Unit) {
-        io { TvWatcher.read() to TvTools.adb?.volume() }
-            .onSuccess { (s, v) ->
-                status = s
-                vol = v
-                on = s.config.volMax >= 0
-                cap = (if (s.config.volMax >= 0) s.config.volMax else (v?.first ?: 20)).toFloat()
-            }
-            .onFailure { result = ToolResult(false, errorText(it)) }
-    }
-    val max = (vol?.second ?: 100).coerceAtLeast(1)
-
-    Column(Modifier.verticalScroll(rememberScrollState())) {
-        if (status == null && result == null) Loading()
-        SwitchRow("Ses sınırı", on, enabled = !busy && status != null) { on = it; result = null }
-        if (on) {
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("En yüksek ses", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("${cap.toInt()} / $max", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Slider(
-                value = cap.coerceIn(0f, max.toFloat()), onValueChange = { cap = it; result = null },
-                valueRange = 0f..max.toFloat(), enabled = !busy,
-                colors = SliderDefaults.colors(thumbColor = Pal.Blue, activeTrackColor = Pal.Blue, inactiveTrackColor = Pal.Btn)
-            )
-        }
-        vol?.let {
-            Note("Şu anki ses: ${it.first}")
-            Spacer(Modifier.height(10.dp))
-        }
-        WatcherLine(status)
-        Spacer(Modifier.height(10.dp))
-        Note("Ses sınırın üstüne çıkarsa (TV'nin kendi kumandasıyla açılsa bile) birkaç saniye içinde geri kısılır. İşi TV'deki nöbetçi yapar; telefon kapalıyken de geçerlidir.")
-        Spacer(Modifier.height(16.dp))
-        MainButton(if (busy) "Uygulanıyor…" else "Uygula", enabled = !busy && status != null) {
-            busy = true; result = null
-            val v = if (on) cap.toInt() else -1
-            run {
-                io { TvWatcher.update { it.copy(volMax = v) } }
-                    .onSuccess { status = it; result = ToolResult(true, if (v >= 0) "Ses en fazla $v olacak" else "Ses sınırı kapatıldı") }
-                    .onFailure { result = ToolResult(false, errorText(it)) }
-                busy = false
-            }
-        }
-        ResultLine(result)
-    }
-}
-
 // ---------------- 4. Ekran süresi sınırı ----------------
 
 @Composable

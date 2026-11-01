@@ -338,6 +338,10 @@ class MainActivity : ComponentActivity() {
         if (method == ConnMethod.ADB && saved.mac.isBlank()) learnMac(ip)
         // TV yeniden başladıysa nöbetçi durmuştur; açık bir ayar varsa yeniden başlatılır
         if (method == ConnMethod.ADB) scope.launch(Dispatchers.IO) {
+            // "Ses sınırı" aracı kaldırıldı (v0.149): eskiden açılmış bir sınır kapatılamaz hâlde kalmasın
+            runCatching {
+                if (TvWatcher.read().config.volMax >= 0) { TvWatcher.update { it.copy(volMax = -1) }; DiagLog.log("Eski ses sınırı kapatıldı") }
+            }
             runCatching { TvWatcher.ensureRunning() }.onFailure { DiagLog.log("Nöbetçi başlatılamadı: ${it.message.orEmpty()}") }
         }
         fastMode = remote.isFast

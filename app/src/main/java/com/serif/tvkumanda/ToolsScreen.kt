@@ -46,9 +46,8 @@ private val toolGroups = listOf(
         Tool("Çalışan uygulamalar", Icons.Outlined.ViewList, adb = true, id = ToolId.RUNNING_APPS),
         Tool("RAM boşalt", Icons.Outlined.Memory, adb = true, id = ToolId.FREE_RAM),
         Tool("Önbellek temizle", Icons.Outlined.CleaningServices, adb = true, id = ToolId.CLEAR_CACHE),
-        Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true, id = ToolId.REBOOT)
-    )),
-    ToolGroup("Uygulamalar", listOf(
+        Tool("Yeniden başlat", Icons.Outlined.RestartAlt, adb = true, id = ToolId.REBOOT),
+        // Eski "Uygulamalar" bölümü Sistem'e katıldı (Serif, v0.149)
         Tool("Uygulama yöneticisi", Icons.Outlined.Apps, adb = true, id = ToolId.APP_MANAGER),
         Tool("Gereksiz uygulamaları kapat", Icons.Outlined.Block, adb = true, warning = true, id = ToolId.DEBLOAT),
         Tool("APK yükle", Icons.Outlined.InstallMobile, adb = true, id = ToolId.APK_INSTALL),
@@ -75,8 +74,7 @@ private val toolGroups = listOf(
         Tool("Uyku zamanlayıcısı", Icons.Outlined.Bedtime, id = ToolId.SLEEP_TIMER),
         // TV kapalıyken kurulur; iş telefonun alarmıyla yapılır
         Tool("Zamanlı açma", Icons.Outlined.Alarm, offline = true, id = ToolId.WAKE_TIME),
-        Tool("Ekran süresi sınırı", Icons.Outlined.HourglassBottom, adb = true, id = ToolId.SCREEN_TIME),
-        Tool("Ses sınırı", Icons.Outlined.VolumeDown, adb = true, id = ToolId.VOLUME_CAP)
+        Tool("Ekran süresi sınırı", Icons.Outlined.HourglassBottom, adb = true, id = ToolId.SCREEN_TIME)
     )),
     ToolGroup("İçerik açma", listOf(
         Tool("Bağlantıyı TV'de aç", Icons.Outlined.Link, id = ToolId.OPEN_LINK),

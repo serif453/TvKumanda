@@ -78,3 +78,4 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
 - Genel tarama (1 Kasım 2026): kullanılmayan 3 fonksiyon ve dadb'nin `adbserver`/`forwarding` parçaları (bilgisayardaki
   ADB sunucusu, port yönlendirme; uygulamada hiç kullanılmıyordu) silindi.
 - **Gelişmiş tuşlar bölümü kaldırıldı (v0.148, Serif'in isteği):** Medya tuşları ve Sistem kısayolları yalnızca Kumanda'daki 🎵 ve fn tuşlarından açılır (aynı `ToolSheet`, `ToolId`'ler duruyor).
+- **v0.149 (Serif'in isteği):** "Ses sınırı" aracı kaldırıldı (`VolumeCapTool`, `ToolId.VOLUME_CAP`); nöbetçide `vol_max` desteği duruyor ama her ADB bağlantısında eskiden açık kalmış sınır kapatılır. "Uygulamalar" bölümü "Sistem" başlığına katıldı.
