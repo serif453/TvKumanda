@@ -129,6 +129,94 @@ class IrCodecTest {
         assertEquals(listOf("Philips", "LG", "Zenith"), IrDb.sorted(db + IrDb.Brand("Zenith", db[1].sets)).map { it.name })
     }
 
+    @Test fun markaAileleri() {
+        val db = IrDb.parse("""
+            B	Telefunken
+            S	3	power=P,NEC,1,C;vol_up=P,NEC,1,D
+            B	FINLUX
+            S	2	power=P,NEC,1,C;vol_up=P,NEC,1,D
+            S	1	power=P,NEC,2,C;vol_up=P,NEC,2,D
+            B	Grundig
+            S	4	power=P,RC5,1,C;vol_up=P,RC5,1,10
+            B	LG
+            S	5	power=P,NEC,4,8
+        """.trimIndent())
+        assertEquals("Finlux", db[1].name) // bozuk yazım düzeltilir
+        val all = IrDb.withFamilies(db)
+        // Kodu olmayan aile markaları eklenir: Vestel, Regal, Arçelik, Beko, Altus
+        val vestel = all.first { it.name == "Vestel" }
+        assertTrue(vestel.familyOnly)
+        // Aynı kod iki kez denenmez: Telefunken'in seti Finlux'un ilkiyle aynı
+        assertEquals(listOf("Telefunken", "Finlux"), vestel.sets.map { it.source })
+        // Markanın kendi kodları önce, eski kayıtların sırası bozulmaz
+        val tf = all.first { it.name == "Telefunken" }
+        assertEquals(listOf(null, "Finlux"), tf.sets.map { it.source })
+        assertEquals(1, all.first { it.name == "Beko" }.sets.size)
+        assertEquals(1, all.first { it.name == "LG" }.sets.size)
+        assertTrue(all.first { it.name == "Luxor" }.familyOnly) // kodu olmayan aile markası aile kodlarını alır
+        assertEquals("Arçelik", IrDb.sorted(all).map { it.name }.first { it == "Arçelik" || it == "Beko" })
+    }
+
+    @Test fun gucTaramasi() {
+        val db = IrDb.withFamilies(IrDb.parse("""
+            B	Telefunken
+            S	3	power=P,NEC,1,C;vol_up=P,NEC,1,D
+            B	Finlux
+            S	2	power=P,NEC,1,C;mute=P,NEC,1,E
+            S	1	power=P,NEC,2,C
+            B	LG
+            S	5	power=P,NEC,4,8
+        """.trimIndent()))
+        val scan = IrDb.powerScan(db)
+        assertEquals(listOf("P,NEC,1,C", "P,NEC,2,C", "P,NEC,4,8"), scan.map { it.set.keys["power"] })
+        assertEquals(listOf("Telefunken", "Finlux", "LG"), scan.map { it.brand })
+    }
+
+    @Test fun flipperDosyasi() {
+        val text = """
+            Filetype: IR signals file
+            Version: 1
+            #
+            name: Power
+            type: parsed
+            protocol: NEC
+            address: 04 00 00 00
+            command: 08 00 00 00
+            #
+            name: Vol_up
+            type: parsed
+            protocol: NECext
+            address: 02 7D 00 00
+            command: 10 EF 00 00
+            #
+            name: Netflix_App
+            type: raw
+            frequency: 38000
+            duty_cycle: 0.330000
+            data: 9000 4500 560 560 560
+            #
+            name: Power
+            type: parsed
+            protocol: NEC
+            address: 05 00 00 00
+            command: 01 00 00 00
+            #
+            name: Garip
+            type: parsed
+            protocol: NEC42
+            address: 01 00 00 00
+            command: 01 00 00 00
+        """.trimIndent()
+        val r = IrDb.parseFlipper(text)
+        assertEquals("P,NEC,4,8", r.keys["power"])
+        assertEquals("P,NECext,7D02,EF10", r.keys["vol_up"])
+        assertEquals("W,38000,9000 4500 560 560 560", r.keys["${IrDb.EXTRA}Netflix_App"])
+        assertEquals(3, r.keys.size) // ikinci Power atlanır
+        assertEquals(1, r.skipped) // NEC42 desteklenmiyor
+        assertEquals("20DF10EF", pdmToHex(sig(r.keys["power"]!!).pattern, 1690))
+        assertTrue(IrDb.parseFlipper("bozuk dosya").keys.isEmpty())
+    }
+
     @Test fun gercekVeritabani() {
         val f = listOf("src/main/assets/ir/tv.txt", "app/src/main/assets/ir/tv.txt").map { java.io.File(it) }.firstOrNull { it.exists() }
         assertNotNull("tv.txt bulunamadı", f)

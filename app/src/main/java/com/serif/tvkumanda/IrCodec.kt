@@ -184,9 +184,153 @@ object IrCodec {
 
 /** TV IR kod veritabanı (`assets/ir/tv.txt`, tools/ir_db_build.py üretir). */
 object IrDb {
-    /** Bir markanın kod seti: [remotes] kaç kumandadan birleştiği (çok olan önce denenir). */
-    class CodeSet(val remotes: Int, val keys: Map<String, String>)
-    class Brand(val name: String, val sets: List<CodeSet>)
+    /**
+     * Bir markanın kod seti: [remotes] kaç kumandadan birleştiği (çok olan önce denenir).
+     * [source] null değilse set aynı fabrikadan çıkan başka bir markadan gelir (bkz. [FAMILIES]).
+     */
+    class CodeSet(val remotes: Int, val keys: Map<String, String>, val source: String? = null)
+    class Brand(val name: String, val sets: List<CodeSet>) {
+        /** Markanın kendi kodu yok, yalnızca aile kodları var. */
+        val familyOnly get() = sets.isNotEmpty() && sets.all { it.source != null }
+    }
+
+    /** Veritabanındaki adı bozuk yazılmış markalar. Eski kayıtlar ada büyük/küçük harf duyarsız bakar. */
+    private val renames = mapOf("FINLUX" to "Finlux")
+
+    /**
+     * Aynı fabrikadan çıkan markalar: kumandaları çoğu zaman aynı kodları kullanır. Bir marka seçilince önce kendi
+     * kodları, sonra ailenin diğer markalarının kodları denenir. Veritabanında hiç kodu olmayan aile markaları
+     * (Vestel, Arçelik, Beko…) yalnızca aile kodlarıyla listeye eklenir. Sıra: en olası olan önce.
+     */
+    val FAMILIES = listOf(
+        listOf("Vestel", "Regal", "Telefunken", "Finlux", "Toshiba", "Hitachi", "JVC", "Digihome", "Bush", "Blaupunkt", "Luxor", "Techwood"),
+        listOf("Arçelik", "Beko", "Grundig", "Altus")
+    )
+
+    private fun signature(s: CodeSet) = s.keys["power"] to (s.keys["vol_up"] ?: s.keys["mute"] ?: s.keys["up"])
+
+    /** Her markaya ailesinin kodlarını ekler; kodu olmayan aile markalarını da listeye katar. */
+    fun withFamilies(brands: List<Brand>): List<Brand> {
+        val byName = brands.associateBy { it.name.lowercase() }
+        fun merge(own: Brand, family: List<String>): List<CodeSet> {
+            val out = ArrayList(own.sets)
+            val seen = own.sets.map(::signature).toHashSet()
+            for (m in family) {
+                if (m.equals(own.name, true)) continue
+                val other = byName[m.lowercase()] ?: continue
+                for (s in other.sets) if (seen.add(signature(s))) out.add(CodeSet(s.remotes, s.keys, other.name))
+            }
+            return out
+        }
+        val result = brands.map { b ->
+            val family = FAMILIES.firstOrNull { f -> f.any { it.equals(b.name, true) } } ?: return@map b
+            Brand(b.name, merge(b, family))
+        }.toMutableList()
+        for (family in FAMILIES) for (m in family) if (m.lowercase() !in byName) {
+            val sets = merge(Brand(m, emptyList()), family)
+            if (sets.isNotEmpty()) result.add(Brand(m, sets))
+        }
+        return result
+    }
+
+    /** "Markamı bilmiyorum" taraması için bir güç kodu ve geldiği kod seti. */
+    class PowerCandidate(val brand: String, val set: CodeSet)
+
+    /**
+     * Veritabanındaki tüm farklı güç kodları, [brands] sırasıyla (yaygın markalar önce). Aile kodları atlanır
+     * (zaten kendi markasında var); aynı güç kodu bir kez gönderilir.
+     */
+    fun powerScan(brands: List<Brand>): List<PowerCandidate> {
+        val seen = HashSet<String>()
+        val out = ArrayList<PowerCandidate>()
+        for (b in brands) for (s in b.sets) {
+            if (s.source != null) continue
+            val p = s.keys["power"] ?: continue
+            if (seen.add(p)) out.add(PowerCandidate(b.name, s))
+        }
+        return out
+    }
+
+    // ---------------- Flipper .ir dosyası ----------------
+
+    /** Flipper tuş adı → uygulamanın ortak adı (tools/ir_db_build.py ile aynı liste). */
+    private val aliases: Map<String, String> = buildMap {
+        fun a(to: String, vararg from: String) { for (f in from) put(f, to) }
+        a("power", "power", "on_off", "standby", "power_toggle")
+        a("vol_up", "vol_up", "vol+", "volume_up", "plus")
+        a("vol_dn", "vol_dn", "vol_down", "vol-", "vol_dwn", "volume_down", "minus")
+        a("mute", "mute")
+        a("ch_up", "ch_next", "ch_up", "ch+", "pr_up", "page_up")
+        a("ch_dn", "ch_prev", "ch_dn", "ch_down", "ch-", "pr_down")
+        a("up", "up", "up_arrow", "arrow_up"); a("down", "down", "dwn", "arrow_down")
+        a("left", "left", "left_arrow", "arrow_left"); a("right", "right", "right_arrow", "arrow_right")
+        a("ok", "ok", "enter", "select", "ent"); a("back", "back", "return"); a("exit", "exit")
+        a("home", "home", "smart_hub"); a("menu", "menu"); a("settings", "settings", "setup")
+        a("info", "info", "display"); a("source", "source", "input", "sources"); a("guide", "guide", "epg", "tv_guide")
+        a("play", "play"); a("pause", "pause"); a("stop", "stop"); a("play_pause", "play_pause", "play/pause", "play_pa")
+        a("rewind", "rewind", "rew", "rwd", "fast_ba", "rw")
+        a("ffwd", "fast_forward", "fast_fo", "ff", "fwd", "fastforward", "fast_fwd", "forward", "fast forward", "ffw", "fw")
+        a("red", "red"); a("green", "green"); a("yellow", "yellow"); a("blue", "blue")
+        a("netflix", "netflix"); a("youtube", "youtube")
+        a("subtitle", "subtitle", "subtitles", "cc", "sttl")
+        for (d in '0'..'9') put(d.toString(), d.toString())
+    }
+
+    /** Uygulamanın tanımadığı tuş adları bu önekle saklanır ve "Diğer tuşlar"da adıyla gösterilir. */
+    const val EXTRA = "x:"
+    private const val MAX_EXTRA = 48
+
+    /** [keys] okunan tuşlar; [skipped] uygulamanın gönderemediği (bilinmeyen biçim, çok uzun) sinyal sayısı. */
+    class Imported(val keys: Map<String, String>, val skipped: Int)
+
+    /**
+     * Flipper Zero'nun .ir dosyası ("Filetype: IR signals file"). Adres/komut baytları küçük bayttan başlar
+     * ("04 00 00 00" = 4). Aynı adda ikinci tuş atlanır.
+     */
+    fun parseFlipper(text: String): Imported {
+        val keys = LinkedHashMap<String, String>()
+        var skipped = 0
+        var extras = 0
+        var cur = HashMap<String, String>()
+        fun le(hex: String): Long? = runCatching {
+            hex.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.withIndex()
+                .fold(0L) { acc, (i, b) -> acc or (b.toLong(16) shl (8 * i)) }
+        }.getOrNull()
+        fun flush() {
+            val raw = cur["name"]?.trim().orEmpty()
+            if (raw.isEmpty()) return
+            val known = aliases[raw.lowercase()]
+            val key = known ?: (EXTRA + raw.take(24))
+            if (key in keys) return
+            val code = when (cur["type"]?.trim()) {
+                "parsed" -> {
+                    val p = cur["protocol"]?.trim().orEmpty()
+                    val a = cur["address"]?.let(::le); val c = cur["command"]?.let(::le)
+                    if (p in IrCodec.PROTOCOLS && a != null && c != null) "P,$p,%X,%X".format(a, c) else null
+                }
+                "raw" -> {
+                    val f = cur["frequency"]?.trim()?.toDoubleOrNull()?.toInt() ?: 38000
+                    val d = cur["data"]?.trim()?.split(Regex("\\s+"))?.map { it.toIntOrNull() ?: -1 }.orEmpty()
+                    if (d.size >= 2 && d.all { it > 0 } && d.sum() < 1_900_000) "W,$f,${d.joinToString(" ")}" else null
+                }
+                else -> null
+            }
+            if (code == null || IrCodec.parseCode(code) == null) { skipped++; return }
+            if (known == null) { if (extras >= MAX_EXTRA) return; extras++ }
+            keys[key] = code
+        }
+        for (line in text.lineSequence()) {
+            val l = line.trim()
+            if (l.startsWith("#")) { flush(); cur = HashMap(); continue }
+            val i = l.indexOf(':')
+            if (i <= 0) continue
+            val k = l.substring(0, i).trim()
+            if (k == "name" && "name" in cur) { flush(); cur = HashMap() }
+            cur[k] = l.substring(i + 1).trim()
+        }
+        flush()
+        return Imported(keys, skipped)
+    }
 
     fun parse(text: String): List<Brand> {
         val brands = ArrayList<Brand>()
@@ -197,7 +341,7 @@ object IrDb {
             if (line.isBlank() || line.startsWith("#")) continue
             val p = line.split('\t')
             when (p[0]) {
-                "B" -> { flush(); name = p.getOrNull(1)?.trim(); sets = ArrayList() }
+                "B" -> { flush(); name = p.getOrNull(1)?.trim()?.let { renames[it] ?: it }; sets = ArrayList() }
                 "S" -> if (p.size >= 3) {
                     val keys = LinkedHashMap<String, String>()
                     for (kv in p[2].split(';')) {
@@ -213,7 +357,7 @@ object IrDb {
     }
 
     /** Türkiye'de yaygın markalar listenin başında; kalanlar alfabetik. */
-    private val popular = listOf("Philips", "Samsung", "LG", "Sony", "Toshiba", "Grundig", "Arcelik", "Beko", "Vestel", "Telefunken",
+    private val popular = listOf("Philips", "Samsung", "LG", "Sony", "Toshiba", "Grundig", "Arçelik", "Beko", "Vestel", "Telefunken",
         "TCL", "Hisense", "Xiaomi", "Panasonic", "Sharp", "Hitachi", "JVC", "Finlux", "Sunny", "Axen", "Regal", "Seg")
 
     fun sorted(brands: List<Brand>): List<Brand> = brands.sortedWith(

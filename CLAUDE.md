@@ -146,11 +146,20 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
     E0E040BF, Sony A90, Panasonic) ve gerçek veritabanının her kodunu kodlar.
   - Veritabanı `app/src/main/assets/ir/tv.txt`: `tools/ir_db_build.py` ile Flipper-IRDB `TVs/` klasöründen (CC0) üretilir.
     Tuş adları ortak ada çevrilir (vol_up, ch_up, ok…); aynı markanın kumandaları güç+ses koduna göre kod setlerine
-    birleşir, çok kumandadan gelen set önce denenir. Vestel markası veritabanında yok (Telefunken/Toshiba/Finlux önerilir).
+    birleşir, çok kumandadan gelen set önce denenir. Vestel markası Flipper-IRDB'de yok; aile kodlarıyla gelir (aşağıda).
   - `IrRemote.kt`: TV seçimi penceresinde "IR KUMANDALAR" bölümü, ekleme (marka → kod seti deneme: sesi aç, gerekirse güç →
     ad), tam ekran IR kumanda. Kayıtlar `ayarlar` → `ir_kumandalar` (marka adı + kod seti sırası). Gönderim tek iş
     parçacığında; desteklenmeyen taşıyıcı frekansı en yakın desteklenene çekilir. Serif'in Honor telefonunda IR var;
     gerçek TV'de henüz denenmedi.
+  - **Marka aileleri** (`IrDb.FAMILIES`, `withFamilies`): Vestel ve Arçelik grupları. Seçilen markanın önce kendi setleri, sonra
+    ailenin setleri (aynı güç+ses imzası bir kez). Veritabanında olmayan aile markaları (Vestel, Regal, Arçelik, Beko, Altus…)
+    yalnızca aile kodlarıyla listeye eklenir. Aile üyeliği genel bilgiye dayanır, gerçek TV'lerde doğrulanmadı.
+  - **Güç taraması** (`IrDb.powerScan`, `PowerScan`): tüm farklı güç kodları (≈91) 1,5 sn arayla; durunca Önceki/Sonraki ile
+    elle doğrulama (kapalı TV'yi açan kod doğrudur). Bulunan kodun setinin tüm tuşları kaydedilir.
+  - **Dosyadan ekle** (`IrDb.parseFlipper`): Flipper .ir dosyası; tanınmayan tuş adları `x:` önekiyle "Diğer tuşlar"a.
+  - Yeni kayıtlar tuş kodlarını kaydın içinde tutar (`IrSaved.keys`); eski kayıtlar marka + set sırasıyla bakılır. Bu yüzden
+    bir markaya yeni kaynaktan set eklenirse **kendi setlerinin sonuna** eklenmeli (eski kayıtların sırası bozulmasın).
+  - Lisans: probonopd/irdb kullanılmaz (lisansı GPL ile çelişen ek şart koyuyor: ürün kopyası verme). SmartIR (MIT) sıradaki kaynak.
 
 ### Cast
 - Chromecast: `CastClient.kt` (Cast v2, Default Media Receiver `CC1AD845`), dosyalar `MediaServer.kt` (rastgele
@@ -166,7 +175,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   Chromecast yok; başka cihazda denenmedi.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest`.
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest` (kodlayıcı, aileler, güç taraması, .ir dosyası).
 
 ## Bilinen kısıtlar
 

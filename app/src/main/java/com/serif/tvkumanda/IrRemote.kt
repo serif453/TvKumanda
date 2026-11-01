@@ -3,6 +3,8 @@ package com.serif.tvkumanda
 import android.content.Context
 import android.hardware.ConsumerIrManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.*
@@ -31,6 +34,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,8 +49,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
-/** Kayıtlı bir IR kumanda: hangi markanın hangi kod setini kullandığı. */
-data class IrSaved(val id: String, val name: String, val brand: String, val set: Int)
+/**
+ * Kayıtlı bir IR kumanda. [keys] varsa tuş kodları kaydın içindedir (yeni kayıtlar, dosyadan eklenenler);
+ * yoksa (eski kayıtlar) [brand] markasının [set] sıradaki kod setine bakılır.
+ */
+data class IrSaved(val id: String, val name: String, val brand: String, val set: Int, val keys: Map<String, String>? = null)
 
 /** IR sayfaları ve kayıtlı IR kumandalar (TV seçimi penceresinden açılır). */
 object IrUi {
@@ -64,14 +71,19 @@ object IrUi {
             val arr = org.json.JSONArray(prefs(c).getString("ir_kumandalar", "[]"))
             (0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
-                IrSaved(o.getString("id"), o.getString("name"), o.getString("brand"), o.optInt("set", 0))
+                val k = o.optJSONObject("keys")?.let { j -> j.keys().asSequence().associateWith { j.getString(it) } }
+                IrSaved(o.getString("id"), o.getString("name"), o.getString("brand"), o.optInt("set", 0), k)
             }
         }.getOrDefault(emptyList())
     }
 
     private fun store(c: Context) {
         val arr = org.json.JSONArray()
-        saved.forEach { arr.put(org.json.JSONObject().put("id", it.id).put("name", it.name).put("brand", it.brand).put("set", it.set)) }
+        saved.forEach { r ->
+            val o = org.json.JSONObject().put("id", r.id).put("name", r.name).put("brand", r.brand).put("set", r.set)
+            r.keys?.let { k -> o.put("keys", org.json.JSONObject(k as Map<*, *>)) }
+            arr.put(o)
+        }
         prefs(c).edit().putString("ir_kumandalar", arr.toString()).apply()
     }
 
@@ -91,10 +103,11 @@ object IrSender {
     }.getOrDefault(false)
 
     suspend fun brands(c: Context): List<IrDb.Brand> = db ?: withContext(Dispatchers.IO) {
-        IrDb.sorted(IrDb.parse(c.assets.open("ir/tv.txt").bufferedReader().use { it.readText() })).also { db = it }
+        IrDb.sorted(IrDb.withFamilies(IrDb.parse(c.assets.open("ir/tv.txt").bufferedReader().use { it.readText() }))).also { db = it }
     }
 
-    suspend fun codeSet(c: Context, r: IrSaved): IrDb.CodeSet? = brands(c).firstOrNull { it.name == r.brand }?.sets?.getOrNull(r.set)
+    suspend fun codeSet(c: Context, r: IrSaved): IrDb.CodeSet? =
+        r.keys?.let { IrDb.CodeSet(1, it) } ?: brands(c).firstOrNull { it.name.equals(r.brand, true) }?.sets?.getOrNull(r.set)
 
     /** [newPress] yeni basış (RC5/RC6 değişim biti değişir); basılı tutulunca false gönderilir. */
     suspend fun send(c: Context, code: String, newPress: Boolean = true): Boolean = withContext(dispatcher) {
@@ -164,7 +177,10 @@ private fun PageFrame(
     }
 }
 
-// ---------------- Yeni IR kumanda: marka → deneme → ad ----------------
+// ---------------- Yeni IR kumanda: marka → deneme → ad; tarama; dosyadan ----------------
+
+/** Kaydedilmeyi bekleyen kod seti: [brand] kumandanın markası (ya da dosya adı), [note] ad adımında gösterilir. */
+private class IrPending(val brand: String, val setIndex: Int, val keys: Map<String, String>, val note: String)
 
 @Composable
 private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
@@ -175,30 +191,77 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
     LaunchedEffect(Unit) { runCatching { IrSender.brands(context) }.onSuccess { brands = it }.onFailure { loadError = errorText(it) } }
     var brand by remember { mutableStateOf<IrDb.Brand?>(null) }
     var setIndex by remember { mutableIntStateOf(0) }
-    var naming by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<IrPending?>(null) }
+    var scanning by remember { mutableStateOf(false) }
     var exhausted by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf<String?>(null) }
+    var fileError by remember { mutableStateOf<String?>(null) }
 
-    val b = brand
-    val back: () -> Unit = {
-        if (naming) {
-            naming = false
-        } else if (b != null) {
-            brand = null; exhausted = false; sent = null
-        } else {
-            onClose()
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            fileError = null
+            val r = runCatching {
+                withContext(Dispatchers.IO) {
+                    val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("dosya açılamadı")
+                    if (bytes.size > 1_000_000) error("dosya çok büyük, bir kumanda dosyası seç")
+                    (name ?: "Kumanda") to IrDb.parseFlipper(String(bytes, Charsets.UTF_8))
+                }
+            }
+            r.onFailure { fileError = errorText(it); DiagLog.log("IR dosyası okunamadı: ${it.message.orEmpty()}") }
+            r.onSuccess { (name, imp) ->
+                if (imp.keys.isEmpty()) {
+                    fileError = "Bu dosyada gönderilebilecek tuş bulunamadı. Flipper Zero'nun .ir kumanda dosyası olmalı."
+                } else {
+                    val extra = imp.keys.keys.count { it.startsWith(IrDb.EXTRA) }
+                    val note = buildString {
+                        append("${imp.keys.size} tuş okundu")
+                        if (extra > 0) append(" ($extra tanesi \"Diğer tuşlar\"da)")
+                        if (imp.skipped > 0) append(", ${imp.skipped} tuş desteklenmeyen biçimde olduğu için atlandı")
+                        append('.')
+                    }
+                    DiagLog.log("IR dosyası eklendi: ${imp.keys.size} tuş, ${imp.skipped} atlandı")
+                    pending = IrPending(name.substringBeforeLast('.').ifBlank { "Kumanda" }.take(30), 0, imp.keys, note)
+                }
+            }
         }
     }
-    PageFrame("IR kumanda ekle", if (b == null) "1. Markanı seç" else if (!naming) "2. Kodu dene · ${b.name}" else "3. Adını ver", back) {
+
+    val b = brand
+    val p = pending
+    val back: () -> Unit = {
+        when {
+            p != null -> pending = null
+            scanning -> scanning = false
+            b != null -> { brand = null; exhausted = false; sent = null }
+            else -> onClose()
+        }
+    }
+    val subtitle = when {
+        p != null -> "Son adım: adını ver"
+        scanning -> "Markamı bilmiyorum"
+        b == null -> "1. Markanı seç"
+        else -> "2. Kodu dene · ${b.name}"
+    }
+    PageFrame("IR kumanda ekle", subtitle, back) {
         when {
             loadError != null -> ResultLine(ToolResult(false, loadError!!))
             brands == null -> Loading("Kod listesi açılıyor…")
-            b == null -> BrandPicker(brands!!) { brand = it; setIndex = 0; exhausted = false; sent = null }
-            naming -> NameStep(b, setIndex) { name ->
-                val r = IrSaved(System.currentTimeMillis().toString(36), name, b.name, setIndex)
+            p != null -> NameStep(p) { name ->
+                val r = IrSaved(System.currentTimeMillis().toString(36), name, p.brand, p.setIndex, p.keys)
                 IrUi.add(context, r)
                 onSaved(r.id)
             }
+            scanning -> PowerScan(brands!!) { cand ->
+                pending = IrPending(cand.brand, 0, cand.set.keys, "Güç kodu ${cand.brand} kumandasından. Diğer tuşlar da aynı kumandadan gelir.")
+            }
+            b == null -> BrandPicker(
+                brands!!, fileError,
+                onScan = { fileError = null; scanning = true },
+                onFile = { fileError = null; runCatching { importer.launch(arrayOf("*/*")) }.onFailure { fileError = "Dosya seçici açılamadı." } }
+            ) { brand = it; setIndex = 0; exhausted = false; sent = null; fileError = null }
             else -> {
                 val set = b.sets[setIndex]
                 val test = IrDb.testKey(set)
@@ -209,6 +272,9 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
                     )
                     Spacer(Modifier.height(14.dp))
                     Text("Kod seti ${setIndex + 1} / ${b.sets.size}", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    set.source?.let {
+                        Text("$it kumandasından · aynı fabrikanın markası", color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         for (k in listOfNotNull(test, "power".takeIf { it in set.keys && it != test })) {
@@ -224,14 +290,19 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
                     sent?.let { Text(it, color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp)) }
                     Spacer(Modifier.height(20.dp))
                     if (exhausted) {
-                        Text("Bu markanın kodlarından hiçbiri tutmadıysa başka bir marka dene; TV'ler çoğu zaman başka markanın kumanda dilini kullanır.",
+                        Text("Bu markanın kodlarından hiçbiri tutmadıysa \"Markamı bilmiyorum\" taramasını dene; TV'ler çoğu zaman başka markanın kumanda dilini kullanır.",
                             color = Pal.Amber, fontSize = 13.sp)
+                        Spacer(Modifier.height(10.dp))
+                        MainButton("Markamı bilmiyorum, tara") { brand = null; exhausted = false; sent = null; scanning = true }
                         Spacer(Modifier.height(10.dp))
                         SecondaryButton("Başka marka seç", Modifier.fillMaxWidth()) { brand = null; exhausted = false; sent = null }
                         Spacer(Modifier.height(10.dp))
                         SecondaryButton("Baştan dene", Modifier.fillMaxWidth()) { setIndex = 0; exhausted = false; sent = null }
                     } else {
-                        MainButton("Çalıştı") { naming = true }
+                        MainButton("Çalıştı") {
+                            val note = "${b.name} · kod seti ${setIndex + 1}" + (set.source?.let { " ($it kumandası)" } ?: "")
+                            pending = IrPending(b.name, setIndex, set.keys, note)
+                        }
                         Spacer(Modifier.height(10.dp))
                         SecondaryButton(if (setIndex + 1 < b.sets.size) "Çalışmadı, sonrakini dene" else "Çalışmadı", Modifier.fillMaxWidth()) {
                             sent = null
@@ -241,6 +312,104 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
                     Spacer(Modifier.height(18.dp))
                     Text("Telefon IR'ı yalnızca birkaç metre ve TV'ye bakarken çalışır, tıpkı gerçek kumanda gibi.", color = Navy.Sub, fontSize = 12.sp)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "Markamı bilmiyorum": veritabanındaki her farklı güç kodunu 1,5 sn arayla gönderir. TV kapanınca kullanıcı durdurur;
+ * insanın tepki süresi yüzünden doğru kod son gönderilen ya da bir öncekidir, bu yüzden durunca kodlar elle tek tek
+ * denenir (TV kapalıyken doğru güç kodu TV'yi açar).
+ */
+@Composable
+private fun PowerScan(brands: List<IrDb.Brand>, onFound: (IrDb.PowerCandidate) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val list = remember(brands) { IrDb.powerScan(brands) }
+    var index by remember { mutableIntStateOf(0) }
+    var running by remember { mutableStateOf(false) }
+    var started by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
+    var sent by remember { mutableStateOf<String?>(null) }
+
+    // Tarama sürerken ekran kararmasın
+    val view = LocalView.current
+    DisposableEffect(running) {
+        view.keepScreenOn = running
+        onDispose { view.keepScreenOn = false }
+    }
+    LaunchedEffect(running) {
+        while (running) {
+            IrSender.send(context, list[index].set.keys.getValue("power"))
+            delay(1500)
+            if (!running) break
+            if (index + 1 >= list.size) { running = false; finished = true } else index++
+        }
+    }
+
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        val c = list.getOrNull(index)
+        when {
+            c == null -> ResultLine(ToolResult(false, "Kod listesi boş."))
+            !started -> {
+                Text("TV açıkken başla ve telefonun üst kenarını TV'ye doğrult. Telefon 1,5 saniyede bir farklı bir " +
+                    "markanın güç kodunu gönderir (${list.size} kod, en fazla ${(list.size * 3 + 1) / 2 / 60 + 1} dakika).",
+                    color = Navy.Sub, fontSize = 14.sp)
+                Spacer(Modifier.height(10.dp))
+                Text("TV kapandığı anda \"TV kapandı\"ya bas.", color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(20.dp))
+                MainButton("Taramayı başlat") { started = true; finished = false; index = 0; running = true }
+            }
+            running -> {
+                Text("Kod ${index + 1} / ${list.size}", color = Pal.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(c.brand, color = Navy.Sub, fontSize = 14.sp)
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { (index + 1f) / list.size }, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)),
+                    color = Navy.Accent, trackColor = Navy.Btn
+                )
+                Spacer(Modifier.height(24.dp))
+                MainButton("TV kapandı", danger = true) { running = false; sent = null }
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Durdur", Modifier.fillMaxWidth()) { running = false; sent = null }
+            }
+            finished -> {
+                Text("Hiçbir kod TV'yi kapatmadı.", color = Pal.Amber, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("Telefonun TV'ye yakın ve dönük olduğundan emin ol. Bu TV'nin kodu veritabanında olmayabilir; " +
+                    "kumandanın Flipper dosyası varsa \"Dosyadan ekle\" ile eklenebilir.", color = Navy.Sub, fontSize = 13.sp)
+                Spacer(Modifier.height(16.dp))
+                MainButton("Baştan tara") { finished = false; index = 0; running = true }
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Durduğun yerdeki kodları elle dene", Modifier.fillMaxWidth()) { finished = false }
+            }
+            else -> {
+                Text("Doğru kodu bulalım", color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("TV'yi kapatan kod genelde son gönderilen ya da bir öncekidir. TV kapalıyken \"Gönder\"e bas: " +
+                    "doğru kod TV'yi açar. Açmazsa \"Önceki\" ile bir geri git.", color = Navy.Sub, fontSize = 14.sp)
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SecondaryButton("Önceki", Modifier.weight(1f), enabled = index > 0) { index--; sent = null }
+                    Column(Modifier.weight(1.3f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Kod ${index + 1} / ${list.size}", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(c.brand, color = Navy.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    SecondaryButton("Sonraki", Modifier.weight(1f), enabled = index + 1 < list.size) { index++; sent = null }
+                }
+                Spacer(Modifier.height(12.dp))
+                TryButton("Gönder", Icons.Filled.PowerSettingsNew, Modifier.fillMaxWidth()) {
+                    scope.launch {
+                        val ok = IrSender.send(context, c.set.keys.getValue("power"))
+                        sent = if (ok) "Kod ${index + 1} gönderildi" else "Sinyal gönderilemedi"
+                    }
+                }
+                sent?.let { Text(it, color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp)) }
+                Spacer(Modifier.height(18.dp))
+                MainButton("Çalıştı") { onFound(c) }
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Taramaya buradan devam et", Modifier.fillMaxWidth()) { sent = null; running = true }
             }
         }
     }
@@ -262,7 +431,9 @@ private fun TryButton(text: String, icon: ImageVector, modifier: Modifier, onCli
 }
 
 @Composable
-private fun BrandPicker(brands: List<IrDb.Brand>, onPick: (IrDb.Brand) -> Unit) {
+private fun BrandPicker(
+    brands: List<IrDb.Brand>, fileError: String?, onScan: () -> Unit, onFile: () -> Unit, onPick: (IrDb.Brand) -> Unit
+) {
     var q by remember { mutableStateOf("") }
     OutlinedTextField(
         value = q, onValueChange = { q = it }, singleLine = true,
@@ -276,11 +447,21 @@ private fun BrandPicker(brands: List<IrDb.Brand>, onPick: (IrDb.Brand) -> Unit) 
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(10.dp))
-    val list = if (q.isBlank()) brands else brands.filter { it.name.contains(q.trim(), ignoreCase = true) }
+    val query = q.trim()
+    val list = if (query.isEmpty()) brands else brands.filter { it.name.contains(query, ignoreCase = true) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
+        if (query.isEmpty()) {
+            item(key = "_tara") { OptionRow(Icons.Filled.Search, "Markamı bilmiyorum", "Tüm güç kodlarını sırayla dener", onScan) }
+            item(key = "_dosya") { OptionRow(Icons.Outlined.FileOpen, "Dosyadan ekle", "Flipper Zero kumanda dosyası (.ir)", onFile) }
+            if (fileError != null) item(key = "_hata") { ResultLine(ToolResult(false, fileError)) }
+        }
         if (list.isEmpty()) item {
-            Text("Bu marka listede yok. Vestel yapımı TV'ler için Telefunken, Toshiba ya da Finlux'u deneyebilirsin.",
-                color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text("Bu marka listede yok. \"Markamı bilmiyorum\" taraması TV'nin kullandığı kodu bulabilir.",
+                    color = Navy.Sub, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Markamı bilmiyorum, tara", Modifier.fillMaxWidth(), onClick = onScan)
+            }
         }
         items(list, key = { it.name }) { b ->
             Row(
@@ -289,18 +470,37 @@ private fun BrandPicker(brands: List<IrDb.Brand>, onPick: (IrDb.Brand) -> Unit) 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(b.name, color = Pal.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(if (b.sets.size == 1) "1 kod" else "${b.sets.size} kod", color = Navy.Sub, fontSize = 12.sp)
+                val n = if (b.sets.size == 1) "1 kod" else "${b.sets.size} kod"
+                Text(if (b.familyOnly) "$n · benzer markalardan" else n, color = Navy.Sub, fontSize = 12.sp)
             }
         }
         item {
-            Text("Kodlar: Flipper-IRDB (serbest lisans).", color = Navy.Sub, fontSize = 11.sp, modifier = Modifier.padding(vertical = 10.dp))
+            Text("Kodlar: Flipper-IRDB (serbest lisans). Aynı fabrikadan çıkan markalar (ör. Vestel, Telefunken, Finlux; " +
+                "Arçelik, Beko, Grundig) birbirinin kodlarını da dener.",
+                color = Navy.Sub, fontSize = 11.sp, modifier = Modifier.padding(vertical = 10.dp))
         }
     }
 }
 
 @Composable
-private fun NameStep(b: IrDb.Brand, setIndex: Int, onSave: (String) -> Unit) {
-    var name by remember { mutableStateOf("${b.name} TV") }
+private fun OptionRow(icon: ImageVector, title: String, sub: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Navy.AccentSoft).clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Navy.Accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(sub, color = Navy.Sub, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun NameStep(p: IrPending, onSave: (String) -> Unit) {
+    var name by remember { mutableStateOf("${p.brand} TV") }
     Text("Kumanda listesinde bu ad görünür, örneğin \"Yatak odası TV\".", color = Navy.Sub, fontSize = 14.sp)
     Spacer(Modifier.height(12.dp))
     OutlinedTextField(
@@ -312,7 +512,7 @@ private fun NameStep(b: IrDb.Brand, setIndex: Int, onSave: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(8.dp))
-    Text("${b.name} · kod seti ${setIndex + 1}", color = Navy.Sub, fontSize = 12.sp)
+    Text(p.note, color = Navy.Sub, fontSize = 12.sp)
     Spacer(Modifier.height(16.dp))
     MainButton("Kaydet ve aç", enabled = name.isNotBlank()) { onSave(name.trim()) }
 }
@@ -442,6 +642,21 @@ private fun IrKeys(set: IrDb.CodeSet, digits: Boolean, onDigits: () -> Unit) {
                 for (a in apps) IrText(k, a, keyNames[a] ?: a, Modifier.weight(1f).height(48.dp))
             }
         }
+        // Dosyadan eklenen kumandada uygulamanın tanımadığı tuşlar, dosyadaki adlarıyla
+        val extras = k.keys.filter { it.startsWith(IrDb.EXTRA) }
+        if (extras.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Text("DİĞER TUŞLAR", color = Navy.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            for (row in extras.chunked(3)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (x in row) IrText(k, x, x.removePrefix(IrDb.EXTRA).replace('_', ' '), Modifier.weight(1f).height(48.dp), small = true)
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
         Spacer(Modifier.height(18.dp))
         Text("Soluk tuşlar bu kod setinde yok. Telefonun üst kenarını TV'ye doğrult.", color = Navy.Sub, fontSize = 12.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
@@ -492,9 +707,10 @@ private fun IrRound(keys: Map<String, String>, name: String, icon: ImageVector, 
 }
 
 @Composable
-private fun IrText(keys: Map<String, String>, name: String, label: String, modifier: Modifier) {
+private fun IrText(keys: Map<String, String>, name: String, label: String, modifier: Modifier, small: Boolean = false) {
     IrKey(keys, name, modifier.clip(RoundedCornerShape(14.dp)).background(Navy.Btn).border(1.dp, Navy.Border, RoundedCornerShape(14.dp))) {
-        Text(label, color = Pal.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = Pal.Text, fontSize = if (small) 13.sp else 18.sp, fontWeight = FontWeight.Medium,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 4.dp))
     }
 }
 
