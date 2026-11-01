@@ -56,8 +56,13 @@ fun TvSheet(
     val discovery = remember { TvDiscovery(context) }
     var found by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
     var scanTick by remember { mutableIntStateOf(0) }
-    var scanning by remember { mutableStateOf(true) }
+    // Bir TV'ye bağlıyken pencere açılınca aranmaz; "Tekrar ara" elle arar (Serif'in isteği)
+    val autoScan = remember { ui.state != ConnState.CONNECTED }
+    var scanned by remember { mutableStateOf(autoScan) }
+    var scanning by remember { mutableStateOf(autoScan) }
     LaunchedEffect(scanTick) {
+        if (scanTick == 0 && !autoScan) return@LaunchedEffect
+        scanned = true
         scanning = true
         discovery.start { found = it }
         delay(12_000)
@@ -118,7 +123,10 @@ fun TvSheet(
                 Spacer(Modifier.width(10.dp))
                 Text("Aranıyor…", color = Navy.Sub, fontSize = 13.sp)
             } else {
-                Text(if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu", color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(
+                    if (!scanned) "" else if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu",
+                    color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f)
+                )
                 Row(
                     Modifier.clip(RoundedCornerShape(12.dp)).background(Navy.Btn).clickable { scanTick++ }.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically

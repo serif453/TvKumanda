@@ -75,7 +75,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   Yön kartının üstünde kapsül ses çubuğu (`VolumePill`: Sessiz · − · çubuk · +; Serif'in örneğinden). Dokun/sürükle-bırak →
   `VolumeCtl.setTo` → `MainActivity.setVolumeTo`: ADB'de `TvRemote.setVolume` (media_session --set, geri okunarak doğrulanır),
   olmazsa ya da Standart'ta fark kadar ses tuşu. Sessiz durumu bilinmiyor (iki bağlantı da bildirmiyor), çubukta gösterilmez.
-- TV seçimi: `TvSheet.kt`.
+- TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
 - Cast: `CastScreen.kt`, `MediaLibrary.kt`, `FullPlayer.kt`.
 - Araçlar: `ToolsScreen.kt` (kutucuklar), `ToolSheets.kt` / `ToolPages.kt` / `AdvancedTools.kt` (pencereler),
   `TvTools.kt` / `TvFiles.kt` / `TvAdvanced.kt` (ADB komutları). **`id`'si olmayan kutucuk henüz hazır değildir.**
