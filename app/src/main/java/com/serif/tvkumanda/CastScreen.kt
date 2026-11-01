@@ -163,11 +163,10 @@ fun CastScreen(
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     // Telefonda açık fotoğraf görüntüleyicisi: albüm + başlangıç sırası
     var viewer by remember { mutableStateOf<Pair<MediaAlbum, Int>?>(null) }
-    // Telefonda müzik: tam ekran oynatıcı açık mı; çalan şarkı listede vurgulanır
-    var musicOpen by remember { mutableStateOf(false) }
+    // Telefonda müzik: önce mini kart; dokununca / yukarı sürükleyince tam ekran. Çalan şarkı listede vurgulanır
+    val musicSheet = rememberMusicSheet()
     val context = androidx.compose.ui.platform.LocalContext.current
     val phoneCurrent = PhonePlayer.current?.id
-    LaunchedEffect(PhonePlayer.active) { if (!PhonePlayer.active) musicOpen = false }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
     var jumpAlbum by remember { mutableStateOf<Long?>(null) }
@@ -276,7 +275,7 @@ fun CastScreen(
                         // Müzik: bir cihaza bağlıysa TV'de, değilse telefonda çalar (tam ekran oynatıcı açılır)
                         kind == MediaKind.MUSIC -> TrackList(open.items, library, canCast, current ?: phoneCurrent, scrollKey) {
                             if (castDeviceName(cc, dlna) != null) onCastItem(it, open.items, open.id, 0.0)
-                            else { PhonePlayer.play(context, open.items, open.items.indexOf(it), open.id); musicOpen = true }
+                            else PhonePlayer.play(context, open.items, open.items.indexOf(it), open.id)
                         }
                         // Fotoğraf: telefonda galeri gibi açılır (bağlıysa TV de hemen gösterir); video: doğrudan TV'ye
                         kind == MediaKind.PHOTO -> ItemGrid(open.items, library, canCast, current, scrollKey) {
@@ -297,7 +296,7 @@ fun CastScreen(
         } else if (PhonePlayer.active) {
             // Telefonda çalan müzik: küçük kart
             Spacer(Modifier.height(8.dp))
-            PhoneMiniCard(library) { musicOpen = true }
+            PhoneMiniCard(library, musicSheet)
             Spacer(Modifier.height(BarSpace))
         }
     }
@@ -309,11 +308,11 @@ fun CastScreen(
             onCcPick = onCcPick, onDlnaPick = onDlnaPick,
             onClose = { viewer = null }
         )
-    } else if (musicOpen && PhonePlayer.active) {
+    } else if (musicSheet.visible && PhonePlayer.active) {
         PhoneMusicPlayer(
             library = library, cc = cc, dlna = dlna,
             onTv = onCastItem, onCcPick = onCcPick, onDlnaPick = onDlnaPick,
-            onClose = { musicOpen = false }
+            sheet = musicSheet
         )
     } else CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
 }

@@ -65,3 +65,8 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
 - (2 Kasım gece, sonra) Alttaki "TV'de göster" düğmesi kaldırıldı. Yerine `Filmstrip` (küçük resim şeridi; seçili ortada ve
   beyaz çerçeveli, TV'deki fotoda mavi cast işareti; dokununca atlar, 3'ten uzaksa animasyonsuz). Takip başta hep açık; bağlı
   değilken üstteki "Bağlan"dan cihaz seçilince bakılan foto gider. Bağlıyken üst çubukta "Takip" aç/kapa.
+- (2 Kasım gece) Aşağı çekerek kapatma: `ZoomablePhoto` tek parmakla, yakın değilken, belirgin aşağı harekette (`y > 1.5·|x|`,
+  dokunma eşiğinden sonra) kapatma moduna geçer; foto iner ve küçülür, arka plan şeffaflaşır (Dialog karartması 0),
+  ekranın %15'inden fazlaysa kapanır, değilse geri yaylanır.
+- Müzik: şarkıya dokununca yalnızca mini kart çıkar (tam ekran kendiliğinden açılmaz). `MusicSheet` (0 açık … 1 kart):
+  karta dokunma ya da yukarı sürükleme açar (%25'ten fazla çekilirse), tam ekranda aşağı sürükleme kapatır (%25'ten fazla).

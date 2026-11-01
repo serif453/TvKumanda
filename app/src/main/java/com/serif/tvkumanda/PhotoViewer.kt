@@ -82,6 +82,12 @@ fun PhotoViewer(
     var lastSent by remember { mutableStateOf<Long?>(null) }
     val currentCast by rememberUpdatedState(cast)
     val scope = rememberCoroutineScope()
+    // Aşağı çekerek kapatma: fotoğrafın aşağı kayma miktarı (px)
+    var dragY by remember { mutableStateOf(0f) }
+    var dragJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val screenPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx()
+    }
     val onCastNow by rememberUpdatedState(onCast)
 
     fun sendCurrent() {
@@ -114,25 +120,43 @@ fun PhotoViewer(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // Arkadaki ekran karartılmaz: aşağı çekerken albüm arkadan görünsün
+        val view = androidx.compose.ui.platform.LocalView.current
+        SideEffect { (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window?.setDimAmount(0f) }
+        val progress = (dragY / screenPx).coerceIn(0f, 1f)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (1f - progress * 2.2f).coerceIn(0f, 1f)))) {
             HorizontalPager(
                 state = pager,
                 beyondViewportPageCount = 1,
-                userScrollEnabled = !zoomed,
+                userScrollEnabled = !zoomed && dragY == 0f,
                 key = { items[it].id },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    translationY = dragY
+                    val k = 1f - progress * 0.35f
+                    scaleX = k; scaleY = k
+                }
             ) { page ->
                 ZoomablePhoto(
                     item = items[page],
                     library = library,
                     isCurrent = page == pager.currentPage,
                     onZoomChange = { if (page == pager.currentPage) zoomed = it },
-                    onTap = { chrome = !chrome }
+                    onTap = { chrome = !chrome },
+                    onDismissDrag = { dy -> dragJob?.cancel(); dragY = (dragY + dy).coerceAtLeast(0f) },
+                    onDismissEnd = {
+                        // Ekranın ~%15'inden fazla çekildiyse kapanır, değilse yerine yaylanır
+                        val close = dragY > screenPx * 0.15f
+                        dragJob = scope.launch {
+                            androidx.compose.animation.core.animate(dragY, if (close) screenPx else 0f,
+                                animationSpec = androidx.compose.animation.core.tween(if (close) 180 else 220)) { v, _ -> dragY = v }
+                            if (close) onClose()
+                        }
+                    }
                 )
             }
 
             // Üst: kapat, sıra, cihaz düğmesi
-            AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+            AnimatedVisibility(chrome && dragY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                 Row(
                     Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.45f))
                         .statusBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
@@ -181,7 +205,7 @@ fun PhotoViewer(
             }
 
             // Alt: önceki / sıradaki fotoların küçük resim şeridi
-            AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+            AnimatedVisibility(chrome && dragY == 0f, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
                 val tvId = if (cast.phase != CastPhase.NONE && cast.kind == MediaKind.PHOTO) cast.currentId else null
                 Filmstrip(
                     items = items, library = library, current = pager.currentPage, tvId = tvId,
@@ -206,8 +230,12 @@ private fun ZoomablePhoto(
     library: MediaLibrary,
     isCurrent: Boolean,
     onZoomChange: (Boolean) -> Unit,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onDismissDrag: (Float) -> Unit,
+    onDismissEnd: () -> Unit
 ) {
+    val dismissDrag by rememberUpdatedState(onDismissDrag)
+    val dismissEnd by rememberUpdatedState(onDismissEnd)
     val thumb = remember(item.id) { library.cachedThumbnail(item)?.asImageBitmap() }
     val full by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, item.id) {
         value = withContext(Dispatchers.IO) { library.fullImage(item)?.asImageBitmap() }
@@ -249,18 +277,38 @@ private fun ZoomablePhoto(
             }
             .pointerInput(item.id) {
                 // İki parmak ya da yakınlaştırılmışken: kaydırmayı biz alırız; aksi hâlde sayfa geçişi çalışır
+                // Tek parmakla belirgin şekilde aşağı çekilirse (yakın değilken): kapatma hareketi
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+                    var dismissing = false
+                    var decided = false
+                    var total = Offset.Zero
                     do {
                         val ev = awaitPointerEvent()
                         val fingers = ev.changes.count { it.pressed }
-                        if (fingers >= 2 || scale > 1f) {
+                        if (dismissing) {
+                            if (fingers == 1) dismissDrag(ev.calculatePan().y)
+                            ev.changes.forEach { if (it.positionChanged()) it.consume() }
+                        } else if (fingers >= 2 || scale > 1f) {
+                            decided = true
                             val z = ev.calculateZoom()
                             val p = ev.calculatePan()
                             set(scale * z, offset * z + p)
                             ev.changes.forEach { if (it.positionChanged()) it.consume() }
+                        } else if (!decided && fingers == 1) {
+                            total += ev.calculatePan()
+                            if (total.getDistance() > viewConfiguration.touchSlop) {
+                                decided = true
+                                val consumed = ev.changes.any { it.isConsumed }
+                                if (!consumed && total.y > 0 && total.y > kotlin.math.abs(total.x) * 1.5f) {
+                                    dismissing = true
+                                    dismissDrag(total.y)
+                                    ev.changes.forEach { it.consume() }
+                                }
+                            }
                         }
                     } while (ev.changes.any { it.pressed })
+                    if (dismissing) dismissEnd()
                 }
             },
         contentAlignment = Alignment.Center

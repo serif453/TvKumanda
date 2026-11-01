@@ -30,7 +30,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Telefonda müzik çalma (Serif, 2 Kasım 2026): Cast → Müzik'te bağlı değilken şarkıya dokununca telefonda çalar.
@@ -172,6 +184,41 @@ object PhonePlayer {
     }
 }
 
+/**
+ * Tam ekran müzik oynatıcısının yeri: 0 = tamamen açık, 1 = aşağıda (mini kart). Mini kart yukarı sürüklenince,
+ * oynatıcı aşağı çekilince parmağı takip eder; bırakınca en yakın uca yaylanır.
+ */
+class MusicSheet(private val scope: CoroutineScope) {
+    var frac by mutableStateOf(1f)
+        private set
+    var visible by mutableStateOf(false)
+        private set
+    private var anim: Job? = null
+
+    /** Sürükleme: [d] ekran yüksekliğine oranla (aşağı artı). */
+    fun drag(d: Float) { anim?.cancel(); visible = true; frac = (frac + d).coerceIn(0f, 1f) }
+    /** Bırakınca: [limit]'ten yukarıdaysa açılır, değilse kapanır. */
+    fun settle(limit: Float) { if (frac < limit) open() else close() }
+    fun open() { visible = true; to(0f) }
+    fun close() { to(1f) { visible = false } }
+    /** Animasyonsuz kapat (TV'ye geçiş, şarkı durdurma). */
+    fun hide() { anim?.cancel(); frac = 1f; visible = false }
+
+    private fun to(target: Float, end: () -> Unit = {}) {
+        anim?.cancel()
+        anim = scope.launch {
+            animate(frac, target, animationSpec = tween(260)) { v, _ -> frac = v }
+            end()
+        }
+    }
+}
+
+@Composable
+fun rememberMusicSheet(): MusicSheet {
+    val scope = rememberCoroutineScope()
+    return remember { MusicSheet(scope) }
+}
+
 /** Ekrandaki konum: çalarken yarım saniyede bir güncellenir. */
 @Composable
 private fun rememberPhonePosition(): Long {
@@ -184,12 +231,21 @@ private fun rememberPhonePosition(): Long {
 
 /** Cast ekranının altındaki küçük "telefonda çalıyor" kartı; dokununca tam ekran oynatıcı açılır. */
 @Composable
-fun PhoneMiniCard(library: MediaLibrary, onOpen: () -> Unit) {
+fun PhoneMiniCard(library: MediaLibrary, sheet: MusicSheet) {
     val item = PhonePlayer.current ?: return
     val pos = rememberPhonePosition()
     val dur = PhonePlayer.durationMs
+    val screenPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Pal.Btn).clickable(onClick = onOpen)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Pal.Btn)
+            .clickable { sheet.open() }
+            // Yukarı sürükleyince tam ekran oynatıcı parmakla birlikte yükselir; çeyrekten fazla çekilirse açılır
+            .pointerInput(screenPx) {
+                detectVerticalDragGestures(
+                    onDragEnd = { sheet.settle(0.75f) },
+                    onDragCancel = { sheet.settle(0.75f) }
+                ) { ch, dy -> ch.consume(); sheet.drag(dy / screenPx) }
+            }
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Thumb(item, library, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)), AppIcons.MusicNote)
@@ -227,18 +283,31 @@ fun PhoneMusicPlayer(
     onTv: (MediaItem, List<MediaItem>, Long, Double) -> Unit,
     onCcPick: (FoundTv?) -> Unit,
     onDlnaPick: (DlnaDevice) -> Unit,
-    onClose: () -> Unit
+    sheet: MusicSheet
 ) {
     val item = PhonePlayer.current
     // TV'ye geçilince (ya da kart kapatılınca) oynatıcı da kapanır
-    LaunchedEffect(item == null) { if (item == null) onClose() }
-    if (item == null) return
+    LaunchedEffect(item == null) { if (item == null) sheet.hide() }
+    if (item == null || !sheet.visible) return
     val pos = rememberPhonePosition()
     val dur = PhonePlayer.durationMs
+    val onClose = { sheet.close() }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        // Arkadaki ekran karartılmaz: oynatıcı aşağı inerken Cast ekranı görünsün
+        val view = LocalView.current
+        SideEffect { (view.parent as? DialogWindowProvider)?.window?.setDimAmount(0f) }
         Column(
-            Modifier.fillMaxSize().background(Pal.Bg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
+            Modifier.fillMaxSize()
+                .graphicsLayer { translationY = sheet.frac * size.height }
+                // Aşağı çekince parmakla birlikte iner; çeyrekten fazla çekilirse mini karta küçülür
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { sheet.settle(0.25f) },
+                        onDragCancel = { sheet.settle(0.25f) }
+                    ) { ch, dy -> ch.consume(); sheet.drag(dy / size.height) }
+                }
+                .background(Pal.Bg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Üst: kapat + cihaz düğmesi
@@ -246,7 +315,7 @@ fun PhoneMusicPlayer(
                 Box(
                     Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose),
                     contentAlignment = Alignment.Center
-                ) { Icon(AppIcons.Close, "Kapat", tint = Pal.Text, modifier = Modifier.size(24.dp)) }
+                ) { Icon(AppIcons.ArrowBack, "Küçült", tint = Pal.Text, modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = -90f }) }
                 Spacer(Modifier.weight(1f))
                 CastButton(cc, dlna)
             }
