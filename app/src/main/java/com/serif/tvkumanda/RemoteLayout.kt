@@ -285,7 +285,7 @@ private fun hms(ms: Long): String {
 }
 
 @Composable
-fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit) {
+fun NowPlayingContent(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit) {
     // Çalarken konum her saniye ilerler
     var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
     LaunchedEffect(np.playing, np.at) {
@@ -295,22 +295,23 @@ fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit) {
     val pos = np.position(now)
     val dur = np.durationMs
     val app = apps.firstOrNull { it.pkg == np.pkg }
-    val shape = RoundedCornerShape(24.dp)
-    // Başlık yoksa uygulamanın adı yazılır, kart boş görünmesin. Kanal/sanatçı adı gösterilmez (Serif'in isteği).
+    // Kart çizilmez: medya çubuğuyla aynı cam kartın üst bölümü (GlassMediaBar header).
+    // Başlık yoksa uygulamanın adı yazılır. Kanal/sanatçı adı gösterilmez (Serif'in isteği).
     val title = np.title.ifBlank { app?.name ?: "Oynatılıyor" }
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape)
-            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp)
-    ) {
-        // Üst satır: simge + süre + sarma çubuğu (süre bilinmiyorsa simge + başlık)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val bmp = app?.icon
-            Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
-                if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(16.dp))
-            }
-            Spacer(Modifier.width(8.dp))
-            if (dur > 0) {
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+        // Üst: başlık tek satır, sığmazsa "…"
+        Text(title, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp))
+        // Alt: simge + süre + sarma çubuğu (süre bilinmiyorsa yalnızca başlık)
+        if (dur > 0) {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val bmp = app?.icon
+                Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
+                    if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                    else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(16.dp))
+                }
+                Spacer(Modifier.width(8.dp))
                 val shown = dragging?.let { (it * dur).toLong() } ?: pos
                 Text(hms(shown), color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.width(48.dp))
                 androidx.compose.material3.Slider(
@@ -325,14 +326,8 @@ fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit) {
                     modifier = Modifier.weight(1f).height(28.dp)
                 )
                 Text(hms(dur), color = Navy.Sub, fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(48.dp))
-            } else {
-                Text(title, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
         }
-        // Alt satır: başlık tek satır, sığmazsa "…"
-        if (dur > 0) Text(title, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp, top = 2.dp))
     }
 }
 

@@ -265,13 +265,10 @@ fun RemoteScreen(
             onMediaKeys = { remoteTool = ToolId.MEDIA_KEYS },
             modifier = Modifier.weight(1f, fill = false)
         )
-        // TV'de bir şey çalınca: oynatıcı çubuğu (medya çubuğunun hemen üstünde)
-        ui.nowPlaying?.let { np ->
-            Spacer(Modifier.height(12.dp))
-            NowPlayingBar(np, ui.apps, onSeekTv)
-        }
-        Spacer(Modifier.height(12.dp))
-        GlassMediaBar(onKey)
+        // TV'de bir şey çalınca oynatıcı medya çubuğuyla tek kart olur; kumanda kartından biraz daha uzak durur
+        val np = ui.nowPlaying
+        Spacer(Modifier.height(if (np != null) 20.dp else 12.dp))
+        GlassMediaBar(onKey, header = np?.let { { NowPlayingContent(it, ui.apps, onSeekTv) } })
         // Medya çubuğu ile alt menü arasında bir oynatıcı çubuğu sığacak kadar boşluk (Serif'in tasarımı).
         // Oynatıcı çubuğu görünürken ya da ekran kısaysa boşluk küçülür, tuşlar küçülmesin diye.
         val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp

@@ -395,10 +395,22 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
 // ---------------- Medya çubuğu ----------------
 
 @Composable
-fun GlassMediaBar(onKey: (Int) -> Unit) {
-    val shape = RoundedCornerShape(34.dp)
+fun GlassMediaBar(onKey: (Int) -> Unit, header: (@Composable () -> Unit)? = null) {
+    // TV'de bir şey çalarken oynatıcı (başlık + sarma çubuğu) aynı cam kartın üstüne girer: tek kart
+    if (header == null) {
+        MediaKeysRow(Modifier.fillMaxWidth().height(68.dp).glass(RoundedCornerShape(34.dp), strength = 0.65f), onKey)
+    } else {
+        Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(28.dp), strength = 0.65f)) {
+            header()
+            MediaKeysRow(Modifier.fillMaxWidth().height(64.dp), onKey)
+        }
+    }
+}
+
+@Composable
+private fun MediaKeysRow(modifier: Modifier, onKey: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(68.dp).glass(shape, strength = 0.65f).padding(horizontal = 10.dp),
+        modifier.padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
