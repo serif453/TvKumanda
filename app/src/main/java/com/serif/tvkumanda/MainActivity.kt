@@ -183,6 +183,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
+        VolumeCtl.setTo = { v -> runOnUiThread { setVolumeTo(v) } }
         atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
@@ -527,6 +528,46 @@ class MainActivity : ComponentActivity() {
             }
             volumeTick++
             refreshVolume()
+        }
+    }
+
+    private var volumeSetJob: Job? = null
+
+    /**
+     * Ses çubuğu: sesi [target] seviyesine getirir. ADB'de doğrudan ayarlanır; Standart'ta (ya da TV doğrudan
+     * ayarı kabul etmezse) aradaki fark kadar ses tuşuna basılır. Yeni sürükleme öncekini iptal eder.
+     */
+    private fun setVolumeTo(target: Int) {
+        if (state != ConnState.CONNECTED) return
+        val start = volume ?: return
+        val goal = target.coerceIn(0, volumeMax)
+        if (goal == start) return
+        volume = goal
+        volumeTick++
+        volumeSetJob?.cancel()
+        val link = remote
+        val isAdb = method == ConnMethod.ADB
+        volumeSetJob = scope.launch {
+            try {
+                withContext(io) {
+                    val direct = isAdb && runCatching { adb.setVolume(goal) }.getOrDefault(false)
+                    if (!direct) {
+                        // Güncel değerden başla: önceki sürükleme yarıda kesilmiş olabilir
+                        val now = runCatching { link.volume()?.first }.getOrNull() ?: start
+                        val steps = goal - now
+                        val code = if (steps > 0) Keys.VOL_UP else Keys.VOL_DOWN
+                        repeat(kotlin.math.abs(steps)) {
+                            if (!isActive) return@withContext
+                            link.key(code)
+                            Thread.sleep(if (isAdb) 40 else 70)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                DiagLog.log("Ses ayarlanamadı: ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+            }
+            refreshVolume(500)
         }
     }
 

@@ -370,6 +370,19 @@ class TvRemote(private val context: Context) : RemoteLink {
 
     @Volatile private var volumeMethod: Int? = null
 
+    /**
+     * Sesi doğrudan bir seviyeye ayarlar (ses çubuğu). TV kabul edip etmediği geri okunarak anlaşılır;
+     * kabul etmezse false döner ve çağıran tuşla adım adım gider (bazı markalar kendi ses sistemini kullanır).
+     */
+    fun setVolume(level: Int): Boolean {
+        val d = dadb ?: return false
+        for (cmd in listOf("cmd media_session volume --stream 3 --set $level", "media volume --stream 3 --set $level")) {
+            runCatching { d.shell("$cmd 2>&1") }
+            if (volume()?.first == level) return true
+        }
+        return false
+    }
+
     @Synchronized
     private fun restartFastMode(stale: AdbStream) {
         if (fast !== stale) return

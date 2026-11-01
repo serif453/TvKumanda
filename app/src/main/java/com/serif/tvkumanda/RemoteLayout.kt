@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -277,13 +280,17 @@ fun PadCard(
         val side = 64.dp
         val small = 42.dp
         val gap = 6.dp
-        val rows = small * 2 + gap * 2 + 14.dp          // üst sıradaki ses seviyesi yazısı dahil
+        val pill = 48.dp                                 // üstteki ses çubuğu
+        val rows = small + gap + pill + gap              // alt sıra + ses çubuğu ve boşluklar
         val circle = minOf(maxWidth - 16.dp - side * 2, maxHeight - 20.dp - rows).coerceAtLeast(120.dp)
         val cardH = circle + rows + 20.dp
     Box(
         Modifier.fillMaxWidth().height(cardH).clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape).padding(horizontal = 8.dp, vertical = 10.dp)
     ) {
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+      Column(Modifier.fillMaxSize()) {
+        VolumePill(ui, onKey, Modifier.fillMaxWidth().height(pill))
+        Spacer(Modifier.height(gap))
+        Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
                 SideKey(Icons.Outlined.Input, "Kaynak", enabled = adb) {
                     if (adb) onKey(Keys.INPUT) else toast(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır")
@@ -291,18 +298,8 @@ fun PadCard(
                 SideKey(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1) { onMode(if (mode == 1) 0 else 1) }
                 SideKey(Icons.Filled.Keyboard, "Klavye", onClick = onKeyboard)
             }
-            // Orta: üstte Ses kıs · Sessiz · Ses aç, ortada daire, altta Geri · Ana Sayfa · Mikrofon (aralarda boşluk yok)
-            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    SmallKey(Icons.Filled.VolumeDown, "Ses kıs", small, repeat = true) { onKey(Keys.VOL_DOWN) }
-                    // Sessiz, altında küçük ses seviyesi
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SmallKey(AppIcons.VolumeOff, "Sessiz", small) { onKey(Keys.MUTE) }
-                        Text(ui.volume?.toString() ?: " ", color = Navy.Sub, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp, modifier = Modifier.height(14.dp))
-                    }
-                    SmallKey(Icons.Filled.VolumeUp, "Ses aç", small, repeat = true) { onKey(Keys.VOL_UP) }
-                }
-                Spacer(Modifier.height(gap))
+            // Orta: daire, altta Geri · Ana Sayfa · Mikrofon (ses kartın üstündeki çubukta)
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
                     when (mode) {
                         1 -> TouchPad(circle, onKey)
@@ -325,7 +322,89 @@ fun PadCard(
                 SideKey(Icons.Outlined.Settings, "Ayarlar", onClick = onTvSettings)
             }
         }
+      }
     }
+    }
+}
+
+/** Ses çubuğunu MainActivity'ye bağlar (sürükleyip bırakınca sesi o seviyeye getirir). */
+object VolumeCtl {
+    var setTo: (Int) -> Unit = {}
+}
+
+/**
+ * Kapsül ses çubuğu: Sessiz · − · çubuk · +. − / + birer adım (basılı tutunca tekrar), çubuğa dokunmak ya da
+ * sürükleyip bırakmak sesi o seviyeye getirir. TV'nin sesi henüz bilinmiyorsa çubuk soluk ve kapalıdır.
+ */
+@Composable
+private fun VolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
+    val shape = RoundedCornerShape(24.dp)
+    Row(
+        modifier.clip(shape).background(Navy.Btn).border(1.dp, Navy.Border, shape).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PillKey(AppIcons.VolumeOff, "Sessiz") { onKey(Keys.MUTE) }
+        PillKey(Icons.Filled.Remove, "Ses kıs", repeat = true) { onKey(Keys.VOL_DOWN) }
+        VolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), Modifier.weight(1f).fillMaxHeight())
+        PillKey(Icons.Filled.Add, "Ses aç", repeat = true) { onKey(Keys.VOL_UP) }
+    }
+}
+
+@Composable
+private fun PillKey(icon: ImageVector, label: String, repeat: Boolean = false, onClick: () -> Unit) {
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pressed by inter.collectIsPressedAsState()
+    Box(
+        Modifier.size(40.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
+            .background(if (pressed) Navy.BtnPressed else Color.Transparent)
+            .pressable(inter, repeat = repeat, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(24.dp)) }
+}
+
+@Composable
+private fun VolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
+    var drag by remember { mutableStateOf<Float?>(null) }
+    val known = volume != null
+    val frac = (drag ?: ((volume ?: (max / 2)).toFloat() / max)).coerceIn(0f, 1f)
+    val shown = drag?.let { Math.round(it * max) } ?: volume
+    val thumb = 24.dp
+    BoxWithConstraints(
+        modifier.alpha(if (known) 1f else 0.4f).padding(horizontal = 6.dp)
+            .then(if (!known) Modifier else Modifier
+                .pointerInput(max) {
+                    val r = thumb.toPx() / 2
+                    fun f(x: Float) = ((x - r) / (size.width - 2 * r)).coerceIn(0f, 1f)
+                    detectTapGestures { o -> VolumeCtl.setTo(Math.round(f(o.x) * max)) }
+                }
+                .pointerInput(max) {
+                    val r = thumb.toPx() / 2
+                    fun f(x: Float) = ((x - r) / (size.width - 2 * r)).coerceIn(0f, 1f)
+                    detectHorizontalDragGestures(
+                        onDragStart = { o -> drag = f(o.x) },
+                        onDragEnd = { drag?.let { VolumeCtl.setTo(Math.round(it * max)) }; drag = null },
+                        onDragCancel = { drag = null }
+                    ) { change, _ -> change.consume(); drag = f(change.position.x) }
+                }),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val w = maxWidth
+        // Çubuk: dolu kısım mavi geçişli, kalan koyu
+        Box(Modifier.padding(horizontal = thumb / 2).fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(Color(0xFF0B0E14)))
+        Box(
+            Modifier.padding(start = thumb / 2).width((w - thumb) * frac + thumb / 2).height(10.dp).clip(RoundedCornerShape(5.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF2E8CF5), Color(0xFF3FC4FF))))
+        )
+        // Tutamaç: beyaz, hafif parlak; içinde ses seviyesi
+        Box(
+            Modifier.offset(x = (w - thumb) * frac).size(thumb)
+                .shadow(8.dp, CircleShape, ambientColor = Color(0xFF3FC4FF), spotColor = Color(0xFF3FC4FF))
+                .clip(CircleShape).background(Color(0xFFF2F6FF)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (shown != null) Text("$shown", color = Color(0xFF14203A), fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
+        }
     }
 }
 
