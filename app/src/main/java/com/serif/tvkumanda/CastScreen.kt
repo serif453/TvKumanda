@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -271,8 +272,11 @@ fun CastScreen(
                         onPicker = { onPick(kind) }
                     )
                 } else {
-                    val albums by produceState<List<MediaAlbum>?>(null, kind, permTick) {
-                        value = withContext(Dispatchers.IO) { runCatching { library.albums(kind) }.getOrDefault(emptyList()) }
+                    // Son okunan liste anında görünür (kaydırılan yer korunur); telefondan arkadan sessizce yenilenir
+                    val albums by produceState(library.cachedAlbums(kind), kind, permTick) {
+                        // Tür değiştiyse önceki türün listesi bir an bile görünmesin
+                        if (value?.firstOrNull()?.cover?.kind != kind) value = library.cachedAlbums(kind)
+                        value = withContext(Dispatchers.IO) { runCatching { library.albums(kind) }.getOrNull() } ?: value ?: emptyList()
                     }
                     val list = albums
                     // "Oynatılan klasöre dön" isteği: klasör listesi yüklenince o klasör açılır
@@ -352,8 +356,10 @@ internal fun Thumb(
     item: MediaItem, library: MediaLibrary, modifier: Modifier, placeholder: ImageVector,
     px: Int = 320, placeholderSize: Dp = 28.dp, scale: ContentScale = ContentScale.Crop
 ) {
-    val bmp by produceState<ImageBitmap?>(null, item.kind, item.id, px) {
-        value = withContext(Dispatchers.IO) { library.thumbnail(item, px)?.asImageBitmap() }
+    // Önbellekte varsa anında; yoksa en fazla 4 resim aynı anda yüklenir (hızlı kaydırmada telefon yorulmasın)
+    val bmp by produceState(remember { library.cachedThumbnail(item, px)?.asImageBitmap() }, item.kind, item.id, px) {
+        value = library.cachedThumbnail(item, px)?.asImageBitmap()
+            ?: withContext(ThumbLoader) { library.thumbnail(item, px)?.asImageBitmap() }
     }
     Box(modifier.background(Pal.Btn), contentAlignment = Alignment.Center) {
         val b = bmp
@@ -361,6 +367,9 @@ internal fun Thumb(
         else Icon(placeholder, null, tint = Pal.Sub, modifier = Modifier.size(placeholderSize))
     }
 }
+
+/** Küçük resim yükleme kuyruğu: aynı anda en fazla 4. */
+private val ThumbLoader = java.util.concurrent.Executors.newFixedThreadPool(4).asCoroutineDispatcher()
 
 internal fun placeholderFor(kind: MediaKind) = when (kind) {
     MediaKind.PHOTO -> AppIcons.Photo

@@ -16,3 +16,8 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   görünür; adı aynı cihaz yeni adresle bulunursa kayıt güncellenir. Chromecast: `CcUi.selected` başka cihaz, `useTv` bağlı TV
   (TV bağlantısı gerekir). Aramada TV'nin kendisi "bağlı TV" diye işaretlenir. Arama 20 sn sürer, sonra durur (pil). Serif'in
   ağında başka Chromecast yok; başka cihazda denenmedi.
+- **Galeri hızı (1 Kasım 2026, Serif'in onayıyla):** `MediaLibrary` tek ortak nesne (`MediaLibrary.get`): Cast sekmesi,
+  bildirim kapağı ve DLNA sunucusu aynı önbelleği kullanır. Son okunan klasör listesi bellekte (`cachedAlbums`): bir türe
+  yeniden girince anında görünür, telefondan arkadan yenilenir; değişiklik yoksa aynı liste döner. Küçük resim önbelleği
+  belleğin 1/6'sı (24–96 MB); önbellekteki resim anında gösterilir; yükleme en fazla 4 eş zamanlı (`ThumbLoader`);
+  müzikte kapak albüm başına bir kez. Okuma tabloları (`addedAt`, albüm adları) her okumaya yerel (eş zamanlı okumada çakışmasın).

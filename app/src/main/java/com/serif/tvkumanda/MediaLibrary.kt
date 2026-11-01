@@ -45,7 +45,14 @@ data class MediaAlbum(
  * müzikler albümlere göre gruplanır. Küçük resimler bellekte önbelleğe alınır.
  * Tüm işlevler bloklayıcıdır; arka plan iş parçacığından çağrılmalıdır.
  */
-class MediaLibrary(private val context: Context) {
+class MediaLibrary private constructor(private val context: Context) {
+
+    companion object {
+        @Volatile private var shared: MediaLibrary? = null
+        /** Uygulamada tek okuyucu: Cast sekmesi, bildirim kapağı ve DLNA sunucusu aynı önbelleği kullanır. */
+        fun get(context: Context): MediaLibrary =
+            shared ?: synchronized(this) { shared ?: MediaLibrary(context.applicationContext).also { shared = it } }
+    }
 
     private val prefs = context.getSharedPreferences("medya", Context.MODE_PRIVATE)
 
@@ -89,13 +96,27 @@ class MediaLibrary(private val context: Context) {
             granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     }
 
-    fun albums(kind: MediaKind): List<MediaAlbum> = when (kind) {
-        MediaKind.PHOTO -> visual(kind, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        // Videolar zaten en yeniden en eskiye sıralı geliyor
-        MediaKind.VIDEO -> visual(kind, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            .let { withAll("Tüm videolar", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
-        MediaKind.MUSIC -> music()
-            .let { withAll("Tüm müzikler", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
+    /** Son okunan klasör listesi (galeriye dönünce anında gösterilir, arkadan yenilenir). */
+    private val albumCache = java.util.concurrent.ConcurrentHashMap<MediaKind, List<MediaAlbum>>()
+
+    fun cachedAlbums(kind: MediaKind): List<MediaAlbum>? = albumCache[kind]
+
+    /** Telefondan yeniden okur. Hiçbir şey değişmediyse önceki liste aynen döner (ekran yeniden çizilmesin). */
+    fun albums(kind: MediaKind): List<MediaAlbum> {
+        // Eklenme zamanı (saniye), "Tüm …" sıralaması için; her okumanın kendi tablosu (aynı anda okumalar çakışmasın)
+        val addedAt = HashMap<Long, Long>()
+        val fresh = when (kind) {
+            MediaKind.PHOTO -> visual(kind, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, addedAt)
+            // Videolar zaten en yeniden en eskiye sıralı geliyor
+            MediaKind.VIDEO -> visual(kind, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, addedAt)
+                .let { withAll("Tüm videolar", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
+            MediaKind.MUSIC -> music(addedAt)
+                .let { withAll("Tüm müzikler", it.flatMap { a -> a.items }.sortedByDescending { i -> addedAt[i.id] ?: 0L }, it) }
+        }
+        val old = albumCache[kind]
+        if (old != null && old == fresh) return old
+        albumCache[kind] = fresh
+        return fresh
     }
 
     /** Listenin başına "Tüm …" kutucuğunu ekler (kapak: en son eklenen). */
@@ -103,10 +124,7 @@ class MediaLibrary(private val context: Context) {
         if (all.isEmpty()) albums
         else listOf(MediaAlbum(ALL_ID, name, all.size, all.first(), all)) + albums
 
-    /** Eklenme zamanı (saniye), "Tüm …" sıralaması için. */
-    private val addedAt = HashMap<Long, Long>()
-
-    private fun visual(kind: MediaKind, base: Uri): List<MediaAlbum> {
+    private fun visual(kind: MediaKind, base: Uri, addedAt: HashMap<Long, Long>): List<MediaAlbum> {
         val cols = mutableListOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -144,7 +162,8 @@ class MediaLibrary(private val context: Context) {
         return group(items) { it.subtitle.ifBlank { "Diğer" } }
     }
 
-    private fun music(): List<MediaAlbum> {
+    private fun music(addedAt: HashMap<Long, Long>): List<MediaAlbum> {
+        val albumNames = HashMap<Long, String>()
         val base = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         val cols = arrayOf(
             MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
@@ -174,8 +193,6 @@ class MediaLibrary(private val context: Context) {
         return group(items) { albumNames[it.albumId].orEmpty().ifBlank { "Bilinmeyen albüm" } }
     }
 
-    private val albumNames = HashMap<Long, String>()
-
     private fun group(items: List<MediaItem>, name: (MediaItem) -> String): List<MediaAlbum> =
         items.groupBy { it.albumId }.map { (id, list) ->
             MediaAlbum(id, name(list.first()), list.size, list.first(), list)
@@ -183,13 +200,23 @@ class MediaLibrary(private val context: Context) {
 
     // ---------------- Küçük resimler ----------------
 
-    private val thumbs = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+    // Uygulamaya ayrılan belleğin 1/6'sı (en az 24, en çok 96 MB): geri kaydırınca resimler yeniden yüklenmesin
+    private val thumbs = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 6).coerceIn(24L shl 20, 96L shl 20).toInt()
+    ) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
+    // Müzikte kapak albüm başına bir kez yüklenir (albümdeki her şarkı için ayrı ayrı değil)
+    private fun thumbKey(item: MediaItem, px: Int) =
+        if (item.kind == MediaKind.MUSIC && item.albumId != 0L) "MUSIC-ALBUM:${item.albumId}:$px" else "${item.kind}:${item.id}:$px"
+
+    /** Önbellekte hazır küçük resim (yüklemez; ekranda boş kutu titremesin diye). */
+    fun cachedThumbnail(item: MediaItem, px: Int = 320): Bitmap? = thumbs.get(thumbKey(item, px))
+
     /** Küçük resim (yoksa null). Müzikte albüm kapağı. */
     fun thumbnail(item: MediaItem, px: Int = 320): Bitmap? {
-        val key = "${item.kind}:${item.id}:$px"
+        val key = thumbKey(item, px)
         thumbs.get(key)?.let { return it }
         val bmp = runCatching {
             if (Build.VERSION.SDK_INT >= 29) {

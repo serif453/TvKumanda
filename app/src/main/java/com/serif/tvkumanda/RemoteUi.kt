@@ -200,7 +200,7 @@ fun RemoteScreen(
     val npVisible by remember { derivedStateOf { LiveUi.nowPlaying != null } }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
     val context = LocalContext.current
-    val mediaLibrary = remember { MediaLibrary(context.applicationContext) }
+    val mediaLibrary = remember { MediaLibrary.get(context) }
     val playerSheet = rememberPlayerSheet()
     var showInFolderTick by remember { mutableStateOf(0) }
     // Yayın bitince ya da Cast sekmesinden çıkınca tam ekran oynatıcı gizlenir

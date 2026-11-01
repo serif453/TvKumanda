@@ -112,7 +112,7 @@ class DlnaServerService : Service() {
             Thread {
                 try {
                     acquireLocks()
-                    val s = DlnaMediaServer(applicationContext, MediaLibrary(applicationContext))
+                    val s = DlnaMediaServer(applicationContext, MediaLibrary.get(applicationContext))
                     s.start()
                     server = s
                     DlnaServerUi.address = s.address

@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
         atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
         atv.onFieldState = { present -> runOnUiThread { imeReady = present } }
         mediaServer = MediaServer(applicationContext)
-        thumbLib = MediaLibrary(applicationContext)
+        thumbLib = MediaLibrary.get(applicationContext)
         dlnaClient = DlnaClient(applicationContext)
         repeatMode = runCatching { MusicRepeat.valueOf(getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getString("tekrar", "ALL")!!) }.getOrDefault(MusicRepeat.ALL)
         shuffle = getSharedPreferences("ayarlar", Context.MODE_PRIVATE).getBoolean("karistir", false)
