@@ -25,3 +25,8 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     medya tuşları. Kanal adı yok; başlık yoksa uygulama adı. Video açıkken kumanda kartıyla arası 10 dp (kart uzar).
 - TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
 - Fare: TV'deki sanal fare (`KeyServer.ensureMouse`, /dev/uhid) fare modu açılınca "M" komutuyla önceden kurulur; eskiden ilk harekette kuruluyordu ve TV tanıyana kadar 1-2 sn hareket kayboluyordu (Serif: "fare moduna ilk geçince geç bağlanıyor").
+- **Geniş yüzey (1 Kasım 2026, Serif'in seçimi "B"):** Kaydırma ya da Fare modunda üstteki 8 yan tuş (Kaynak, Bilgi, Kaydırma, fn ·
+  123, Rehber, Fare, Medya) ~250 ms'de solar, yüzey kartın iki kenarına kadar genişler (yükseklik = 4 yan tuşun alanı); kartın
+  boyu değişmez, alt sıra (Klavye · Geri · Ana Sayfa · Mikrofon · Ayarlar) yerinde kalır. Sol üstte mod etiketi, sağ üstte ✕
+  (normal kumandaya döner). Üstte "Yön · Kaydırma · Fare" anahtarı (seçenek A) Serif tarafından seçilmedi. Fare modundaki
+  "ekran + el" simgesi kaldırıldı (Kaydırma tuşununkine benziyordu). Yüzeyde kenar şeridi yok (`EdgeZone = 0`).

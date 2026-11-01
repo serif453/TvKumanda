@@ -660,15 +660,14 @@ private fun inEdge(x: Float, width: Int, edgePx: Float) = x < edgePx || x > widt
 
 @Composable
 private fun PadSurface(
-    size: Dp,
+    modifier: Modifier,
     hint: List<String>,
     gesture: Modifier,
     icon: (@Composable () -> Unit)? = null
 ) {
     val shape = RoundedCornerShape(36.dp)
     Box(
-        Modifier
-            .size(size)
+        modifier
             .glass(shape, strength = 0.75f)
             .then(gesture),
         contentAlignment = Alignment.Center
@@ -685,7 +684,7 @@ private fun PadSurface(
 
 /** Kaydırma modu: parmak hareketi yön tuşu, dokunma OK. */
 @Composable
-fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
+fun TouchPad(modifier: Modifier, onKey: (Int) -> Unit) {
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val step = with(density) { 48.dp.toPx() }
@@ -694,7 +693,7 @@ fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
     val latest by rememberUpdatedState(onKey)
 
     PadSurface(
-        size,
+        modifier,
         listOf("Kaydır: yön", "Dokun: OK"),
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
@@ -735,13 +734,13 @@ fun TouchPad(size: Dp, onKey: (Int) -> Unit) {
 
 /** Fare modu: TV'de imleç. Tek parmak imleç, dokunma tık, iki parmak sayfa kaydırma. */
 @Composable
-fun TrackPad(size: Dp, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit) {
+fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit) {
     if (method == ConnMethod.STANDARD) {
-        PadSurface(size, listOf("Bu özellik", "ADB bağlantısında çalışır"), Modifier)
+        PadSurface(modifier, listOf("Bu özellik", "ADB bağlantısında çalışır"), Modifier)
         return
     }
     if (!fastMode) {
-        PadSurface(size, listOf("Fare modu için", "⚡ Hızlı mod gerekli", "Bağlantıyı yenilemeyi dene"), Modifier)
+        PadSurface(modifier, listOf("Fare modu için", "⚡ Hızlı mod gerekli", "Bağlantıyı yenilemeyi dene"), Modifier)
         return
     }
     val haptic = LocalHapticFeedback.current
@@ -754,7 +753,7 @@ fun TrackPad(size: Dp, fastMode: Boolean, method: ConnMethod, onMouse: (String) 
     LaunchedEffect(Unit) { latest("M") }
 
     PadSurface(
-        size,
+        modifier,
         emptyList(),
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
@@ -810,56 +809,10 @@ fun TrackPad(size: Dp, fastMode: Boolean, method: ConnMethod, onMouse: (String) 
                     }
                 }
             }
-        },
-        icon = { TrackpadIcon(Modifier.size(size * 0.3f)) }
+        }
     )
 }
 
-/** Trackpad simgesi: dokunmatik yüzey + işaret eden el. */
-@Composable
-private fun TrackpadIcon(modifier: Modifier) {
-    val line = Color(0xFFCFCBDC)
-    val cut = Color(0xFF2E2E31)
-    Canvas(modifier) {
-        val u = size.width / 48f
-        fun p(x: Float, y: Float) = Offset(x * u, y * u)
-        val stroke = Stroke(width = 3f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        // Yüzey
-        drawRoundRect(
-            color = line,
-            topLeft = p(3f, 7f),
-            size = androidx.compose.ui.geometry.Size(36f * u, 27f * u),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(5f * u),
-            style = stroke
-        )
-
-        // El
-        val hand = Path().apply {
-            moveTo(26f * u, 36f * u)
-            lineTo(26f * u, 21f * u)
-            cubicTo(26f * u, 17f * u, 32f * u, 17f * u, 32f * u, 21f * u)
-            lineTo(32f * u, 28f * u)
-            lineTo(40f * u, 29.5f * u)
-            quadraticBezierTo(44f * u, 30.5f * u, 43.5f * u, 34.5f * u)
-            lineTo(42.5f * u, 40.5f * u)
-            quadraticBezierTo(41.5f * u, 44.5f * u, 37.5f * u, 44.5f * u)
-            lineTo(30.5f * u, 44.5f * u)
-            quadraticBezierTo(27.5f * u, 44.5f * u, 25.5f * u, 42.5f * u)
-            lineTo(20.5f * u, 37.5f * u)
-            quadraticBezierTo(19f * u, 35.5f * u, 21f * u, 34.3f * u)
-            quadraticBezierTo(23f * u, 33.2f * u, 26f * u, 36f * u)
-            close()
-        }
-        // Elin altındaki çizgiyi kes, sonra eli çiz
-        drawPath(hand, cut)
-        drawPath(hand, cut, style = Stroke(width = 8f * u, join = StrokeJoin.Round))
-        drawPath(hand, line, style = stroke)
-        // Parmak boğumları
-        drawLine(line, p(35.5f, 32f), p(35.5f, 37f), 2.5f * u, StrokeCap.Round)
-        drawLine(line, p(39.5f, 33f), p(39.5f, 37f), 2.5f * u, StrokeCap.Round)
-    }
-}
 
 private val modeNames = listOf("Yön tuşları", "Kaydırma", "Fare")
 

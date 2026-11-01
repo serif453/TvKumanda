@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -230,7 +231,8 @@ private fun SolidBrush(c: Color) = Brush.verticalGradient(listOf(c, c))
 
 /**
  * Cam kart: üstte büyük ses çubuğu; altında solda 5 (Kaynak, Bilgi, Kaydırma, fn, Klavye), sağda 5 (123, Rehber,
- * Fare, Medya, Ayarlar) tuş; ortada daire ve altında Geri · Ana Sayfa · Mikrofon.
+ * Fare, Medya, Ayarlar) tuş; ortada daire ve altında Geri · Ana Sayfa · Mikrofon. Kaydırma / fare modunda üstteki 8 yan
+ * tuş solar, yüzey kartın iki kenarına kadar genişler; sağ üstteki ✕ ile normal kumandaya dönülür.
  * fn = Araçlar'daki "Sistem kısayolları", Medya = "Medya tuşları" penceresi.
  */
 @Composable
@@ -268,43 +270,89 @@ fun GlassPadCard(
             ) {
                 GlassVolumePill(ui, onKey, Modifier.fillMaxWidth().height(pill))
                 Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth().height(bodyH)) {
-                    Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                        GlassSquare(Modifier.size(key), enabled = adb, onClick = {
-                            if (adb) onKey(Keys.INPUT) else Toast.makeText(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
-                        }) { SideIcon(Icons.Outlined.Input, "Kaynak") }
-                        GlassSquare(Modifier.size(key), onClick = { onKey(KEY_INFO) }) { SideIcon(Icons.Outlined.Info, "Bilgi") }
-                        GlassSquare(Modifier.size(key), selected = mode == 1, onClick = { onMode(if (mode == 1) 0 else 1) }) {
-                            SideIcon(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1)
+                // Kaydırma / fare modunda üstteki 8 yan tuş solar, yüzey kartın iki kenarına kadar genişler (Serif'in isteği)
+                val padMode = mode == 1 || mode == 2
+                val lastPad = remember { intArrayOf(1) }                 // çıkarken küçülen yüzey son modu göstermeye devam eder
+                if (padMode) lastPad[0] = mode
+                val shownPad = lastPad[0]
+                val exp by animateFloatAsState(if (padMode) 1f else 0f, tween(250), label = "padExpand")
+                val sideGap = (bodyH - key * 5) / 4
+                val wideH = bodyH - key - sideGap
+                val sideAlpha = Modifier.graphicsLayer { alpha = 1f - exp }
+                Box(Modifier.fillMaxWidth().height(bodyH)) {
+                    Row(Modifier.fillMaxSize()) {
+                        Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
+                            GlassSquare(Modifier.size(key).then(sideAlpha), enabled = adb, onClick = {
+                                if (adb) onKey(Keys.INPUT) else Toast.makeText(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
+                            }) { SideIcon(Icons.Outlined.Input, "Kaynak") }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = { onKey(KEY_INFO) }) { SideIcon(Icons.Outlined.Info, "Bilgi") }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), selected = mode == 1, onClick = { onMode(if (mode == 1) 0 else 1) }) {
+                                SideIcon(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1)
+                            }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onSystemKeys) {
+                                Text("fn", color = Glass.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                            }
+                            GlassSquare(Modifier.size(key), onClick = onKeyboard) { SideIcon(Icons.Filled.Keyboard, "Klavye") }
                         }
-                        GlassSquare(Modifier.size(key), onClick = onSystemKeys) {
-                            Text("fn", color = Glass.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium)
-                        }
-                        GlassSquare(Modifier.size(key), onClick = onKeyboard) { SideIcon(Icons.Filled.Keyboard, "Klavye") }
-                    }
-                    Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
-                            when (mode) {
-                                1 -> TouchPad(circle, onKey)
-                                2 -> TrackPad(circle, ui.fastMode, ui.method, onMouse)
-                                else -> DPad(circle, onKey, navy = true)
+                        Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
+                                if (exp < 0.999f) {
+                                    Box(Modifier.graphicsLayer { alpha = 1f - exp }) { DPad(circle, onKey, navy = true) }
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(if (inner < 300.dp) 6.dp else 9.dp)) {
+                                GlassSquare(Modifier.size(key), onClick = { onKey(Keys.BACK) }) { SideIcon(AppIcons.Undo, "Geri") }
+                                GlassSquare(Modifier.size(key), onClick = { onKey(Keys.HOME) }) { SideIcon(AppIcons.HomeOutline, "Ana Sayfa") }
+                                GlassMic(key, ui.micActive, ui.micLevel, onMic)
                             }
                         }
-                        Spacer(Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(if (inner < 300.dp) 6.dp else 9.dp)) {
-                            GlassSquare(Modifier.size(key), onClick = { onKey(Keys.BACK) }) { SideIcon(AppIcons.Undo, "Geri") }
-                            GlassSquare(Modifier.size(key), onClick = { onKey(Keys.HOME) }) { SideIcon(AppIcons.HomeOutline, "Ana Sayfa") }
-                            GlassMic(key, ui.micActive, ui.micLevel, onMic)
+                        Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
+                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onNumpad) { SideIcon(Icons.Filled.Dialpad, "123") }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = { onKey(KEY_GUIDE) }) { SideIcon(GlassIcons.Guide, "Rehber", 28.dp) }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), selected = mode == 2, enabled = adb, onClick = {
+                                if (adb) onMode(if (mode == 2) 0 else 2) else Toast.makeText(context, "Fare yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
+                            }) { SideIcon(Icons.Outlined.Mouse, "Fare", selected = mode == 2) }
+                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onMediaKeys) { SideIcon(Icons.Outlined.QueueMusic, "Medya tuşları") }
+                            GlassSquare(Modifier.size(key), onClick = onTvSettings) { SideIcon(Icons.Outlined.Settings, "Ayarlar") }
                         }
                     }
-                    Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                        GlassSquare(Modifier.size(key), onClick = onNumpad) { SideIcon(Icons.Filled.Dialpad, "123") }
-                        GlassSquare(Modifier.size(key), onClick = { onKey(KEY_GUIDE) }) { SideIcon(GlassIcons.Guide, "Rehber", 28.dp) }
-                        GlassSquare(Modifier.size(key), selected = mode == 2, enabled = adb, onClick = {
-                            if (adb) onMode(if (mode == 2) 0 else 2) else Toast.makeText(context, "Fare yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
-                        }) { SideIcon(Icons.Outlined.Mouse, "Fare", selected = mode == 2) }
-                        GlassSquare(Modifier.size(key), onClick = onMediaKeys) { SideIcon(Icons.Outlined.QueueMusic, "Medya tuşları") }
-                        GlassSquare(Modifier.size(key), onClick = onTvSettings) { SideIcon(Icons.Outlined.Settings, "Ayarlar") }
+                    // Geniş yüzey: yan tuşların üstüne biner (gizli tuşlara dokunulamaz). Çıkarken küçülüp kaybolur.
+                    if (exp > 0.001f) {
+                        val w = circle + (inner - circle) * exp
+                        val h = circle + (wideH - circle) * exp
+                        Box(Modifier.align(Alignment.TopCenter).size(w, h)) {
+                            when (shownPad) {
+                                1 -> TouchPad(Modifier.fillMaxSize(), onKey)
+                                else -> TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse)
+                            }
+                            // Sol üst: hangi modda olunduğu
+                            Row(
+                                Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (shownPad == 1) Icons.Outlined.TouchApp else Icons.Outlined.Mouse, null,
+                                    tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    if (shownPad == 1) "Kaydırma" else "Fare",
+                                    color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium
+                                )
+                            }
+                            // Sağ üst: ✕ ile normal kumandaya dönülür
+                            Box(
+                                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
+                                    .graphicsLayer { alpha = exp }
+                                    .size(36.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.28f))
+                                    .clickable(enabled = padMode) { onMode(0) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Close, "Moddan çık", tint = Glass.Text, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
                 }
             }
