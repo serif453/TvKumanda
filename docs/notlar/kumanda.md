@@ -48,3 +48,6 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Sık değişen değerler (`LiveUi`: şu an çalan, mikrofon seviyesi) `UiState`'te değil: değişince yalnızca oynatıcı çubuğu /
   mikrofon tuşu çizilir; aynı medya ve tutarlı konum gelirse eski nesne korunur (`sameAs`). Eski tasarımdan kalan ~770 satır
   kullanılmayan kod silindi. Mor arka plan tek kat çizilir.
+- `RemoteUi.kt` ikiye bölündü (1 Kasım 2026): `RemoteUi.kt` = tema, `RemoteScreen` iskeleti, eşleştirme penceresi, ortak
+  yardımcılar (`pressable`, `pressScale`); `RemoteControls.kt` = yön tuşları, `TouchPad`/`TrackPad`, yazma ekranı, klavye ve
+  rakam pencereleri. Davranış değişmedi.
