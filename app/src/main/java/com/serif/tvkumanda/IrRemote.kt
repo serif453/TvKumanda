@@ -767,18 +767,18 @@ fun IrSection(onOpen: (String) -> Unit) {
     if (!available) return
     LaunchedEffect(Unit) { IrUi.load(context) }
     Spacer(Modifier.height(18.dp))
-    Text("IR KUMANDALAR", color = Navy.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+    Text("IR KUMANDALAR", color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         for (r in IrUi.saved) IrSavedCard(r) { onOpen(r.id) }
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Navy.AccentSoft).clickable { onOpen("") }
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(GlassSheet.AccentSoft).clickable { onOpen("") }
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.Add, null, tint = Navy.Accent, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.Add, null, tint = Glass.Lavender, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("IR kumanda ekle", color = Navy.Accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("IR kumanda ekle", color = Glass.Lavender, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -797,8 +797,8 @@ private fun IrSavedCard(r: IrSaved, onOpen: () -> Unit) {
     var removeAsk by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Navy.Btn)
-                .border(1.dp, Navy.Border, RoundedCornerShape(18.dp))
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(GlassSheet.Card)
+                .border(1.dp, GlassSheet.Border, RoundedCornerShape(18.dp))
                 .combinedClickable(
                     onClick = onOpen,
                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); menu = true }
@@ -806,39 +806,39 @@ private fun IrSavedCard(r: IrSaved, onOpen: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.SettingsRemote, null, tint = Pal.Text, modifier = Modifier.size(24.dp))
+            Icon(Icons.Outlined.SettingsRemote, null, tint = Glass.Text, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(r.name, color = Pal.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("IR · ${r.brand} · Wi-Fi gerekmez", color = Navy.Sub, fontSize = 12.sp)
+                Text(r.name, color = Glass.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("IR · ${r.brand} · Wi-Fi gerekmez", color = Glass.Sub, fontSize = 12.sp)
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Navy.Btn) {
-            DropdownMenuItem(text = { Text("Yeniden adlandır", color = Pal.Text) }, onClick = { menu = false; renaming = true })
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = GlassSheet.Menu) {
+            DropdownMenuItem(text = { Text("Yeniden adlandır", color = Glass.Text) }, onClick = { menu = false; renaming = true })
             DropdownMenuItem(text = { Text("Kaldır", color = Pal.Red) }, onClick = { menu = false; removeAsk = true })
         }
     }
     if (renaming) {
         var text by remember { mutableStateOf(r.name) }
         AlertDialog(
-            onDismissRequest = { renaming = false }, containerColor = Navy.Card,
-            title = { Text("Kumandanın adı", color = Pal.Text) },
+            onDismissRequest = { renaming = false }, containerColor = GlassSheet.Dialog,
+            title = { Text("Kumandanın adı", color = Glass.Text) },
             text = {
                 OutlinedTextField(
                     value = text, onValueChange = { text = it }, singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
-                        focusedBorderColor = Navy.Accent, unfocusedBorderColor = Navy.Border, cursorColor = Navy.Accent)
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Glass.Text, unfocusedTextColor = Glass.Text,
+                        focusedBorderColor = Glass.Lavender, unfocusedBorderColor = GlassSheet.Border, cursorColor = Glass.Lavender)
                 )
             },
-            confirmButton = { TextButton(onClick = { if (text.isNotBlank()) IrUi.rename(context, r.id, text.trim()); renaming = false }) { Text("Kaydet", color = Navy.Accent) } },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Vazgeç", color = Navy.Sub) } }
+            confirmButton = { TextButton(onClick = { if (text.isNotBlank()) IrUi.rename(context, r.id, text.trim()); renaming = false }) { Text("Kaydet", color = Glass.Lavender) } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Vazgeç", color = Glass.Sub) } }
         )
     }
     if (removeAsk) AlertDialog(
-        onDismissRequest = { removeAsk = false }, containerColor = Navy.Card,
-        title = { Text("\"${r.name}\" kaldırılsın mı?", color = Pal.Text) },
-        text = { Text("Kumanda IR kumandalar listesinden kaldırılır.", color = Navy.Sub) },
+        onDismissRequest = { removeAsk = false }, containerColor = GlassSheet.Dialog,
+        title = { Text("\"${r.name}\" kaldırılsın mı?", color = Glass.Text) },
+        text = { Text("Kumanda IR kumandalar listesinden kaldırılır.", color = Glass.Sub) },
         confirmButton = { TextButton(onClick = { removeAsk = false; IrUi.remove(context, r.id) }) { Text("Kaldır", color = Pal.Red) } },
-        dismissButton = { TextButton(onClick = { removeAsk = false }) { Text("Vazgeç", color = Navy.Sub) } }
+        dismissButton = { TextButton(onClick = { removeAsk = false }) { Text("Vazgeç", color = Glass.Sub) } }
     )
 }

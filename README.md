@@ -40,6 +40,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - Uygulama satırı: TV'deki uygulamalar gerçek adları ve simgeleriyle, basılı tutup sürükleyerek istediğin sırayla (ADB)
 - Şu an çalan: TV'de oynayan medya için oynatıcı çubuğu (ADB)
 - Birden fazla TV kaydetme, ağda otomatik TV bulma, Wake-on-LAN ile uyandırma
+- TV adına dokununca açılan küçük panel: kayıtlı TV'ler ve IR kumandalar arasında tek dokunuşla geçiş, ADB / Standart seçimi
 
 ### Ayarlar
 Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:

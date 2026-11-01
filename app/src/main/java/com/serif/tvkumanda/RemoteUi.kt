@@ -69,6 +69,8 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -189,6 +191,10 @@ fun RemoteScreen(
     var tab by remember { mutableStateOf(AppSettings.initialTab()) }
     // Sol üstteki ⚙️ ile açılan tam ekran Ayarlar sayfası
     var settingsOpen by remember { mutableStateOf(false) }
+    // TV adı kutusunun altından açılan küçük TV paneli ve onun ekrandaki yeri (üst şeridin alt kenarı)
+    var pickerOpen by remember { mutableStateOf(false) }
+    var rootTop by remember { mutableFloatStateOf(0f) }
+    var barBottom by remember { mutableFloatStateOf(0f) }
     // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
     var padMode by remember { mutableIntStateOf(0) }
     var appRowTick by remember { mutableIntStateOf(0) }
@@ -222,7 +228,7 @@ fun RemoteScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
-        if (ui.state == ConnState.ERROR) sheet = Sheet.CONNECT
+        if (ui.state == ConnState.ERROR) { pickerOpen = false; sheet = Sheet.CONNECT }
         if (ui.state == ConnState.CONNECTED && sheet == Sheet.CONNECT) sheet = Sheet.NONE
     }
 
@@ -232,7 +238,10 @@ fun RemoteScreen(
     // Kumanda sekmesi: cam tasarımın mor ışıklı arka planı; diğer sekmeler düz renk
     val bgMod = if (tab == Tab.REMOTE) Modifier.glassBackdrop() else Modifier.background(screenBg)
     // Arka plan içerikte (Column) bir kez çizilir; dış katman yalnızca yazma ekranında bulanıklaşan kenarların arkasını doldurur
-    Box(Modifier.fillMaxSize().then(if (typingOpen) bgMod else Modifier).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
+    Box(
+        Modifier.fillMaxSize().then(if (typingOpen) bgMod else Modifier).onSizeChanged { playerSheet.height = it.height.toFloat() }
+            .onGloballyPositioned { rootTop = it.positionInRoot().y }
+    ) {
     Column(
         Modifier
             .fillMaxSize()
@@ -245,11 +254,15 @@ fun RemoteScreen(
             .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        TopBarV2(
-            ui, navy = tab == Tab.REMOTE,
-            onSettings = { settingsOpen = true },
-            onPicker = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) }
-        )
+        Box(Modifier.onGloballyPositioned { barBottom = it.positionInRoot().y + it.size.height }) {
+            TopBarV2(
+                ui, navy = tab == Tab.REMOTE,
+                onSettings = { settingsOpen = true },
+                // Kayıtlı TV yoksa seçilecek bir şey yok: doğrudan büyük "TV'ler" penceresi
+                onPicker = { if (ui.savedTvs.isEmpty()) sheet = Sheet.CONNECT else pickerOpen = !pickerOpen },
+                onPower = { onKey(Keys.POWER) }
+            )
+        }
 
         if (tab == Tab.CAST) {
             CastScreen(
@@ -341,6 +354,16 @@ fun RemoteScreen(
         )
     }
 
+    val density = LocalDensity.current
+    TvPickerPanel(
+        open = pickerOpen,
+        topOffset = with(density) { (barBottom - rootTop).coerceAtLeast(0f).toDp() } + 8.dp,
+        ui = ui,
+        onPickSaved = onPickSaved, onWake = onWake,
+        onManage = { sheet = Sheet.CONNECT },
+        onClose = { pickerOpen = false }
+    )
+
     if (settingsOpen) SettingsPage(ui, onOpenTvs = { sheet = Sheet.CONNECT }) { settingsOpen = false }
 
     if (typingOpen) {
@@ -352,11 +375,11 @@ fun RemoteScreen(
         ModalBottomSheet(
             onDismissRequest = { sheet = Sheet.NONE },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = if (sheet == Sheet.CONNECT) Navy.Card else Color(0xFF242426)
+            containerColor = if (sheet == Sheet.CONNECT) GlassSheet.Bg else Color(0xFF242426)
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake) { sheet = Sheet.NONE }
+                    Sheet.CONNECT -> GlassText { TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake) { sheet = Sheet.NONE } }
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }

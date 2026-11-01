@@ -83,11 +83,11 @@ fun TvSheet(
     Column(Modifier.verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("TV'ler", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("TV ve telefon aynı Wi-Fi ağında olmalı.", color = Navy.Sub, fontSize = 13.sp)
+                Text("TV'ler", color = Glass.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("TV ve telefon aynı Wi-Fi ağında olmalı.", color = Glass.Sub, fontSize = 13.sp)
             }
             Box(Modifier.size(44.dp).clip(CircleShape).clickable { help = true }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.HelpOutline, "Yardım", tint = Navy.Sub, modifier = Modifier.size(24.dp))
+                Icon(Icons.Outlined.HelpOutline, "Yardım", tint = Glass.Sub, modifier = Modifier.size(24.dp))
             }
         }
 
@@ -119,24 +119,24 @@ fun TvSheet(
         Spacer(Modifier.height(if (newOnes.isEmpty()) 0.dp else 8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (scanning) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = Navy.Sub, strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(16.dp), color = Glass.Sub, strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
-                Text("Aranıyor…", color = Navy.Sub, fontSize = 13.sp)
+                Text("Aranıyor…", color = Glass.Sub, fontSize = 13.sp)
             } else {
                 // "Tekrar ara" solda (Serif'in isteği), sonuç yazısı sağında
                 Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(Navy.Btn).clickable { scanTick++ }.padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassSheet.Card).clickable { scanTick++ }.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.Refresh, null, tint = Navy.Accent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Refresh, null, tint = Glass.Lavender, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Tekrar ara", color = Navy.Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Tekrar ara", color = Glass.Lavender, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
                 if (scanned) {
                     Spacer(Modifier.width(12.dp))
                     Text(
                         if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu",
-                        color = Navy.Sub, fontSize = 13.sp
+                        color = Glass.Sub, fontSize = 13.sp
                     )
                 }
             }
@@ -148,8 +148,8 @@ fun TvSheet(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { manual = !manual }.padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("IP adresiyle ekle", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Icon(if (manual) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null, tint = Navy.Sub)
+            Text("IP adresiyle ekle", color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Icon(if (manual) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null, tint = Glass.Sub)
         }
         if (manual) ManualAdd(initialIp, ui) { ip, m -> onMethod(m); onConnect(ip) }
 
@@ -167,13 +167,13 @@ fun TvSheet(
         Spacer(Modifier.height(16.dp))
         Text(
             "ADB ve Standart nedir? TV'de ADB nasıl açılır?",
-            color = Navy.Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            color = Glass.Lavender, fontSize = 13.sp, fontWeight = FontWeight.Medium,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { help = true }.padding(vertical = 6.dp)
         )
         val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
         if (version != null) {
             Spacer(Modifier.height(10.dp))
-            Text("TV Kumanda · Sürüm $version", color = Navy.Sub, fontSize = 12.sp)
+            Text("TV Kumanda · Sürüm $version", color = Glass.Sub, fontSize = 12.sp)
         }
     }
     if (help) HelpDialog { help = false }
@@ -182,7 +182,7 @@ fun TvSheet(
 @Composable
 private fun SectionLabel(text: String) {
     Spacer(Modifier.height(18.dp))
-    Text(text, color = Navy.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+    Text(text, color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(8.dp))
 }
 
@@ -198,26 +198,26 @@ private fun SavedTvCard(
     var forgetAsk by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(18.dp)
     Column(
-        Modifier.fillMaxWidth().clip(shape).background(Navy.Btn)
-            .border(1.dp, if (connectedHere) Navy.Accent else Navy.Border, shape)
+        Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card)
+            .border(1.dp, if (connectedHere) Glass.Lavender else GlassSheet.Border, shape)
             .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Tv, null, tint = if (connectedHere) Navy.Accent else Pal.Text, modifier = Modifier.size(24.dp))
+            Icon(AppIcons.Tv, null, tint = if (connectedHere) Glass.Lavender else Glass.Text, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(tv.display, color = Pal.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tv.display, color = Glass.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (tv.nick.isNotBlank()) "${tv.name.removePrefix("TPV ")} · ${tv.ip}" else tv.ip,
-                    color = Navy.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    color = Glass.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val (color, text) = when {
                         connectedHere -> Pal.Green to "Bağlı · ${if (ui.method == ConnMethod.ADB) "ADB" else "Standart"}"
-                        online == true -> Navy.Sub to "Ağda açık"
+                        online == true -> Glass.Sub to "Ağda açık"
                         online == false -> Pal.Red.copy(alpha = 0.8f) to "Kapalı ya da bulunamadı"
-                        else -> Navy.Sub to "Kontrol ediliyor…"
+                        else -> Glass.Sub to "Kontrol ediliyor…"
                     }
                     Box(Modifier.size(7.dp).clip(CircleShape).background(color))
                     Spacer(Modifier.width(6.dp))
@@ -226,11 +226,11 @@ private fun SavedTvCard(
             }
             Box {
                 Box(Modifier.size(40.dp).clip(CircleShape).clickable { menu = true }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.MoreVert, "Diğer", tint = Navy.Sub)
+                    Icon(Icons.Outlined.MoreVert, "Diğer", tint = Glass.Sub)
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Navy.Btn) {
-                    DropdownMenuItem(text = { Text("Yeniden adlandır", color = Pal.Text) }, onClick = { menu = false; renaming = true })
-                    if (connectedHere) DropdownMenuItem(text = { Text("Bağlantıyı kes", color = Pal.Text) }, onClick = { menu = false; onDisconnect() })
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = GlassSheet.Menu) {
+                    DropdownMenuItem(text = { Text("Yeniden adlandır", color = Glass.Text) }, onClick = { menu = false; renaming = true })
+                    if (connectedHere) DropdownMenuItem(text = { Text("Bağlantıyı kes", color = Glass.Text) }, onClick = { menu = false; onDisconnect() })
                     DropdownMenuItem(text = { Text("Unut", color = Pal.Red) }, onClick = { menu = false; forgetAsk = true })
                 }
             }
@@ -243,12 +243,12 @@ private fun SavedTvCard(
             }
             if (online == false && tv.mac.isNotBlank()) {
                 Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(Navy.AccentSoft).clickable(onClick = onWake).padding(horizontal = 12.dp, vertical = 10.dp),
+                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassSheet.AccentSoft).clickable(onClick = onWake).padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.PowerSettingsNew, null, tint = Color(0xFFAFC0FF), modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.PowerSettingsNew, null, tint = Glass.Lavender, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Uyandır", color = Color(0xFFAFC0FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Uyandır", color = Glass.Lavender, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -256,11 +256,11 @@ private fun SavedTvCard(
     if (renaming) RenameDialog(tv.display, tv.name.removePrefix("TPV ")) { n -> renaming = false; if (n != null) onRename(n) }
     if (forgetAsk) AlertDialog(
         onDismissRequest = { forgetAsk = false },
-        containerColor = Navy.Card,
-        title = { Text("TV unutulsun mu?", color = Pal.Text) },
-        text = { Text("\"${tv.display}\" kayıtlı TV'lerden kaldırılır. İstediğinde yeniden ekleyebilirsin.", color = Navy.Sub) },
+        containerColor = GlassSheet.Dialog,
+        title = { Text("TV unutulsun mu?", color = Glass.Text) },
+        text = { Text("\"${tv.display}\" kayıtlı TV'lerden kaldırılır. İstediğinde yeniden ekleyebilirsin.", color = Glass.Sub) },
         confirmButton = { TextButton(onClick = { forgetAsk = false; onForget() }) { Text("Unut", color = Pal.Red) } },
-        dismissButton = { TextButton(onClick = { forgetAsk = false }) { Text("Vazgeç", color = Navy.Sub) } }
+        dismissButton = { TextButton(onClick = { forgetAsk = false }) { Text("Vazgeç", color = Glass.Sub) } }
     )
 }
 
@@ -269,13 +269,13 @@ private fun MethodChip(label: String, active: Boolean, modifier: Modifier, enabl
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier.height(40.dp).clip(shape)
-            .then(if (active) Modifier.background(RingBrush) else Modifier.background(Navy.Card).border(1.dp, Navy.Border, shape))
+            .then(if (active) Modifier.background(GlassSheet.Ring) else Modifier.background(GlassSheet.Inset).border(1.dp, GlassSheet.Border, shape))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             if (active) "$label · bağlı" else "$label ile bağlan",
-            color = if (active) Color.White else Pal.Text, fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
+            color = if (active) Color.White else Glass.Text, fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
         )
     }
 }
@@ -284,14 +284,14 @@ private fun MethodChip(label: String, active: Boolean, modifier: Modifier, enabl
 private fun FoundCard(f: FoundTv, enabled: Boolean, onConnect: (ConnMethod) -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     Column(
-        Modifier.fillMaxWidth().clip(shape).background(Navy.Btn).border(1.dp, Navy.Border, shape).padding(14.dp)
+        Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, shape).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Tv, null, tint = Navy.Accent, modifier = Modifier.size(24.dp))
+            Icon(AppIcons.Tv, null, tint = Glass.Lavender, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(f.name.removePrefix("TPV "), color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(f.ip, color = Navy.Sub, fontSize = 12.sp)
+                Text(f.name.removePrefix("TPV "), color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(f.ip, color = Glass.Sub, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -306,33 +306,33 @@ private fun FoundCard(f: FoundTv, enabled: Boolean, onConnect: (ConnMethod) -> U
 private fun ManualAdd(initialIp: String, ui: UiState, onConnect: (String, ConnMethod) -> Unit) {
     var ip by remember { mutableStateOf(initialIp) }
     var m by remember { mutableStateOf(ui.method) }
-    Column(Modifier.clip(RoundedCornerShape(18.dp)).background(Navy.Btn).border(1.dp, Navy.Border, RoundedCornerShape(18.dp)).padding(14.dp)) {
+    Column(Modifier.clip(RoundedCornerShape(18.dp)).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, RoundedCornerShape(18.dp)).padding(14.dp)) {
         OutlinedTextField(
             value = ip, onValueChange = { ip = it }, singleLine = true,
-            placeholder = { Text("192.168.1.50", color = Navy.Sub) },
+            placeholder = { Text("192.168.1.50", color = Glass.Sub) },
             shape = RoundedCornerShape(14.dp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { if (ip.isNotBlank()) onConnect(ip.trim(), m) }),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
-                focusedBorderColor = Navy.Accent, unfocusedBorderColor = Navy.Border, cursorColor = Navy.Accent
+                focusedTextColor = Glass.Text, unfocusedTextColor = Glass.Text,
+                focusedBorderColor = Glass.Lavender, unfocusedBorderColor = GlassSheet.Border, cursorColor = Glass.Lavender
             ),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(12.dp)).background(Navy.Card).padding(3.dp)) {
+        Row(Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(12.dp)).background(GlassSheet.Inset).padding(3.dp)) {
             for ((mm, label) in listOf(ConnMethod.ADB to "ADB", ConnMethod.STANDARD to "Standart")) {
                 val sel = mm == m
                 Box(
                     Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp))
-                        .then(if (sel) Modifier.background(RingBrush) else Modifier).clickable { m = mm },
+                        .then(if (sel) Modifier.background(GlassSheet.Ring) else Modifier).clickable { m = mm },
                     contentAlignment = Alignment.Center
-                ) { Text(label, color = if (sel) Color.White else Navy.Sub, fontSize = 14.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal) }
+                ) { Text(label, color = if (sel) Color.White else Glass.Sub, fontSize = 14.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal) }
             }
         }
         Spacer(Modifier.height(10.dp))
         Box(
-            Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(23.dp)).background(RingBrush)
+            Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(23.dp)).background(GlassSheet.Ring)
                 .clickable(enabled = ip.isNotBlank() && ui.state != ConnState.CONNECTING) { onConnect(ip.trim(), m) },
             contentAlignment = Alignment.Center
         ) { Text(if (ui.state == ConnState.CONNECTING) "Bağlanıyor…" else "Bağlan", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
@@ -344,24 +344,24 @@ private fun RenameDialog(current: String, model: String, onDone: (String?) -> Un
     var text by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = { onDone(null) },
-        containerColor = Navy.Card,
-        title = { Text("TV'nin adı", color = Pal.Text) },
+        containerColor = GlassSheet.Dialog,
+        title = { Text("TV'nin adı", color = Glass.Text) },
         text = {
             Column {
-                Text("Kumandada bu ad görünür, örneğin \"Salon TV\". Boş bırakırsan model adı kullanılır.", color = Navy.Sub, fontSize = 13.sp)
+                Text("Kumandada bu ad görünür, örneğin \"Salon TV\". Boş bırakırsan model adı kullanılır.", color = Glass.Sub, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = text, onValueChange = { text = it.take(30) }, singleLine = true,
-                    placeholder = { Text(model, color = Navy.Sub) },
+                    placeholder = { Text(model, color = Glass.Sub) },
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
-                        focusedBorderColor = Navy.Accent, unfocusedBorderColor = Navy.Border, cursorColor = Navy.Accent
+                        focusedTextColor = Glass.Text, unfocusedTextColor = Glass.Text,
+                        focusedBorderColor = Glass.Lavender, unfocusedBorderColor = GlassSheet.Border, cursorColor = Glass.Lavender
                     )
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onDone(if (text.trim() == model) "" else text) }) { Text("Kaydet", color = Navy.Accent) } },
-        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Vazgeç", color = Navy.Sub) } }
+        confirmButton = { TextButton(onClick = { onDone(if (text.trim() == model) "" else text) }) { Text("Kaydet", color = Glass.Lavender) } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Vazgeç", color = Glass.Sub) } }
     )
 }
 
@@ -369,8 +369,8 @@ private fun RenameDialog(current: String, model: String, onDone: (String?) -> Un
 private fun HelpDialog(onClose: () -> Unit) {
     AlertDialog(
         onDismissRequest = onClose,
-        containerColor = Navy.Card,
-        title = { Text("Bağlantı türleri", color = Pal.Text) },
+        containerColor = GlassSheet.Dialog,
+        title = { Text("Bağlantı türleri", color = Glass.Text) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 HelpBlock(
@@ -383,7 +383,7 @@ private fun HelpDialog(onClose: () -> Unit) {
                     "Geliştirici bağlantısı. Her şey çalışır: uygulama listesi, fare, Kaynak tuşu, Araçlar'ın hepsi, dosya gönderme. " +
                         "TV'de bir kez açman gerekir."
                 )
-                Text("TV'de ADB nasıl açılır?", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("TV'de ADB nasıl açılır?", color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 listOf(
                     "TV'de Ayarlar → Cihaz tercihleri → Hakkında'ya gir.",
@@ -393,22 +393,22 @@ private fun HelpDialog(onClose: () -> Unit) {
                     "Uygulamada TV'ye ADB ile bağlan; TV'de çıkan izin sorusunda \"Her zaman izin ver\"i seçip Tamam'a bas."
                 ).forEachIndexed { i, t ->
                     Row(Modifier.padding(vertical = 3.dp)) {
-                        Text("${i + 1}.", color = Navy.Accent, fontSize = 13.sp, modifier = Modifier.width(20.dp))
-                        Text(t, color = Navy.Sub, fontSize = 13.sp)
+                        Text("${i + 1}.", color = Glass.Lavender, fontSize = 13.sp, modifier = Modifier.width(20.dp))
+                        Text(t, color = Glass.Sub, fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Menü adları markaya göre biraz farklı olabilir.", color = Navy.Sub, fontSize = 12.sp)
+                Text("Menü adları markaya göre biraz farklı olabilir.", color = Glass.Sub, fontSize = 12.sp)
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text("Tamam", color = Navy.Accent) } }
+        confirmButton = { TextButton(onClick = onClose) { Text("Tamam", color = Glass.Lavender) } }
     )
 }
 
 @Composable
 private fun HelpBlock(title: String, text: String) {
-    Text(title, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    Text(title, color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(4.dp))
-    Text(text, color = Navy.Sub, fontSize = 13.sp)
+    Text(text, color = Glass.Sub, fontSize = 13.sp)
     Spacer(Modifier.height(14.dp))
 }
