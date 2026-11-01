@@ -51,3 +51,5 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - `RemoteUi.kt` ikiye bölündü (1 Kasım 2026): `RemoteUi.kt` = tema, `RemoteScreen` iskeleti, eşleştirme penceresi, ortak
   yardımcılar (`pressable`, `pressScale`); `RemoteControls.kt` = yön tuşları, `TouchPad`/`TrackPad`, yazma ekranı, klavye ve
   rakam pencereleri. Davranış değişmedi.
+- Sessiz okuma (ADB, 1 Kasım 2026): `dumpsys audio`nun tamamı yerine TV'de `sed` ile süzülen satırlar (`MUTE_FILTER_COMMAND`:
+  ana sessiz satırı + STREAM_MUSIC bölümünden "Muted:"a kadar). Süzme sonuç vermezse bir kez fark edilir, sonra hep tam döküm.

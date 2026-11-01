@@ -73,3 +73,7 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
   duraklar (`rememberForeground` + `awaitForeground`, ToolSheets.kt); dönünce önceki ölçüm bayat sayılır. Ekran kaydı yoklaması
   bilerek hariç. "ADB gecikmesi" = `TvRemote.shellTimed` (kilit alındıktan sonraki süre; süreç ölçümünü bekleme sayılmaz).
   Alarm izni saniyede bir değil, uygulamaya her dönüşte (ON_RESUME) kontrol edilir.
+- Teşhis kaydı (`DiagLog`) dosyaya arka planda tek sırayla yazar; çökmede tamamı hemen yazılır ve sıradakiler bırakılır.
+  Dosyayı hemen okuyacak yer önce `DiagLog.flush()` çağırır (test de öyle).
+- Genel tarama (1 Kasım 2026): kullanılmayan 3 fonksiyon ve dadb'nin `adbserver`/`forwarding` parçaları (bilgisayardaki
+  ADB sunucusu, port yönlendirme; uygulamada hiç kullanılmıyordu) silindi.

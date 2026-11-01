@@ -18,6 +18,9 @@ object DiagLog {
     private var file: File? = null
     private var appendedSinceRewrite = 0
     private val time = SimpleDateFormat("dd.MM HH:mm:ss", Locale.ROOT)
+    // Dosyaya yazma arka planda, sırayla (ekranı çizen iş parçacığı diskte beklemesin); çökmede ise hemen yazılır
+    @Volatile private var crashed = false
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "teshis-kaydi").apply { isDaemon = true } }
 
     /** Kayıt dosyasını açar ve çökme yakalayıcısını kurar; birden fazla çağrılırsa yalnızca ilki geçerlidir. */
     @Synchronized
@@ -49,7 +52,13 @@ object DiagLog {
             add("    sebep: ${c.javaClass.name}: ${c.message.orEmpty()}")
             c.stackTrace.take(5).forEach { add("    at $it") }
         }
+        // Uygulama birazdan kapanacak: sıradaki yazmaları beklemeden tamamı hemen diske (sıradakiler artık yazılmaz)
+        crashed = true
+        file?.let { f -> runCatching { f.writeText(lines.joinToString("\n", postfix = "\n")) } }
     }
+
+    /** Sıradaki dosya yazmaları bitene kadar bekler (testler ve dosyayı hemen okuyacak yerler için). */
+    fun flush() { runCatching { writer.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS) } }
 
     @Synchronized
     fun snapshot(): List<String> = lines.toList()
@@ -86,7 +95,7 @@ object DiagLog {
         trim()
         val f = file ?: return
         if (++appendedSinceRewrite >= REWRITE_AFTER) rewrite()
-        else runCatching { f.appendText(line + "\n") }
+        else writer.execute { if (!crashed) runCatching { f.appendText(line + "\n") } }
     }
 
     private fun trim() {
@@ -96,7 +105,8 @@ object DiagLog {
     private fun rewrite() {
         val f = file ?: return
         appendedSinceRewrite = 0
-        runCatching { f.writeText(if (lines.isEmpty()) "" else lines.joinToString("\n", postfix = "\n")) }
+        val text = if (lines.isEmpty()) "" else lines.joinToString("\n", postfix = "\n")
+        writer.execute { if (!crashed) runCatching { f.writeText(text) } }
     }
 
     private fun installCrashHandler() {

@@ -120,7 +120,6 @@ class CastClient {
 
     fun play() = mediaCommand("PLAY")
     fun pause() = mediaCommand("PAUSE")
-    fun stopMedia() = mediaCommand("STOP")
 
     /**
      * Yayını tamamen bitirir: medyayı durdurur ve TV'deki oynatıcı uygulamasını kapatır,

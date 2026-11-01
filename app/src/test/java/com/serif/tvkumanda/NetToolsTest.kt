@@ -138,7 +138,8 @@ class NetToolsTest {
         val lines = DiagLog.snapshot()
         assertEquals(DiagLog.KEEP, lines.size)
         assertTrue(lines.last().endsWith("olay ${DiagLog.KEEP + 29}"))
-        // Dosyada da en fazla son kayıtlar durur
+        // Dosyada da en fazla son kayıtlar durur (yazma arka planda; bitmesi beklenir)
+        DiagLog.flush()
         val onDisk = java.io.File(dir, "teshis.log").readLines().filter { it.isNotBlank() }
         assertTrue(onDisk.size <= DiagLog.KEEP + 100)
         assertTrue(onDisk.last().endsWith("olay ${DiagLog.KEEP + 29}"))

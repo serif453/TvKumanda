@@ -350,8 +350,20 @@ class TvRemote(private val context: Context) : RemoteLink {
         else "monkey -p ${app.pkg} -c android.intent.category.LEANBACK_LAUNCHER 1"
 
     /** Sessiz durumu: dumpsys audio'daki STREAM_MUSIC "Muted" ya da ana sessiz satırı. Bulunamazsa null. */
+    // Süzme TV'de çalışmazsa (sed yok vb.) bir kez fark edilir, sonra hep tam döküm alınır
+    @Volatile private var muteFilterWorks = true
+
+    /**
+     * Sessiz mi: `dumpsys audio`nun tamamı (zayıf TV'de büyük ve yavaş) yerine TV'de yalnızca ilgili satırlar süzülüp
+     * gönderilir: ana sessiz satırı ve STREAM_MUSIC bölümünden "Muted:" satırına kadar.
+     */
     override fun muted(): Boolean? {
         val d = dadb ?: return null
+        if (muteFilterWorks) {
+            val small = runCatching { d.shell(MUTE_FILTER_COMMAND).output }.getOrDefault("")
+            parseMuted(small)?.let { return it }
+            muteFilterWorks = false
+        }
         val dump = runCatching { d.shell("dumpsys audio").output }.getOrDefault("")
         return parseMuted(dump)
     }
@@ -517,6 +529,9 @@ private val NAME_SKIP = setOf("com", "tv", "android", "app", "apps", "mobile", "
 private val SLOW_KEYS = setOf(178, 172, 165, 175, 222)
 
 /** dumpsys audio çıktısından sessiz durumu (saf, test edilebilir). Hiçbir bilgi yoksa null. */
+/** TV'de süzülmüş ses dökümü ([parseMuted] için yeterli satırlar). */
+internal const val MUTE_FILTER_COMMAND = "dumpsys audio | sed -n -e '/[Mm]aster *[Mm]ute/p' -e '/STREAM_MUSIC:/,/Muted:/p'"
+
 fun parseMuted(dump: String): Boolean? {
     val master = Regex("""(?i)master\s*mute[^:\n]*:\s*(true|false)""").find(dump)?.groupValues?.get(1)?.toBoolean()
     val start = dump.indexOf("STREAM_MUSIC:")

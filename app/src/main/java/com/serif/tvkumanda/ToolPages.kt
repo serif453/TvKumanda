@@ -745,8 +745,6 @@ private fun fileLook(f: TvFiles.TvFile): Pair<ImageVector, Color> {
     }
 }
 
-private fun fileIcon(f: TvFiles.TvFile): ImageVector = fileLook(f).first
-
 private fun date(ms: Long): String? = if (ms <= 0) null else SimpleDateFormat("d MMM yyyy HH:mm", Locale("tr")).format(Date(ms))
 
 @Composable

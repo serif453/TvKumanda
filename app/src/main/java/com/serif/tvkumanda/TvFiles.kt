@@ -251,14 +251,6 @@ object TvFiles {
         return true
     }
 
-    /** TV ile aynı ağdaki telefon adresi. */
-    private fun localIpFor(tvIp: String): String? = runCatching {
-        val prefix = tvIp.substringBeforeLast('.')
-        val all = java.net.NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
-            .flatMap { it.inetAddresses.toList() }.filterIsInstance<java.net.Inet4Address>()
-        (all.firstOrNull { it.hostAddress?.startsWith("$prefix.") == true } ?: all.firstOrNull { it.isSiteLocalAddress })?.hostAddress
-    }.getOrNull()
-
     // ---------------- APK yükle ----------------
 
     /** Seçilen .apk ya da .apks/.xapk/.apkm dosyasını kurar; kurulan paket adını döndürür (bulunabilirse). */
