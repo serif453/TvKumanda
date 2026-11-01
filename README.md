@@ -30,7 +30,8 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 ## Özellikler
 
 ### Kumanda
-- Yön tuşları, OK, Geri, Ana ekran, Güç, ses açma/kısma ve sessiz
+- Yön tuşları, OK, Geri, Ana ekran, Güç, ses açma/kısma ve sessiz; büyük ses çubuğu (dokun ya da sürükle)
+- Bilgi ve Rehber tuşları; "fn" ile sistem kısayolları, 🎵 ile medya tuşları penceresi
 - Üç kontrol modu: yön tuşları, kaydırma ve fare (fare yalnızca ADB)
 - TV'ye yazma: telefonun klavyesiyle canlı yazma; Standart bağlantıda Türkçe harfler (ş, ğ, ı…) olduğu gibi gider
 - Sesli komut: telefonun mikrofonuyla TV'de arama
@@ -155,5 +156,6 @@ Program yararlı olacağı umuduyla, ancak hiçbir garanti olmaksızın dağıt�
 | [dadb](https://github.com/mobile-dev-inc/dadb) | ADB bağlantısı (değiştirilmiş kopya: `app/src/main/java/dadb`) | Apache-2.0 |
 | [androidtvremote2](https://github.com/tronikos/androidtvremote2) | Standart bağlantının protokol tanımları için kaynak | Apache-2.0 |
 | [Haze](https://github.com/chrisbanes/haze) | Alt menünün bulanık cam görünümü | Apache-2.0 |
+| [Inter](https://github.com/rsms/inter) | Kumanda sekmesinin yazı tipi (yalnızca Latin + Türkçe harfler; lisans: `app/src/main/assets/fonts/INTER-LICENSE.txt`) | SIL OFL 1.1 |
 | [Jetpack Compose](https://developer.android.com/jetpack/compose) ve Material ikonları | Arayüz | Apache-2.0 |
 | [Kotlin Coroutines](https://github.com/Kotlin/kotlinx.coroutines), [Okio](https://github.com/square/okio) | Arka plan işleri, veri akışı | Apache-2.0 |

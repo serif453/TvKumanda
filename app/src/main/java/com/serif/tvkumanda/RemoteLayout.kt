@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun TopBarV2(ui: UiState, navy: Boolean, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit) {
+    if (navy) { GlassTopBar(ui, onSettings, onPicker, onPower); return }
     val btn = if (navy) Navy.Btn else Pal.Btn
     val border = if (navy) Navy.Border else Color.White.copy(alpha = 0.06f)
     Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -130,19 +131,13 @@ fun orderedApps(all: List<TvApp>, pinned: List<String>): List<TvApp> {
 fun RemoteAppsRow(apps: List<TvApp>, state: ConnState, method: ConnMethod, tick: Int, onLaunch: (TvApp) -> Unit, onEdit: () -> Unit) {
     val context = LocalContext.current
     if (apps.isEmpty()) {
-        Box(
-            Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(18.dp)).background(Navy.Card).border(1.dp, Navy.Border, RoundedCornerShape(18.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                when {
-                    method == ConnMethod.STANDARD -> "Uygulama listesi ADB bağlantısında görünür"
-                    state == ConnState.CONNECTED -> "Uygulamalar yükleniyor…"
-                    else -> "Bağlanınca TV'deki uygulamalar burada görünür"
-                },
-                color = Navy.Sub, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(12.dp)
-            )
-        }
+        GlassAppsEmpty(
+            when {
+                method == ConnMethod.STANDARD -> "Uygulama listesi ADB bağlantısında görünür"
+                state == ConnState.CONNECTED -> "Uygulamalar yükleniyor…"
+                else -> "Bağlanınca TV'deki uygulamalar burada görünür"
+            }
+        )
         return
     }
     val shown = remember(apps, tick) { orderedApps(apps, AppRowPrefs.get(context)) }
@@ -258,216 +253,13 @@ private fun RowIcon(icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
 
 // ---------------- Yön tuşu kartı ----------------
 
-/** Yön tuşu, Kaydırma ve Fare modları; yanlarda altı yuvarlak tuş. */
-@Composable
-fun PadCard(
-    ui: UiState,
-    mode: Int,
-    onMode: (Int) -> Unit,
-    onKey: (Int) -> Unit,
-    onMouse: (String) -> Unit,
-    onMic: () -> Unit,
-    onNumpad: () -> Unit,
-    onKeyboard: () -> Unit,
-    onTvSettings: () -> Unit,
-    modifier: Modifier
-) {
-    val context = LocalContext.current
-    val adb = ui.method == ConnMethod.ADB
-    val shape = RoundedCornerShape(30.dp)
-    // Kart, içeriği kadar yer kaplar (daire + üst ve alt sıralar); kalan boşluk aşağıda kalır
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val side = 64.dp
-        val small = 42.dp
-        val gap = 6.dp
-        val pill = 48.dp                                 // üstteki ses çubuğu
-        val rows = small + gap + pill + gap              // alt sıra + ses çubuğu ve boşluklar
-        val circle = minOf(maxWidth - 16.dp - side * 2, maxHeight - 20.dp - rows).coerceAtLeast(120.dp)
-        val cardH = circle + rows + 20.dp
-    Box(
-        Modifier.fillMaxWidth().height(cardH).clip(shape).background(Navy.Card).border(1.dp, Navy.Border, shape).padding(horizontal = 8.dp, vertical = 10.dp)
-    ) {
-      Column(Modifier.fillMaxSize()) {
-        VolumePill(ui, onKey, Modifier.fillMaxWidth().height(pill))
-        Spacer(Modifier.height(gap))
-        Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                SideKey(Icons.Outlined.Input, "Kaynak", enabled = adb) {
-                    if (adb) onKey(Keys.INPUT) else toast(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır")
-                }
-                SideKey(Icons.Outlined.TouchApp, "Kaydırma", selected = mode == 1) { onMode(if (mode == 1) 0 else 1) }
-                SideKey(Icons.Filled.Keyboard, "Klavye", onClick = onKeyboard)
-            }
-            // Orta: daire, altta Geri · Ana Sayfa · Mikrofon (ses kartın üstündeki çubukta)
-            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
-                    when (mode) {
-                        1 -> TouchPad(circle, onKey)
-                        2 -> TrackPad(circle, ui.fastMode, ui.method, onMouse)
-                        else -> DPad(circle, onKey, navy = true)
-                    }
-                }
-                Spacer(Modifier.height(gap))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    SmallKey(AppIcons.Undo, "Geri", small) { onKey(Keys.BACK) }
-                    SmallKey(AppIcons.HomeOutline, "Ana Sayfa", small) { onKey(Keys.HOME) }
-                    MicSmall(ui, small, onMic)
-                }
-            }
-            Column(Modifier.width(side).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                SideKey(null, "123", onClick = onNumpad, content = { DotsIcon(20.dp) })
-                SideKey(Icons.Outlined.Mouse, "Fare", selected = mode == 2, enabled = adb) {
-                    if (adb) onMode(if (mode == 2) 0 else 2) else toast(context, "Fare yalnızca ADB bağlantısında çalışır")
-                }
-                SideKey(Icons.Outlined.Settings, "Ayarlar", onClick = onTvSettings)
-            }
-        }
-      }
-    }
-    }
-}
-
 /** Ses çubuğunu MainActivity'ye bağlar (sürükleyip bırakınca sesi o seviyeye getirir). */
 object VolumeCtl {
     var setTo: (Int) -> Unit = {}
 }
 
-/**
- * Kapsül ses çubuğu: Sessiz · − · çubuk · +. − / + birer adım (basılı tutunca tekrar), çubuğa dokunmak ya da
- * sürükleyip bırakmak sesi o seviyeye getirir. TV'nin sesi henüz bilinmiyorsa çubuk soluk ve kapalıdır.
- */
-@Composable
-private fun VolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
-    val shape = RoundedCornerShape(24.dp)
-    Row(
-        modifier.clip(shape).background(Navy.Btn).border(1.dp, Navy.Border, shape).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        PillKey(AppIcons.VolumeOff, "Sessiz") { onKey(Keys.MUTE) }
-        PillKey(Icons.Filled.Remove, "Ses kıs", repeat = true) { onKey(Keys.VOL_DOWN) }
-        VolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), Modifier.weight(1f).fillMaxHeight())
-        PillKey(Icons.Filled.Add, "Ses aç", repeat = true) { onKey(Keys.VOL_UP) }
-    }
-}
-
-@Composable
-private fun PillKey(icon: ImageVector, label: String, repeat: Boolean = false, onClick: () -> Unit) {
-    val inter = remember { MutableInteractionSource() }
-    val scale = pressScale(inter)
-    val pressed by inter.collectIsPressedAsState()
-    Box(
-        Modifier.size(40.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
-            .background(if (pressed) Navy.BtnPressed else Color.Transparent)
-            .pressable(inter, repeat = repeat, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(24.dp)) }
-}
-
-@Composable
-private fun VolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
-    var drag by remember { mutableStateOf<Float?>(null) }
-    val known = volume != null
-    val frac = (drag ?: ((volume ?: (max / 2)).toFloat() / max)).coerceIn(0f, 1f)
-    val shown = drag?.let { Math.round(it * max) } ?: volume
-    val thumb = 24.dp
-    BoxWithConstraints(
-        modifier.alpha(if (known) 1f else 0.4f).padding(horizontal = 6.dp)
-            .then(if (!known) Modifier else Modifier
-                .pointerInput(max) {
-                    val r = thumb.toPx() / 2
-                    fun f(x: Float) = ((x - r) / (size.width - 2 * r)).coerceIn(0f, 1f)
-                    detectTapGestures { o -> VolumeCtl.setTo(Math.round(f(o.x) * max)) }
-                }
-                .pointerInput(max) {
-                    val r = thumb.toPx() / 2
-                    fun f(x: Float) = ((x - r) / (size.width - 2 * r)).coerceIn(0f, 1f)
-                    detectHorizontalDragGestures(
-                        onDragStart = { o -> drag = f(o.x) },
-                        onDragEnd = { drag?.let { VolumeCtl.setTo(Math.round(it * max)) }; drag = null },
-                        onDragCancel = { drag = null }
-                    ) { change, _ -> change.consume(); drag = f(change.position.x) }
-                }),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        val w = maxWidth
-        // Çubuk: dolu kısım mavi geçişli, kalan koyu
-        Box(Modifier.padding(horizontal = thumb / 2).fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(Color(0xFF0B0E14)))
-        Box(
-            Modifier.padding(start = thumb / 2).width((w - thumb) * frac + thumb / 2).height(10.dp).clip(RoundedCornerShape(5.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF2E8CF5), Color(0xFF3FC4FF))))
-        )
-        // Tutamaç: beyaz, hafif parlak; içinde ses seviyesi
-        Box(
-            Modifier.offset(x = (w - thumb) * frac).size(thumb)
-                .shadow(8.dp, CircleShape, ambientColor = Color(0xFF3FC4FF), spotColor = Color(0xFF3FC4FF))
-                .clip(CircleShape).background(Color(0xFFF2F6FF)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (shown != null) Text("$shown", color = Color(0xFF14203A), fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
-        }
-    }
-}
-
-private fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show()
-
-@Composable
-private fun SideKey(
-    icon: ImageVector?, label: String, selected: Boolean = false, enabled: Boolean = true,
-    content: (@Composable () -> Unit)? = null, onClick: () -> Unit
-) {
-    val inter = remember { MutableInteractionSource() }
-    val scale = pressScale(inter)
-    val pressed by inter.collectIsPressedAsState()
-    Column(Modifier.alpha(if (enabled) 1f else 0.4f), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(50.dp).graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(CircleShape)
-                .background(if (selected) Navy.AccentSoft else if (pressed) Navy.BtnPressed else Navy.Btn)
-                .border(1.dp, if (selected) Navy.Accent else Navy.Border, CircleShape)
-                .pressable(inter, onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            if (content != null) content()
-            else if (icon != null) Icon(icon, label, tint = if (selected) Color(0xFFAFC0FF) else Pal.Text, modifier = Modifier.size(22.dp))
-        }
-    }
-}
 
 // ---------------- Medya çubuğu ----------------
-
-@Composable
-fun MediaBar(onKey: (Int) -> Unit) {
-    val shape = RoundedCornerShape(32.dp)
-    Row(
-        Modifier.fillMaxWidth().height(64.dp).clip(shape)
-            .background(Navy.Card)
-            .border(1.dp, Brush.horizontalGradient(listOf(Navy.Accent.copy(alpha = 0.55f), Pal.Purple.copy(alpha = 0.45f))), shape)
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MediaKey(Icons.Filled.SkipPrevious, "Önceki") { onKey(Keys.PREV) }
-        MediaKey(Icons.Filled.FastRewind, "Geri sar", repeat = true) { onKey(89) }
-        // Ortada parlayan oynat/duraklat
-        val inter = remember { MutableInteractionSource() }
-        val scale = pressScale(inter)
-        Box(
-            Modifier.size(50.dp).graphicsLayer { scaleX = scale; scaleY = scale }
-                .shadow(14.dp, CircleShape, ambientColor = Navy.Accent, spotColor = Navy.Accent)
-                .clip(CircleShape).background(Navy.Btn)
-                .border(2.dp, RingBrush, CircleShape)
-                .pressable(inter, onClick = { onKey(Keys.PLAY_PAUSE) }),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.PlayArrow, "Oynat/Duraklat", tint = Pal.Text, modifier = Modifier.size(20.dp))
-                Icon(Icons.Filled.Pause, null, tint = Pal.Text, modifier = Modifier.size(18.dp).offset(x = (-4).dp))
-            }
-        }
-        MediaKey(Icons.Filled.FastForward, "İleri sar", repeat = true) { onKey(90) }
-        MediaKey(Icons.Filled.SkipNext, "Sonraki") { onKey(Keys.NEXT) }
-    }
-}
 
 @Composable
 private fun MediaKey(icon: ImageVector, label: String, repeat: Boolean = false, onClick: () -> Unit) {
@@ -495,27 +287,6 @@ fun RemoteBottomKeys(ui: UiState, onKey: (Int) -> Unit, onMic: () -> Unit) {
             width = 70.dp, bg = Navy.Btn, label = "KANAL", value = null, level = null,
             topIsPlus = false, onUp = { onKey(Keys.CH_UP) }, onDown = { onKey(Keys.CH_DOWN) }
         )
-    }
-}
-
-/** Yön tuşu kartındaki küçük yuvarlak tuş. */
-@Composable
-private fun SmallKey(icon: ImageVector, label: String, size: Dp, modifier: Modifier = Modifier, repeat: Boolean = false, onClick: () -> Unit) {
-    val inter = remember { MutableInteractionSource() }
-    val scale = pressScale(inter)
-    val pressed by inter.collectIsPressedAsState()
-    Box(
-        modifier.size(size).graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(CircleShape).background(if (pressed) Navy.BtnPressed else Navy.Btn).border(1.dp, Navy.Border, CircleShape)
-            .pressable(inter, repeat = repeat, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(size * 0.48f)) }
-}
-
-@Composable
-private fun MicSmall(ui: UiState, size: Dp, onMic: () -> Unit) {
-    Box(Modifier.size(size)) {
-        MicButton(btnSize = size, iconSize = size * 0.48f, active = ui.micActive, level = ui.micLevel, idle = Navy.AccentSoft, label = "Sesli Ara", onClick = onMic)
     }
 }
 

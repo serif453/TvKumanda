@@ -33,6 +33,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -188,6 +190,8 @@ fun RemoteScreen(
     // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
     var padMode by remember { mutableIntStateOf(0) }
     var appRowTick by remember { mutableIntStateOf(0) }
+    // Kumandadaki fn ve medya tuşlarının açtığı Araçlar pencereleri
+    var remoteTool by remember { mutableStateOf<ToolId?>(null) }
     LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = 0 }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
@@ -210,13 +214,15 @@ fun RemoteScreen(
     val hazeState = remember { HazeState() }
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
     val screenBg = if (tab == Tab.REMOTE) Navy.Bg else Pal.Bg
-    Box(Modifier.fillMaxSize().background(screenBg).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
+    // Kumanda sekmesi: cam tasarımın mor ışıklı arka planı; diğer sekmeler düz renk
+    val bgMod = if (tab == Tab.REMOTE) Modifier.glassBackdrop() else Modifier.background(screenBg)
+    Box(Modifier.fillMaxSize().then(bgMod).onSizeChanged { playerSheet.height = it.height.toFloat() }) {
     Column(
         Modifier
             .fillMaxSize()
             // Yazma ekranı açıkken kumanda arkada bulanık görünür (Android 12+; eskilerde perde yeterli)
             .then(if (typingOpen) Modifier.blur(28.dp) else Modifier)
-            .background(screenBg)
+            .then(bgMod)
             // Alt menünün arkasında bulanık görünecek içerik
             .haze(hazeState)
             .padding(horizontal = 16.dp)
@@ -245,16 +251,18 @@ fun RemoteScreen(
         } else if (tab == Tab.SHORTCUTS) {
             ShortcutsScreen(Modifier.weight(1f))
         } else {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(14.dp))
         RemoteAppsRow(ui.apps, ui.state, ui.method, appRowTick, onLaunch) { sheet = Sheet.EDIT_APPS }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         // Yön tuşu kartı kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
-        PadCard(
+        GlassPadCard(
             ui, padMode, { padMode = it }, onKey, onMouse, onMic,
             onNumpad = { sheet = Sheet.NUMPAD },
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
             onTvSettings = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } } },
+            onSystemKeys = { remoteTool = ToolId.SYSTEM_KEYS },
+            onMediaKeys = { remoteTool = ToolId.MEDIA_KEYS },
             modifier = Modifier.weight(1f, fill = false)
         )
         // TV'de bir şey çalınca: oynatıcı çubuğu (medya çubuğunun hemen üstünde)
@@ -263,7 +271,17 @@ fun RemoteScreen(
             NowPlayingBar(np, ui.apps, onKey, onSeekTv)
         }
         Spacer(Modifier.height(12.dp))
-        MediaBar(onKey)
+        GlassMediaBar(onKey)
+        // Medya çubuğu ile alt menü arasında bir oynatıcı çubuğu sığacak kadar boşluk (Serif'in tasarımı).
+        // Oynatıcı çubuğu görünürken ya da ekran kısaysa boşluk küçülür, tuşlar küçülmesin diye.
+        val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+        val gap = when {
+            ui.nowPlaying != null -> 0.dp
+            screenH >= 780 -> 80.dp
+            screenH >= 720 -> 40.dp
+            else -> 0.dp
+        }
+        Spacer(Modifier.height(gap))
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }
@@ -319,6 +337,12 @@ fun RemoteScreen(
                 }
             }
         }
+    }
+
+    remoteTool?.let { id ->
+        val adbReady = ui.method == ConnMethod.ADB && ui.state == ConnState.CONNECTED
+        if (id == ToolId.SYSTEM_KEYS) ToolSheet(id, "Sistem kısayolları", Icons.Outlined.Keyboard, adbReady) { remoteTool = null }
+        else ToolSheet(id, "Medya tuşları", Icons.Outlined.QueueMusic, adbReady) { remoteTool = null }
     }
 
     if (ui.pairing) PairingDialog(ui.pairingError, onPairCode, onPairCancel)
@@ -550,26 +574,19 @@ fun DPad(size: Dp, onKey: (Int) -> Unit, navy: Boolean = false) {
     Box(
         Modifier
             .size(size)
-            .clip(CircleShape)
-            .background(Brush.radialGradient(if (navy) listOf(Color(0xFF161E36), Navy.Card) else listOf(Color(0xFF323235), Pal.Pad)))
-            .border(if (navy) 1.5.dp else 2.dp, RingBrush, CircleShape)
-            .then(if (navy) Modifier.drawBehind {
-                // Dört yönü ayıran ince çapraz çizgiler (ortadaki OK'nin dışında)
-                val c = center
-                val r = this.size.minDimension / 2
-                val line = Color.White.copy(alpha = 0.07f)
-                for (a in listOf(45.0, 135.0, 225.0, 315.0)) {
-                    val rad = Math.toRadians(a)
-                    val dx = kotlin.math.cos(rad).toFloat(); val dy = kotlin.math.sin(rad).toFloat()
-                    drawLine(line, Offset(c.x + dx * r * 0.38f, c.y + dy * r * 0.38f), Offset(c.x + dx * r * 0.82f, c.y + dy * r * 0.82f), 1.dp.toPx())
-                }
-            } else Modifier)
+            .then(
+                // Kumanda sekmesi: cam daire (üstte daha parlak kenar)
+                if (navy) Modifier.glass(CircleShape, strength = 0.75f)
+                else Modifier.clip(CircleShape)
+                    .background(Brush.radialGradient(listOf(Color(0xFF323235), Pal.Pad)))
+                    .border(2.dp, RingBrush, CircleShape)
+            )
     ) {
         DirKey(Dir.UP, Modifier.align(Alignment.TopCenter).fillMaxWidth(0.4f).fillMaxHeight(0.33f)) { onKey(Keys.UP) }
         DirKey(Dir.DOWN, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.4f).fillMaxHeight(0.33f)) { onKey(Keys.DOWN) }
         DirKey(Dir.LEFT, Modifier.align(Alignment.CenterStart).fillMaxWidth(0.33f).fillMaxHeight(0.4f)) { onKey(Keys.LEFT) }
         DirKey(Dir.RIGHT, Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.33f).fillMaxHeight(0.4f)) { onKey(Keys.RIGHT) }
-        OkButton(Modifier.align(Alignment.Center).fillMaxSize(0.3f), navy) { onKey(Keys.OK) }
+        OkButton(Modifier.align(Alignment.Center).fillMaxSize(if (navy) 0.43f else 0.3f), navy) { onKey(Keys.OK) }
     }
 }
 
@@ -588,7 +605,7 @@ private fun DirKey(dir: Dir, modifier: Modifier, onClick: () -> Unit) {
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.08f * p))
         )
-        Chevron(dir, color = lerpColor(Pal.Text, Pal.Blue, p), modifier = Modifier.size(30.dp))
+        Chevron(dir, color = lerpColor(Glass.Text, Glass.Lavender, p), modifier = Modifier.size(28.dp))
     }
 }
 
@@ -620,23 +637,17 @@ private fun OkButton(modifier: Modifier, navy: Boolean = false, onClick: () -> U
     Box(
         modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (navy) 18.dp else 14.dp, CircleShape, ambientColor = if (navy) Navy.Accent else Color.Black, spotColor = if (navy) Navy.Accent else Color.Black)
+            .then(if (navy) Modifier.glow(Glass.Purple, 22.dp) else Modifier.shadow(14.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black))
             .clip(CircleShape)
             .background(
-                Brush.verticalGradient(
-                    when {
-                        navy && pressed -> listOf(Color(0xFF232D4D), Color(0xFF1C2541))
-                        navy -> listOf(Color(0xFF1B2440), Color(0xFF131A30))
-                        pressed -> listOf(Color(0xFF3A3A3E), Color(0xFF333336))
-                        else -> listOf(Color(0xFF38383B), Color(0xFF2B2B2E))
-                    }
-                )
+                if (navy) Brush.radialGradient(if (pressed) listOf(Color(0xFF2C2A5A), Color(0xFF201E46)) else listOf(Color(0xFF242350), Color(0xFF191838)))
+                else Brush.verticalGradient(if (pressed) listOf(Color(0xFF3A3A3E), Color(0xFF333336)) else listOf(Color(0xFF38383B), Color(0xFF2B2B2E)))
             )
-            .border(3.dp, RingBrush, CircleShape)
+            .border(if (navy) 4.dp else 3.dp, if (navy) Glass.OkRing else RingBrush, CircleShape)
             .pressable(inter, deferMs = 70, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (navy) Text("OK", color = Pal.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        if (navy) Text("OK", color = Color(0xFFE9E6FF), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, fontFamily = Glass.Inter)
     }
 }
 
@@ -657,9 +668,7 @@ private fun PadSurface(
     Box(
         Modifier
             .size(size)
-            .clip(shape)
-            .background(Brush.radialGradient(listOf(Color(0xFF161E36), Navy.Card)))
-            .border(1.5.dp, RingBrush, shape)
+            .glass(shape, strength = 0.75f)
             .then(gesture),
         contentAlignment = Alignment.Center
     ) {
