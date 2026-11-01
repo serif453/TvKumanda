@@ -62,6 +62,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
   - Canlı yayın: ekran yansıtma + telefonu TV hoparlörü yapma (`docs/notlar/canli-yayin.md`).
   - IR kumanda: telefonun kızılötesi vericisi, Flipper-IRDB + SmartIR + çevrimiçi irdb (`docs/notlar/ir.md`).
   - Kısayollar: `ShortcutsScreen.kt` — şimdilik yalnızca görünüm.
+  - Ayarlar: sol üstteki ⚙️ → tam sayfa `SettingsPage`, değerler `AppSettings` (`AppSettings.kt`; `docs/notlar/kumanda.md`).
 - **Testler** `app/src/test`: saf kod test edilir (protokoller, DLNA, altyazı, ağ, canlı yayın, ekran kaydı, sistem bilgisi,
   performans, IR).
 - Serif'in TV'si: Philips (TPV) 2021/22 UHD, MediaTek MT5895, 4 × Cortex-A73, Android 11, yalnızca 32 bit, 2.7 GB RAM.
@@ -82,7 +83,6 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
 - Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
 - Kısayollar sekmesinin çalışır hâli.
 - Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
-- Ayarlar: sol üstte küçük düğme; ortada TV adı (kayıtlı TV'ler ve bağlantı türü).
 - İleride: uygulamanın adı "TV Everything" gibi bir şey olabilir.
 
 ### Sonra bakılacak fikirler (HoangTran0410/tv-remote, MIT)

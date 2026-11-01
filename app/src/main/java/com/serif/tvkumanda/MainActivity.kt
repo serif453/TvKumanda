@@ -218,6 +218,7 @@ class MainActivity : ComponentActivity() {
         castClient.onClosed = { reason -> runOnUiThread { onCastClosed(reason) } }
         castClient.onVolume = { v -> runOnUiThread { castVolumeKnown = v; if (cast.phase != CastPhase.NONE) cast = cast.copy(volume = v) } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
+        AppSettings.load(this)
         restoreCastChoices()
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
@@ -233,7 +234,8 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putString("ip", ip).apply()
                         connect(ip)
                     },
-                    onKey = ::key,
+                    // Ayar açıksa kumanda tuşlarında kısa titreşim (telefonun ses tuşlarında değil)
+                    onKey = { code -> AppSettings.tapIfEnabled(this@MainActivity); key(code) },
                     onText = ::sendText,
                     onMouse = ::mouse,
                     onLaunch = { app -> run { this.launch(app) } },
@@ -296,7 +298,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        if (savedIp.isNotBlank()) connect(savedIp)
+        if (savedIp.isNotBlank() && AppSettings.autoConnect) connect(savedIp)
         handleShare(intent)
         // Oynatıcı durumu değiştikçe bildirim ve kilit ekranı güncellenir
         scope.launch { androidx.compose.runtime.snapshotFlow { cast }.collect { syncMediaSession(it) } }
@@ -1610,10 +1612,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Telefonun ses tuşları TV'nin sesini kontrol eder
+    // Telefonun ses tuşları TV'nin sesini kontrol eder (Ayarlar'dan kapatılabilir)
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
-        if (state == ConnState.CONNECTED &&
+        if (state == ConnState.CONNECTED && AppSettings.volumeKeys &&
             (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN)
         ) {
             if (event.action == KeyEvent.ACTION_DOWN) {

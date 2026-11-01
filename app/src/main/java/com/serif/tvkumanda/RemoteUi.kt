@@ -186,7 +186,9 @@ fun RemoteScreen(
     onCcSearch: () -> Unit = {}
 ) {
     var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
-    var tab by remember { mutableStateOf(Tab.REMOTE) }
+    var tab by remember { mutableStateOf(AppSettings.initialTab()) }
+    // Sol üstteki ⚙️ ile açılan tam ekran Ayarlar sayfası
+    var settingsOpen by remember { mutableStateOf(false) }
     // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
     var padMode by remember { mutableIntStateOf(0) }
     var appRowTick by remember { mutableIntStateOf(0) }
@@ -196,6 +198,16 @@ fun RemoteScreen(
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
     LaunchedEffect(tab) { LiveUi.remoteTabOpen = tab == Tab.REMOTE }
+    val tabContext = LocalContext.current
+    LaunchedEffect(tab) { AppSettings.rememberTab(tabContext, tab) }
+    // Ayar açıksa Kumanda sekmesindeyken telefon ekranı kararmaz
+    val keepOn = AppSettings.keepScreenOn && tab == Tab.REMOTE
+    DisposableEffect(keepOn) {
+        val window = (tabContext as? android.app.Activity)?.window
+        if (keepOn) window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
     // Oynatıcı yalnızca görünüp kaybolunca bütün ekran yeniden düzenlenir; içerik değişince sadece çubuk çizilir
     val npVisible by remember { derivedStateOf { LiveUi.nowPlaying != null } }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
@@ -233,10 +245,9 @@ fun RemoteScreen(
             .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val ctx = LocalContext.current
         TopBarV2(
             ui, navy = tab == Tab.REMOTE,
-            onSettings = { android.widget.Toast.makeText(ctx, "Yakında: TV Kumanda ayarları", android.widget.Toast.LENGTH_SHORT).show() },
+            onSettings = { settingsOpen = true },
             onPicker = { sheet = Sheet.CONNECT }, onPower = { onKey(Keys.POWER) }
         )
 
@@ -329,6 +340,8 @@ fun RemoteScreen(
             onSubtitle = onCastSubtitle
         )
     }
+
+    if (settingsOpen) SettingsPage(ui, onOpenTvs = { sheet = Sheet.CONNECT }) { settingsOpen = false }
 
     if (typingOpen) {
         TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)

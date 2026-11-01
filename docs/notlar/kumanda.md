@@ -53,3 +53,9 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   rakam pencereleri. Davranış değişmedi.
 - Sessiz okuma (ADB, 1 Kasım 2026): `dumpsys audio`nun tamamı yerine TV'de `sed` ile süzülen satırlar (`MUTE_FILTER_COMMAND`:
   ana sessiz satırı + STREAM_MUSIC bölümünden "Muted:"a kadar). Süzme sonuç vermezse bir kez fark edilir, sonra hep tam döküm.
+- **Ayarlar sayfası (1 Kasım 2026, Serif'in onayıyla; tam sayfa istedi):** sol üstteki ⚙️ → `SettingsPage` (`AppSettings.kt`),
+  DLNA Sunucu sayfasıyla aynı düz tarz (cila sonra). `AppSettings` "ayarlar" tercihlerinde: `titresim` (kumanda tuşlarında
+  `EFFECT_CLICK`, varsayılan kapalı; telefonun dokunma titreşimi ayarından bağımsız, VIBRATE izni; telefonun ses tuşlarında
+  titremez), `ses_tuslari` (varsayılan açık), `ekran_acik` (yalnızca Kumanda sekmesindeyken FLAG_KEEP_SCREEN_ON),
+  `oto_baglan` (varsayılan açık), `acilis_sekme` (REMOTE/CAST/TOOLS/LAST; LAST için `son_sekme`). Fare hızı ve şerit
+  `MouseSettings` ile aynı değer ("Fare ▾" penceresiyle ortak). "TV'ler ve bağlantı türü" satırı mevcut TV seçme penceresini açar.

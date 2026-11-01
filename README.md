@@ -36,10 +36,18 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - Fare: ayarlanabilir imleç hızı, sola ya da sağa alınabilen kaydırma şeridi, basılı tutup sürükleme / seçme, parmak altında halka
 - TV'ye yazma: telefonun klavyesiyle canlı yazma; Standart bağlantıda Türkçe harfler (ş, ğ, ı…) olduğu gibi gider
 - Sesli komut: telefonun mikrofonuyla TV'de arama
-- Telefonun ses tuşları TV'nin sesini açar/kısar
+- Telefonun ses tuşları TV'nin sesini açar/kısar (Ayarlar'dan kapatılabilir)
 - Uygulama satırı: TV'deki uygulamalar gerçek adları ve simgeleriyle, basılı tutup sürükleyerek istediğin sırayla (ADB)
 - Şu an çalan: TV'de oynayan medya için oynatıcı çubuğu (ADB)
 - Birden fazla TV kaydetme, ağda otomatik TV bulma, Wake-on-LAN ile uyandırma
+
+### Ayarlar
+Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
+- Kumanda tuşlarında titreşim, telefonun ses tuşlarının TV'yi kontrol edip etmeyeceği, kumanda açıkken ekranın kararmaması
+- Fare imleç hızı ve kaydırma şeridinin tarafı
+- Açılışta son TV'ye kendiliğinden bağlanma; kayıtlı TV'ler ve bağlantı türü
+- Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
+- Sürüm, lisans ve GitHub sayfası
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
