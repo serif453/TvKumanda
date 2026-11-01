@@ -101,12 +101,13 @@ enum class Tab { REMOTE, CAST, TOOLS, SHORTCUTS }
 enum class CastRoute { CHROMECAST, DLNA }
 
 /**
- * Chromecast bölümünün alıcısı. [selected] boşsa bağlı TV'nin kendi Chromecast'i kullanılır;
- * doluysa ağda bulunan başka bir Chromecast'li cihaz (TV bağlantısı gerekmez).
+ * Chromecast bölümünün alıcısı. [selected] doluysa ağda bulunan başka bir Chromecast'li cihaz (TV bağlantısı gerekmez);
+ * [useTv] ise bağlı TV'nin kendi Chromecast'i. İkisi de yoksa henüz seçim yapılmadı ("Cihaz seç").
  */
 data class CcUi(
     val devices: List<FoundTv> = emptyList(),
     val selected: FoundTv? = null,
+    val useTv: Boolean = false,
     val searching: Boolean = false,
     /** Bağlı TV'nin adı (bağlı değilse boş). */
     val tvName: String = "",
@@ -151,12 +152,12 @@ fun CastScreen(
     onCcSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Sekme açılınca: Chromecast'e görünmeden bağlanılır, DLNA cihazları aranır
+    // Sekme açılınca kendiliğinden arama ya da bağlantı yok (onWarmup boş); cihazlar seçicideki "Ara" ile bulunur
     LaunchedEffect(connected) { onWarmup() }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var browseRoute by remember { mutableStateOf(CastRoute.CHROMECAST) }
-    // Başka bir Chromecast seçiliyse TV'ye bağlı olmak gerekmez
-    val ccReady = cc.selected != null || connected
+    // Başka bir Chromecast seçiliyse TV'ye bağlı olmak gerekmez; bağlı TV seçiliyse TV bağlantısı gerekir
+    val ccReady = (cc.selected != null && cc.selected.ip != cc.tvIp) || ((cc.useTv || cc.selected != null) && connected)
     val canCast = if (browseRoute == CastRoute.CHROMECAST) ccReady else dlna.selected != null
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
@@ -197,7 +198,7 @@ fun CastScreen(
                 CcPicker(cc, onCcPick, onCcSearch)
             }
             Spacer(Modifier.height(6.dp))
-            if (!ccReady) Text("Önce bir TV'ye bağlan ya da başka bir cihaz seç", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+            if (!ccReady) Text(if (cc.selected == null && !cc.useTv) "Sağdaki seçiciden \"Ara\" ile bir cihaz seç" else "Önce TV'ye bağlan", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
             KindRow(ccReady) { k ->
                 browseRoute = CastRoute.CHROMECAST; onSelectRoute(CastRoute.CHROMECAST)
                 browse = k; album = null
@@ -507,11 +508,11 @@ private fun KindRow(enabled: Boolean, onKind: (MediaKind) -> Unit) {
     }
 }
 
-/** Chromecast alıcı seçici: bağlı TV (varsayılan) ve ağda bulunan diğer Chromecast'li cihazlar. */
+/** Chromecast alıcı seçici: seçili cihaz (hatırlanır); "Ara" ile bulunanlar listelenir, dokununca seçilir. */
 @Composable
 private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val others = cc.devices.filter { it.ip != cc.tvIp }
+    val tvChosen = cc.selected == null && cc.useTv
     Box {
         Row(
             Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true }
@@ -519,31 +520,38 @@ private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit)
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                cc.selected?.name ?: cc.tvName.ifBlank { "Bağlı TV" },
+                cc.selected?.name ?: if (tvChosen) cc.tvName.ifBlank { "Bağlı TV" } else if (cc.searching) "Aranıyor…" else "Cihaz seç",
                 color = Pal.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 150.dp)
             )
             Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
         }
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            androidx.compose.material3.DropdownMenuItem(
-                text = {
-                    Text(
-                        (if (cc.selected == null) "✓ " else "") +
-                            if (cc.tvIp.isBlank()) "Bağlı TV (bağlı değil)" else cc.tvName.ifBlank { cc.tvIp } + "  ·  bağlı TV"
-                    )
-                },
-                onClick = { open = false; onPick(null) }
-            )
-            for (d in others) {
+            // Hatırlanan seçim aramada henüz bulunmadıysa da listede görünür
+            val shownSel = cc.selected?.takeIf { s -> cc.devices.none { it.ip == s.ip } }
+            if (shownSel != null) {
                 androidx.compose.material3.DropdownMenuItem(
-                    text = { Text((if (d.ip == cc.selected?.ip) "✓ " else "") + d.name + "  ·  " + d.ip) },
+                    text = { Text("✓ " + shownSel.name + "  ·  " + shownSel.ip) },
+                    onClick = { open = false; onPick(shownSel) }
+                )
+            }
+            if (tvChosen && cc.devices.none { it.ip == cc.tvIp }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("✓ " + if (cc.tvIp.isBlank()) "Bağlı TV (bağlı değil)" else cc.tvName.ifBlank { cc.tvIp } + "  ·  bağlı TV") },
+                    onClick = { open = false; onPick(null) }
+                )
+            }
+            for (d in cc.devices) {
+                val isTv = d.ip == cc.tvIp && cc.tvIp.isNotBlank()
+                val mark = d.ip == cc.selected?.ip || (isTv && tvChosen)
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text((if (mark) "✓ " else "") + d.name + "  ·  " + if (isTv) "bağlı TV" else d.ip) },
                     onClick = { open = false; onPick(d) }
                 )
             }
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text(if (cc.searching) "Aranıyor…" else "Yeniden ara") },
-                onClick = { open = false; onSearch() }
+                text = { Text(if (cc.searching) "Aranıyor…" else if (cc.devices.isEmpty()) "Ara" else "Yeniden ara") },
+                onClick = { open = false; if (!cc.searching) onSearch() }
             )
         }
     }
@@ -567,6 +575,13 @@ private fun DlnaPicker(dlna: DlnaUi, onPick: (DlnaDevice) -> Unit, onSearch: () 
             Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
         }
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // Hatırlanan seçim aramada henüz bulunmadıysa da listede görünür
+            dlna.selected?.takeIf { s -> dlna.devices.none { it.key == s.key } }?.let { s ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("✓ " + s.name + "  ·  " + s.ip) },
+                    onClick = { open = false; onPick(s) }
+                )
+            }
             for (d in dlna.devices) {
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text((if (d.key == dlna.selected?.key) "✓ " else "") + d.name + "  ·  " + d.ip) },
@@ -574,8 +589,8 @@ private fun DlnaPicker(dlna: DlnaUi, onPick: (DlnaDevice) -> Unit, onSearch: () 
                 )
             }
             androidx.compose.material3.DropdownMenuItem(
-                text = { Text(if (dlna.searching) "Aranıyor…" else "Yeniden ara") },
-                onClick = { open = false; onSearch() }
+                text = { Text(if (dlna.searching) "Aranıyor…" else if (dlna.devices.isEmpty()) "Ara" else "Yeniden ara") },
+                onClick = { open = false; if (!dlna.searching) onSearch() }
             )
         }
     }
