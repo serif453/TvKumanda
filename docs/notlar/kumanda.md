@@ -3,10 +3,10 @@
 Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırken okunur.
 
 - Kumanda: `RemoteUi.kt`, `RemoteLayout.kt` (üst çubuk, uygulama satırı). Modlar: yön tuşları, kaydırma, fare (ADB).
-  - Uygulama satırını düzenleme (`EditAppsSheet`): basılı tutup sürükleyerek sıralama (oklar kaldırıldı, Serif'in isteği); kenara gelince liste kendiliğinden kayar, sıra bırakınca kaydedilir.
   Yön kartının üstünde kapsül ses çubuğu (`GlassVolumePill`: Sessiz · − · çubuk · +; Serif'in örneğinden). Dokun/sürükle-bırak →
   `VolumeCtl.setTo` → `MainActivity.setVolumeTo`: ADB'de `TvRemote.setVolume` (media_session --set, geri okunarak doğrulanır),
   olmazsa ya da Standart'ta fark kadar ses tuşu. Sessiz durumu bilinmiyor (iki bağlantı da bildirmiyor), çubukta gösterilmez.
+  - Uygulama satırını düzenleme (`EditAppsSheet`): basılı tutup sürükleyerek sıralama (oklar kaldırıldı, Serif'in isteği); kenara gelince liste kendiliğinden kayar, sıra bırakınca kaydedilir.
   - **Cam tasarım (1 Kasım 2026, Serif'in gönderdiği görselin birebiri, onayıyla):** `GlassUi.kt` (renkler `Glass`, arka plan
     `glassBackdrop`, cam yüzey `Modifier.glass`, parlama `glow`, özel simgeler `GlassIcons`: sessiz = hoparlör+çarpı, Rehber = TV+satırlar)
     ve `GlassRemote.kt` (`GlassTopBar`, `GlassAppsEmpty`, `GlassPadCard`, büyük ses çubuğu, `GlassMediaBar`). Gerçek bulanıklık yok:
