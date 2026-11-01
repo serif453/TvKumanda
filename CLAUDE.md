@@ -159,6 +159,10 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - `CastService.kt`: ekran kapalıyken devam, bildirim ve kilit ekranı kontrolleri.
 - `Subtitles.kt`: SRT → WebVTT; geçersiz UTF-8 ise Windows-1254 okunur.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
+- Chromecast alıcısı (`CcUi`, `CcPicker`, `MainActivity.searchCc/pickCc/ccTargetIp`): varsayılan bağlı TV; ağdaki
+  `_googlecast` cihazlarından biri seçilebilir (TV bağlantısı gerekmez, uyandırma yalnızca bağlı TV'de). Seçim adıyla
+  hatırlanır (`cc_cihaz`). Arama 20 sn sürer, sonra durur (pil); "Yeniden ara" yeniler. Serif'in ağında başka
+  Chromecast yok; başka cihazda denenmedi.
 
 ### Testler
 `app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest`.

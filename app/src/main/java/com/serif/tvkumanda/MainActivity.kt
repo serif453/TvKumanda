@@ -115,6 +115,10 @@ class MainActivity : ComponentActivity() {
     private var selectedRoute = CastRoute.CHROMECAST
     private var dlnaSawPlaying = false
     private var dlnaSearchedOnce = false
+    // Chromecast alıcısı (boşsa bağlı TV)
+    private var ccUi by mutableStateOf(CcUi())
+    private var ccDiscovery: TvDiscovery? = null
+    private var ccSearchJob: Job? = null
     // Fotoğraf slayt gösterisi
     private var slideshow = false
     private var slideSec = 5
@@ -265,6 +269,12 @@ class MainActivity : ComponentActivity() {
                     onCastRoute = { r -> selectedRoute = r },
                     onDlnaPick = ::pickDlna,
                     onDlnaSearch = { searchDlna(force = true) },
+                    cc = ccUi.copy(
+                        tvName = if (state == ConnState.CONNECTED) tvName else "",
+                        tvIp = if (state == ConnState.CONNECTED) currentIp else ""
+                    ),
+                    onCcPick = ::pickCc,
+                    onCcSearch = { searchCc(force = true) },
                     onCastToggle = ::castToggle,
                     onCastSeek = ::castSeek,
                     onCastStop = ::castStop
@@ -627,7 +637,7 @@ class MainActivity : ComponentActivity() {
     // ---------- Cast ----------
 
     private fun pickForCast(kind: MediaKind) {
-        val ok = if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else state == ConnState.CONNECTED && currentIp.isNotBlank()
+        val ok = if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else ccTargetIp().isNotBlank()
         if (!ok) { toast(if (selectedRoute == CastRoute.DLNA) "Önce bir DLNA cihazı seç" else "Önce TV'ye bağlan"); return }
         pendingKind = kind
         runCatching { pickMedia.launch(kind.mimeFilter) }.onFailure { toast("Dosya seçici açılamadı") }
@@ -639,7 +649,7 @@ class MainActivity : ComponentActivity() {
         startAt: Double = 0.0, askResume: Boolean = true, route: CastRoute = nextRoute()
     ) {
         val dev = dlnaUi.selected
-        if (route == CastRoute.CHROMECAST && (state != ConnState.CONNECTED || currentIp.isBlank())) { toast("Önce TV'ye bağlan"); return }
+        if (route == CastRoute.CHROMECAST && ccTargetIp().isBlank()) { toast("Önce TV'ye bağlan"); return }
         if (route == CastRoute.DLNA && dev == null) { toast("Önce bir DLNA cihazı seç"); return }
         // Başka yoldan yayın sürüyorsa o durdurulur (aynı anda iki cihaza yayın yapılmaz)
         if (cast.phase != CastPhase.NONE && cast.route != route) stopRouteQuietly(cast.route)
@@ -680,7 +690,8 @@ class MainActivity : ComponentActivity() {
         }
         currentUri = uri
         askNotificationPermissionOnce()
-        val ip = if (route == CastRoute.DLNA) dev!!.ip else currentIp
+        val ccOther = ccOther()
+        val ip = if (route == CastRoute.DLNA) dev!!.ip else ccTargetIp()
         val title = knownTitle?.ifBlank { null } ?: displayName(uri) ?: kind.label
         val mime = knownMime?.ifBlank { null } ?: contentResolver.getType(uri) ?: kind.fallbackMime
         val subUri = if (kind == MediaKind.VIDEO && route == CastRoute.CHROMECAST) prefs.getString(subtitleKey(uri), null)?.let { android.net.Uri.parse(it) } else null
@@ -698,7 +709,7 @@ class MainActivity : ComponentActivity() {
             slideSec = slideSec,
             hasSubtitle = subUri != null,
             route = route,
-            routeName = if (route == CastRoute.DLNA) dev?.name.orEmpty() else tvName
+            routeName = if (route == CastRoute.DLNA) dev?.name.orEmpty() else ccOther?.name ?: tvName
         )
         castPollJob?.cancel()
         if (kind != MediaKind.PHOTO) { slideshow = false; slideJob?.cancel() } else if (slideshow) restartSlideTimer()
@@ -728,9 +739,10 @@ class MainActivity : ComponentActivity() {
                             mediaServer.publishBytes(Subtitles.convert(raw), "text/vtt; charset=utf-8", ip)
                         }.getOrElse { runOnUiThread { toast("Altyazı dosyası okunamadı") }; null }
                     }
-                    // TV uykudaysa önce uyandırılır
-                    wakeTvIfAsleep(ip)
-                    if (!castClient.isConnected) castStage("TV'ye bağlanılıyor…")
+                    // TV uykudaysa önce uyandırılır (yalnızca bağlı TV; başka cihaz kumandayla uyandırılamaz)
+                    if (ccOther == null) wakeTvIfAsleep(ip)
+                    if (!castClient.isConnected || castClient.connectedIp != ip)
+                        castStage(if (ccOther == null) "TV'ye bağlanılıyor…" else "${ccOther.name} cihazına bağlanılıyor…")
                     castClient.connect(ip)
                     if (!castClient.hasReceiver) {
                         castStage("TV'de oynatıcı açılıyor…")
@@ -943,9 +955,52 @@ class MainActivity : ComponentActivity() {
     /** Cast sekmesi açılınca: TV'nin Chromecast'ine görünmeden bağlanır (TV ekranı değişmez). */
     private fun castWarmup() {
         if (!dlnaSearchedOnce) searchDlna(force = false)
-        val ip = currentIp
-        if (state != ConnState.CONNECTED || ip.isBlank()) return
+        searchCc(force = false)
+        val ip = ccTargetIp()
+        if (ip.isBlank()) return
+        // Başka cihaza yayın sürüyorsa bağlantısı bozulmasın
+        if (cast.phase != CastPhase.NONE && cast.route == CastRoute.CHROMECAST) return
         scope.launch(castIo) { runCatching { castClient.connect(ip) } }
+    }
+
+    /** Seçili başka Chromecast cihazı (bağlı TV'nin kendisi seçiliyse null). */
+    private fun ccOther(): FoundTv? = ccUi.selected?.takeIf { !(state == ConnState.CONNECTED && it.ip == currentIp) }
+
+    /** Chromecast yayınının gideceği adres: seçili cihaz, yoksa bağlı TV ("" = gidecek yer yok). */
+    private fun ccTargetIp(): String =
+        ccOther()?.ip ?: if (state == ConnState.CONNECTED) currentIp else ""
+
+    /** Ağdaki Chromecast'li cihazları mDNS ile arar; liste açık kaldıkça güncellenir. */
+    private fun searchCc(force: Boolean) {
+        if (!force && ccDiscovery != null) return
+        val d = ccDiscovery ?: TvDiscovery(this, TvDiscovery.CAST_SERVICE_TYPE).also { ccDiscovery = it }
+        val savedName = prefs.getString("cc_cihaz", null)
+        ccUi = ccUi.copy(searching = true, devices = if (force) emptyList() else ccUi.devices)
+        d.start { found ->
+            val keep = ccUi.selected?.let { s -> found.firstOrNull { it.name == s.name } ?: s }
+            val pick = keep ?: savedName?.let { n -> found.firstOrNull { it.name == n } }
+            ccUi = ccUi.copy(devices = found, selected = pick)
+        }
+        ccSearchJob?.cancel()
+        ccSearchJob = scope.launch {
+            delay(5_000)
+            ccUi = ccUi.copy(searching = false)
+            // Arama sürekli açık kalmaz (pil); liste son hâliyle kalır, "Yeniden ara" yeniler
+            delay(15_000)
+            d.stop()
+        }
+    }
+
+    /** Chromecast alıcısını seçer (null = bağlı TV). Süren Chromecast yayını önceki cihazda durdurulur. */
+    private fun pickCc(d: FoundTv?) {
+        val sel = d?.takeIf { !(state == ConnState.CONNECTED && it.ip == currentIp) }
+        if (sel?.ip == ccOther()?.ip) return
+        if (cast.phase != CastPhase.NONE && cast.route == CastRoute.CHROMECAST) castStop()
+        prefs.edit().apply { if (sel == null) remove("cc_cihaz") else putString("cc_cihaz", sel.name) }.apply()
+        ccUi = ccUi.copy(selected = sel)
+        DiagLog.log("Chromecast alıcısı: ${if (sel == null) "bağlı TV" else "başka cihaz"}")
+        val ip = ccTargetIp()
+        if (ip.isNotBlank()) scope.launch(castIo) { runCatching { castClient.connect(ip) } }
     }
 
     /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */
@@ -1514,6 +1569,7 @@ class MainActivity : ComponentActivity() {
         castPollJob?.cancel()
         slideJob?.cancel()
         CastService.stop(this)
+        ccDiscovery?.stop()
         Thread { adb.close(); atv.release(); io.close(); castClient.close(); mediaServer.stop(); castIo.close() }.start()
     }
 }

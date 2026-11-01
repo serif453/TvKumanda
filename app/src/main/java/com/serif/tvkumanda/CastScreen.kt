@@ -100,6 +100,19 @@ enum class Tab { REMOTE, CAST, TOOLS, SHORTCUTS }
 /** Yayın yolu: TV'nin Chromecast'i ya da ağdaki bir DLNA cihazı. */
 enum class CastRoute { CHROMECAST, DLNA }
 
+/**
+ * Chromecast bölümünün alıcısı. [selected] boşsa bağlı TV'nin kendi Chromecast'i kullanılır;
+ * doluysa ağda bulunan başka bir Chromecast'li cihaz (TV bağlantısı gerekmez).
+ */
+data class CcUi(
+    val devices: List<FoundTv> = emptyList(),
+    val selected: FoundTv? = null,
+    val searching: Boolean = false,
+    /** Bağlı TV'nin adı (bağlı değilse boş). */
+    val tvName: String = "",
+    val tvIp: String = ""
+)
+
 /** DLNA bölümünün durumu. */
 data class DlnaUi(
     val devices: List<DlnaDevice> = emptyList(),
@@ -133,13 +146,18 @@ fun CastScreen(
     onSelectRoute: (CastRoute) -> Unit,
     onDlnaPick: (DlnaDevice) -> Unit,
     onDlnaSearch: () -> Unit,
+    cc: CcUi,
+    onCcPick: (FoundTv?) -> Unit,
+    onCcSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Sekme açılınca: Chromecast'e görünmeden bağlanılır, DLNA cihazları aranır
     LaunchedEffect(connected) { onWarmup() }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var browseRoute by remember { mutableStateOf(CastRoute.CHROMECAST) }
-    val canCast = if (browseRoute == CastRoute.CHROMECAST) connected else dlna.selected != null
+    // Başka bir Chromecast seçiliyse TV'ye bağlı olmak gerekmez
+    val ccReady = cc.selected != null || connected
+    val canCast = if (browseRoute == CastRoute.CHROMECAST) ccReady else dlna.selected != null
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
@@ -173,9 +191,14 @@ fun CastScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---- Chromecast ----
-            SectionHeader("Chromecast")
-            if (!connected) Text("Önce bir TV'ye bağlan", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
-            KindRow(connected) { k ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("Chromecast")
+                Spacer(Modifier.weight(1f))
+                CcPicker(cc, onCcPick, onCcSearch)
+            }
+            Spacer(Modifier.height(6.dp))
+            if (!ccReady) Text("Önce bir TV'ye bağlan ya da başka bir cihaz seç", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+            KindRow(ccReady) { k ->
                 browseRoute = CastRoute.CHROMECAST; onSelectRoute(CastRoute.CHROMECAST)
                 browse = k; album = null
                 if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
@@ -480,6 +503,54 @@ private fun KindRow(enabled: Boolean, onKind: (MediaKind) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         for ((k, icon) in listOf(MediaKind.PHOTO to AppIcons.Photo, MediaKind.VIDEO to AppIcons.Movie, MediaKind.MUSIC to AppIcons.MusicNote)) {
             KindButton(icon, k.label, Modifier.weight(1f), enabled) { onKind(k) }
+        }
+    }
+}
+
+/** Chromecast alıcı seçici: bağlı TV (varsayılan) ve ağda bulunan diğer Chromecast'li cihazlar. */
+@Composable
+private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val others = cc.devices.filter { it.ip != cc.tvIp }
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true; if (others.isEmpty()) onSearch() }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                cc.selected?.name ?: cc.tvName.ifBlank { "Bağlı TV" },
+                color = Pal.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 150.dp)
+            )
+            Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = {
+                    Text(
+                        (if (cc.selected == null) "✓ " else "") +
+                            if (cc.tvIp.isBlank()) "Bağlı TV (bağlı değil)" else cc.tvName.ifBlank { cc.tvIp } + "  ·  bağlı TV"
+                    )
+                },
+                onClick = { open = false; onPick(null) }
+            )
+            if (others.isEmpty() && !cc.searching) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Ağda başka Chromecast cihazı yok", color = Pal.Sub) },
+                    onClick = {}, enabled = false
+                )
+            }
+            for (d in others) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text((if (d.ip == cc.selected?.ip) "✓ " else "") + d.name + "  ·  " + d.ip) },
+                    onClick = { open = false; onPick(d) }
+                )
+            }
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(if (cc.searching) "Aranıyor…" else "Yeniden ara") },
+                onClick = { open = false; onSearch() }
+            )
         }
     }
 }

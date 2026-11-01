@@ -54,7 +54,8 @@ class CastClient {
     val isConnected: Boolean get() = socket?.isClosed == false
     /** TV'de oynatıcı açık ve bağlı mı (açıksa yükleme anında başlar). */
     val hasReceiver: Boolean get() = isConnected && transportId != null
-    @Volatile private var connectedIp = ""
+    @Volatile var connectedIp = ""
+        private set
 
     /** TV'ye bağlanır (zaten bağlıysa bir şey yapmaz). */
     @Synchronized

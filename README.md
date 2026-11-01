@@ -41,6 +41,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
+- Chromecast alıcısını seçme: bağlı TV ya da ağdaki başka bir Chromecast'li cihaz (TV bağlantısı gerekmez)
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam
 - SRT altyazı (Türkçe karakter kodlaması otomatik düzeltilir)
 - Telefon ekranı kapalıyken de devam eder; bildirimde ve kilit ekranında oynatıcı kontrolleri
