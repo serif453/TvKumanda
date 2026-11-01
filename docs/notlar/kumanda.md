@@ -43,3 +43,8 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   v0.135 (Serif'in onayladığı önizleme): şerit yüzeyin üstünden altına koyu tek parça (48 dp); en üstte ✕ (çalışan fare
   modunda sağ üstteki ayrı ✕ yok), sonra ▲, eşit aralıklı çizgiler (sayı boya göre), ▼. ⇆ kaldırıldı (Sol/Sağ yalnızca
   "Fare ▾" penceresinde; Serif üstünü çizdi). Ayraç çizgisi istenmedi. "Fare ▾" hafif kapsül; şerit soldayken sağ üste geçer.
+- **Hız (1 Kasım 2026, Serif'in onayıyla):** "Şu an çalan" sorgusu tuş sırasından (`MainActivity.io`) çıkarıldı, ayrı yoldan
+  (Dispatchers.IO) gider ve yalnızca Kumanda sekmesi açıkken sorulur; hızlı kanala yazma `TvRemote.writeLock` ile tek kapıdan.
+  Sık değişen değerler (`LiveUi`: şu an çalan, mikrofon seviyesi) `UiState`'te değil: değişince yalnızca oynatıcı çubuğu /
+  mikrofon tuşu çizilir; aynı medya ve tutarlı konum gelirse eski nesne korunur (`sameAs`). Eski tasarımdan kalan ~770 satır
+  kullanılmayan kod silindi. Mor arka plan tek kat çizilir.

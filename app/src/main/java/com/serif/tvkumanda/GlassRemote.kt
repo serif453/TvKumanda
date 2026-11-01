@@ -193,7 +193,8 @@ private fun SideIcon(icon: ImageVector, label: String, size: Dp = 26.dp, selecte
 
 /** Mikrofon: mavi-mor dolu kare; dinlerken kırmızıya döner ve etrafında halkalar yayılır. */
 @Composable
-private fun GlassMic(size: Dp, active: Boolean, level: Float, onClick: () -> Unit) {
+private fun GlassMic(size: Dp, active: Boolean, onClick: () -> Unit) {
+    val level = LiveUi.micLevel     // yalnızca bu tuş yeniden çizilir
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val shape = RoundedCornerShape(16.dp)
@@ -312,7 +313,7 @@ fun GlassPadCard(
                             Row(horizontalArrangement = Arrangement.spacedBy(if (inner < 300.dp) 6.dp else 9.dp)) {
                                 GlassSquare(Modifier.size(key), onClick = { onKey(Keys.BACK) }) { SideIcon(AppIcons.Undo, "Geri") }
                                 GlassSquare(Modifier.size(key), onClick = { onKey(Keys.HOME) }) { SideIcon(AppIcons.HomeOutline, "Ana Sayfa") }
-                                GlassMic(key, ui.micActive, ui.micLevel, onMic)
+                                GlassMic(key, ui.micActive, onMic)
                             }
                         }
                         Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {

@@ -54,7 +54,9 @@ class MainActivity : ComponentActivity() {
 
     // Sesli komut
     private var micActive by mutableStateOf(false)
-    private var micLevel by mutableStateOf(0f)
+    private var micLevel: Float
+        get() = LiveUi.micLevel
+        set(v) { LiveUi.micLevel = v }
     @Volatile private var micStop = false
     private var recognizer: SpeechRecognizer? = null
     private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -69,7 +71,9 @@ class MainActivity : ComponentActivity() {
     private var tvName by mutableStateOf("")
     private var fastMode by mutableStateOf(false)
     private var apps by mutableStateOf<List<TvApp>>(emptyList())
-    private var nowPlaying by mutableStateOf<NowPlaying?>(null)
+    private var nowPlaying: NowPlaying?
+        get() = LiveUi.nowPlaying
+        set(v) { LiveUi.nowPlaying = v }
     private var volume by mutableStateOf<Int?>(null)
     private var volumeMax by mutableStateOf(100)
     private var muted by mutableStateOf<Boolean?>(null)
@@ -183,14 +187,16 @@ class MainActivity : ComponentActivity() {
                 "Kayıtlı TV" to savedTvs.size.toString()
             )
         }
-        // TV'de çalan medya: uygulama ekrandayken ve ADB bağlıyken 2 sn'de bir sorulur
+        // TV'de çalan medya: uygulama ekrandayken, Kumanda sekmesi açıkken ve ADB bağlıyken 2 sn'de bir sorulur.
+        // Tuş sırasından (io) değil ayrı yoldan gider: TV geç cevap verirse basılan tuş arkada beklemesin.
         scope.launch {
             while (isActive) {
                 delay(2000)
                 val visible = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-                nowPlaying = if (visible && state == ConnState.CONNECTED && method == ConnMethod.ADB && fastMode)
-                    withContext(io) { runCatching { adb.nowPlaying() }.getOrNull() }
-                else null
+                if (state != ConnState.CONNECTED || method != ConnMethod.ADB || !fastMode) { nowPlaying = null; continue }
+                if (!visible || !LiveUi.remoteTabOpen) continue      // gösterilmiyorsa sorulmaz; son bilgi kalır
+                val np = withContext(Dispatchers.IO) { runCatching { adb.nowPlaying() }.getOrNull() }
+                if (np == null || !np.sameAs(nowPlaying)) nowPlaying = np
             }
         }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
@@ -220,8 +226,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             RemoteTheme {
                 RemoteScreen(
-                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick, nowPlaying, muted),
+                    ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive,
+                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick, muted),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -1646,7 +1652,6 @@ data class UiState(
     val pairingError: String,
     val savedTvs: List<SavedTv>,
     val micActive: Boolean,
-    val micLevel: Float,
     val typing: Boolean,
     val typingSeed: String,
     val typingSeedTick: Int,
@@ -1655,7 +1660,6 @@ data class UiState(
     /** Artınca alt menü Cast sekmesine geçer (Paylaş ile dosya gelince). */
     val castTabTick: Int = 0,
     /** TV'de çalan medya (yalnızca ADB). */
-    val nowPlaying: NowPlaying? = null,
     /** TV sessizde mi; bilinmiyorsa null. */
     val muted: Boolean? = null
 )

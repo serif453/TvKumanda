@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 class TvRemote(private val context: Context) : RemoteLink {
 
     private var dadb: Dadb? = null
-    private var fast: AdbStream? = null
+    @Volatile private var fast: AdbStream? = null
     private var host: String = ""
     /** Bağlı TV'nin adresi. */
     val tvIp: String get() = host
@@ -91,15 +91,20 @@ class TvRemote(private val context: Context) : RemoteLink {
         }.getOrNull()
     }
 
+    /** Hızlı kanala yazma tek kapıdan geçer: tuşlar ve "şu an çalan" sorgusu ayrı iş parçacıklarından gelir, satırlar karışmasın. */
+    private val writeLock = Any()
+
     private fun sendFast(line: String): Boolean {
-        val s = fast ?: return false
-        return try {
-            s.sink.writeUtf8(line).writeUtf8("\n").flush()
-            true
-        } catch (e: Exception) {
-            runCatching { s.close() }
-            fast = null
-            false
+        synchronized(writeLock) {
+            val s = fast ?: return false
+            return try {
+                s.sink.writeUtf8(line).writeUtf8("\n").flush()
+                true
+            } catch (e: Exception) {
+                runCatching { s.close() }
+                if (fast === s) fast = null
+                false
+            }
         }
     }
 

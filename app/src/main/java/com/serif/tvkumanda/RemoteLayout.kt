@@ -363,24 +363,6 @@ object VolumeCtl {
 }
 
 
-// ---------------- Alt tuşlar ----------------
-
-@Composable
-fun RemoteBottomKeys(ui: UiState, onKey: (Int) -> Unit, onMic: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(148.dp), verticalAlignment = Alignment.CenterVertically) {
-        Rocker(
-            width = 70.dp, bg = Navy.Btn, label = "SES", value = ui.volume?.toString(),
-            level = ui.volume?.let { it.toFloat() / ui.volumeMax.coerceAtLeast(1) },
-            topIsPlus = true, onUp = { onKey(Keys.VOL_UP) }, onDown = { onKey(Keys.VOL_DOWN) }
-        )
-        Spacer(Modifier.weight(1f))
-        Rocker(
-            width = 70.dp, bg = Navy.Btn, label = "KANAL", value = null, level = null,
-            topIsPlus = false, onUp = { onKey(Keys.CH_UP) }, onDown = { onKey(Keys.CH_DOWN) }
-        )
-    }
-}
-
 // ---------------- TV'de çalan: oynatıcı çubuğu ----------------
 
 private fun hms(ms: Long): String {
@@ -435,21 +417,5 @@ fun NowPlayingIcon(np: NowPlaying, apps: List<TvApp>) {
     Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
         if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
         else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(18.dp))
-    }
-}
-
-@Composable
-private fun LabelKey(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
-    val inter = remember { MutableInteractionSource() }
-    val scale = pressScale(inter)
-    val pressed by inter.collectIsPressedAsState()
-    val shape = RoundedCornerShape(20.dp)
-    Column(
-        modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape).background(if (pressed) Navy.BtnPressed else Navy.Btn).border(1.dp, Navy.Border, shape)
-            .pressable(inter, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
-        Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(26.dp))
     }
 }
