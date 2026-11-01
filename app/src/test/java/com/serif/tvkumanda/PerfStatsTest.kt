@@ -166,4 +166,116 @@ class PerfStatsTest {
         assertFalse(PerfStats.isUserApp("com.android.systemui", null, null, true))       // bilgi gelmeden: korunan
         assertTrue(PerfStats.isUserApp("org.example.x", null, null, false))
     }
+
+    // ---------------- Genel bakış, ağ, donanım ----------------
+
+    @Test fun acikKalmaDepolamaAg() {
+        val head = out("400 0 100 1500 0 0 0 0 0 0", emptyList())
+        fun sample(rx: Long, tx: Long) = PerfStats.parse(head + """
+            ##U
+            187234.55 701234.10
+            ##D
+            Filesystem     1K-blocks    Used Available Use% Mounted on
+            /dev/block/dm-6  8000000 5000000   3000000  63% /data
+            ##N
+              wlan0: $rx  1200 0 0 0 0 0 0 $tx 900 0 0 0 0 0 0
+                eth0:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0
+        """.trimIndent())
+        val x = sample(1_000_000, 50_000)
+        assertEquals(187234L, x.uptimeSec)
+        assertEquals(8000000L, x.dataTotalKb)
+        assertEquals(5000000L, x.dataUsedKb)
+        val v = PerfStats.view(x, sample(1_002_048, 52_048), 2000)
+        assertEquals(1024L, v.rxRate)
+        assertEquals(1024L, v.txRate)
+        assertEquals("1 KB/sn", PerfStats.rateText(v.rxRate))
+        assertEquals("2,5 MB/sn", PerfStats.rateText(2_621_440))
+        assertNull(PerfStats.view(null, x).rxRate)
+        assertNull(PerfStats.rate(500, 100, 1000)) // sayaç sıfırlandı
+    }
+
+    @Test fun durum() {
+        val st = PerfStats.parseStatus("""
+            ##W
+              mWakefulness=Awake
+            ##F
+              mResumedActivity: ActivityRecord{9f1 u0 com.google.android.youtube.tv/com.google.android.apps.youtube.tv.activity.ShellActivity t12}
+            ##S
+            mWifiInfo SSID: "FiberHGW_ZYA769", BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 5, RSSI: -53, Link speed: 780Mbps, Tx Link speed: 780Mbps, Max Supported Tx Link speed: 866Mbps, Rx Link speed: 650Mbps, Frequency: 5540MHz, Net ID: 0
+            ##N
+            1: lo    inet 127.0.0.1/8 scope host lo
+            30: wlan0    inet 192.168.1.143/24 brd 192.168.1.255 scope global wlan0
+        """.trimIndent())
+        assertEquals(PerfStats.Power.ON, st.power)
+        assertEquals("com.google.android.youtube.tv", st.foreground)
+        val n = st.net
+        assertFalse(n.wired)
+        assertEquals("FiberHGW_ZYA769", n.ssid)
+        assertEquals(-53, n.rssi)
+        assertEquals(780, n.linkMbps)
+        assertEquals(5540, n.freqMhz)
+        assertEquals("192.168.1.143", n.ip)
+        assertEquals("Sinyal iyi, yapılacak bir şey yok.", PerfStats.advice(n))
+        assertEquals(PerfStats.Power.SLEEP, PerfStats.parseStatus("##W\n  mWakefulness=Asleep\n").power)
+        assertNull(PerfStats.parseStatus("##W\n").power)
+    }
+
+    @Test fun oneri() {
+        val base = PerfStats.Net(false, "192.168.1.5", "ev", -50, 5180, 433)
+        assertTrue(PerfStats.advice(base.copy(rssi = -80)).startsWith("Sinyal zayıf"))
+        assertTrue(PerfStats.advice(base.copy(rssi = -70)).startsWith("Sinyal orta"))
+        assertTrue(PerfStats.advice(base.copy(freqMhz = 2437)).contains("5 GHz"))
+        assertTrue(PerfStats.advice(base.copy(wired = true)).startsWith("Kablolu"))
+        assertEquals(true, PerfStats.parseNet("", "2: eth0    inet 192.168.1.20/24 scope global eth0").wired)
+    }
+
+    @Test fun donanim() {
+        val rows = PerfStats.hardware("""
+            ##P
+            [ro.product.brand]: [Philips]
+            [ro.product.model]: [TPV 2021/22 Philips UHD Android TV]
+            [ro.build.version.release]: [11]
+            [ro.build.version.sdk]: [30]
+            [ro.build.version.security_patch]: [2025-10-01]
+            [ro.board.platform]: [mt5895]
+            [ro.product.cpu.abi]: [armeabi-v7a]
+            [ro.product.cpu.abilist]: [armeabi-v7a,armeabi]
+            ##C
+            processor	: 0
+            CPU implementer	: 0x41
+            CPU part	: 0xd09
+
+            processor	: 1
+            CPU implementer	: 0x41
+            CPU part	: 0xd09
+
+            processor	: 2
+            CPU implementer	: 0x41
+            CPU part	: 0xd09
+
+            processor	: 3
+            CPU implementer	: 0x41
+            CPU part	: 0xd09
+            ##W
+            Physical size: 1920x1080
+            Physical density: 320
+            ##Y
+              mBaseDisplayInfo=DisplayInfo{"Built-in Screen", displayId 0, modeId 2, defaultModeId 2, supportedModes [{id=1, width=3840, height=2160, fps=50.0}, {id=2, width=3840, height=2160, fps=60.000004}]}
+        """.trimIndent(), 2_831_155).toMap()
+        assertEquals("TPV 2021/22 Philips UHD Android TV", rows["Cihaz"])
+        assertEquals("11 (SDK 30)", rows["Android"])
+        assertEquals("2025-10-01", rows["Güvenlik yaması"])
+        assertEquals("MediaTek MT5895", rows["Yonga"])
+        assertEquals("armeabi-v7a", rows["Mimari"])
+        assertEquals("4 × Cortex-A73", rows["İşlemci çekirdeği"])
+        assertEquals("1920×1080 · 60 Hz", rows["Ekran"])
+        assertEquals("320 dpi", rows["Piksel yoğunluğu"])
+        assertTrue(rows["RAM"]!!.endsWith("GB"))
+    }
+
+    @Test fun enCokIslemci() {
+        val l = listOf(PerfStats.AppUse("a.b", 100, 1.0), PerfStats.AppUse("c.d", 300, 9.5), PerfStats.AppUse("e.f", 900, null),
+            PerfStats.AppUse("g.h", 50, 3.0), PerfStats.AppUse("i.j", 70, 0.0), PerfStats.AppUse("k.l", 10, 0.5))
+        assertEquals(listOf("c.d", "g.h", "a.b", "k.l", "i.j"), PerfStats.topCpu(l).map { it.pkg })
+    }
 }

@@ -74,6 +74,12 @@ object TvTools {
     fun launchableApps(): Set<String> = PerfStats.parseLaunchable(sh(PerfStats.LAUNCHABLE_COMMAND))
     fun foregroundApp(): String? = PerfStats.parseForeground(sh(PerfStats.FOREGROUND_COMMAND))
 
+    /** Genel bakış: güç, ekrandaki uygulama, Wi-Fi (açılışta ve "Yenile"de). */
+    fun perfStatus(): PerfStats.Status = PerfStats.parseStatus(sh(PerfStats.STATUS_COMMAND))
+
+    /** Donanım kartı (bağlantı başına bir kez okunur). */
+    fun hardwareRows(ramKb: Long?): List<Pair<String, String>> = PerfStats.hardware(sh(PerfStats.HARDWARE_COMMAND), ramKb)
+
     /** TV'nin kendi "Uygulama bilgisi" ekranı (önbellek temizleme, izinler orada). */
     fun openAppInfo(pkg: String) {
         require(PerfStats.pkgOf(pkg) == pkg) { "Geçersiz paket" }

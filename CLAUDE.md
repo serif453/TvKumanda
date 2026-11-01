@@ -109,6 +109,15 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   **Sıcaklık yok:** v0.106'da saniyede bir tüm thermal_zone'ları okumak Serif'in TV'sini yeniden başlattı (Philips logosu);
   v0.107'de kaldırıldı. Sistem bilgisi'ndeki tek seferlik okuma kaldı. "Son 1 dakika" grafiği
   (işlemci + bellek, 60 ölçüm). Kartlara dokununca "Çalışan uygulamalar" (Bellek/İşlemci sıralı); Sistem'de ayrı kutucuk da var.
+  - **Genel bakış (1 Kasım 2026, Serif'in onayıyla):** pencerenin üstünde sırayla Genel bakış, Sistem yükü,
+    En çok işlemci kullananlar, Ağ, Donanım kartları; altında çekirdek halkaları ve grafik. Eski büyük Bellek kartı ile
+    "İşlemci kullanımı" halkası kaldırıldı (Sistem yükü'ndeki iki küçük halka aynı bilgiyi veriyor). Saniyelik
+    `PerfStats.COMMAND`'a hafifler eklendi: `/proc/uptime`, `df -k /data`, `/proc/net/dev` (wlan+eth bayt sayaçları →
+    indirme/yükleme hızı). ADB gecikmesi = bu komutun süresi. `STATUS_COMMAND` (güç `mWakefulness`, ekrandaki uygulama,
+    `mWifiInfo`, IP) yalnızca açılışta ve "Yenile"de. `HARDWARE_COMMAND` (getprop, cpuinfo, wm, display) bağlantı başına bir
+    kez (`PerfCache.hardware`); RAM satırı bellek kartıyla aynı sayı olsun diye MemTotal'dan. "En çok işlemci kullananlar"
+    3 sn'de bir `ps`. Wi-Fi "Link speed" = **bağlantı kapasitesi (teorik üst sınır)**, gerçek internet hızı değil; hız testi
+    bilerek yok (Serif'in kararı). Gerçek TV'de henüz denenmedi.
   - Ölçüm: tek `ps -A -o PID,RSS,TIME+,NAME` (TIME+ = jiffy; ps bilmiyorsa `/proc/[pid]/stat`) 2 sn'de bir; işlemci tüm
     işlemcinin yüzdesi; süreçler paket adına toplanır. Ağır olanlar **sürekli çalışmaz** (Serif'in kararı, TV'yi yoruyor):
     ekrandaki uygulama (`dumpsys activity activities`) açılışta, durdurma/açmadan sonra ve "Yenile"de; PSS (`dumpsys
@@ -199,7 +208,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 ### Planlanan (Serif'in sırası)
 - **Yol haritası (30 Ekim 2026):** ~2 gün daha özellik → optimizasyon ve genel kontrol (Serif yaptıracak; sağlamlık:
   çökme kalkanı, anlaşılır hata mesajları, tüm araçların tek tek denenmesi) → cila. MKV/TS dönüştürme 1.0 sonrasına.
-- **Sıradaki iş (Serif onayladı, 30 Ekim):** Performans penceresinin en üstüne "Genel bakış" kartı. İçerik: güç (açık/uyku),
+- ~~Sıradaki iş (30 Ekim):~~ **Yapıldı (1 Kasım), Ağ ve Donanım kartlarıyla birlikte; ayrıntı Mimari → Performans'ta.** Eski plan: İçerik: güç (açık/uyku),
   ekrandaki uygulama, ADB gecikmesi (ms; mevcut ölçüm komutunun süresi), açık kalma süresi (`/proc/uptime`), depolama
   çubuğu (`df /data`). "Sistem yükü": mevcut işlemci/bellek kartları + "RAM boşalt" düğmesi (`TvTools.freeRam`) + "En çok
   işlemci kullananlar" ilk 5 (ad, işlemci %, RAM) + "Tümünü gör" → Çalışan uygulamalar. Hafif olanlar (uptime, df, gecikme)

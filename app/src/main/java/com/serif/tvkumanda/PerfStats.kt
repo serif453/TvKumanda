@@ -7,9 +7,13 @@ package com.serif.tvkumanda
 object PerfStats {
 
     /** Bölümler "##X" satırlarıyla ayrılır: S = /proc/stat, M = bellek, C = var olan çekirdekler (ör. "0-3"). */
+    /** U = açık kalma süresi, D = /data doluluğu, N = ağ sayaçları (Genel bakış ve Ağ kartı için; hepsi hafif okumalar). */
     const val COMMAND = "echo '##S'; grep '^cpu' /proc/stat; " +
         "echo '##M'; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; " +
-        "echo '##C'; cat /sys/devices/system/cpu/present 2>/dev/null"
+        "echo '##C'; cat /sys/devices/system/cpu/present 2>/dev/null; " +
+        "echo '##U'; cat /proc/uptime; " +
+        "echo '##D'; df -k /data 2>/dev/null; " +
+        "echo '##N'; grep -E '^ *(wlan|eth)[0-9]+:' /proc/net/dev 2>/dev/null"
     // Sıcaklık bilerek yok: v0.106'da saniyede bir tüm sıcaklık sensörlerini okumak Serif'in Philips TV'sini
     // yeniden başlattı. Ayrıştırıcı ([temperature], "##H" bölümü) yerinde; tekrar eklenecekse tek sensör ve seyrek.
 
@@ -17,10 +21,20 @@ object PerfStats {
     data class Ticks(val total: Long, val idle: Long)
 
     /** Tek ölçüm: [cpu] toplam, [cores] çekirdek numarasına göre (kapalı çekirdek listede olmaz). */
-    data class Sample(val cpu: Ticks?, val cores: Map<Int, Ticks>, val coreCount: Int, val totalKb: Long, val availKb: Long, val tempC: Int? = null)
+    data class Sample(
+        val cpu: Ticks?, val cores: Map<Int, Ticks>, val coreCount: Int, val totalKb: Long, val availKb: Long, val tempC: Int? = null,
+        /** Açık kalma süresi (sn), /data toplam ve dolu (KB), ağdan gelen/giden toplam bayt (wlan + eth). */
+        val uptimeSec: Long? = null, val dataTotalKb: Long? = null, val dataUsedKb: Long? = null,
+        val rxBytes: Long? = null, val txBytes: Long? = null
+    )
 
     /** Ekranda gösterilen değerler; yüzde null = henüz ölçülmedi, [offline] = TV'nin o an kapattığı çekirdekler. */
-    data class View(val cpu: Int?, val cores: List<Int?>, val offline: Set<Int>, val totalKb: Long, val availKb: Long, val tempC: Int? = null) {
+    data class View(
+        val cpu: Int?, val cores: List<Int?>, val offline: Set<Int>, val totalKb: Long, val availKb: Long, val tempC: Int? = null,
+        val uptimeSec: Long? = null, val dataTotalKb: Long? = null, val dataUsedKb: Long? = null,
+        /** Saniyede indirilen / yüklenen bayt; ilk ölçümde null. */
+        val rxRate: Long? = null, val txRate: Long? = null
+    ) {
         val usedKb get() = (totalKb - availKb).coerceAtLeast(0)
         val usedPercent get() = if (totalKb > 0) Math.round(usedKb * 100.0 / totalKb).toInt() else 0
     }
@@ -47,7 +61,45 @@ object PerfStats {
             ?.split(Regex("\\s+"))?.getOrNull(1)?.toLongOrNull() ?: 0
         val present = presentCount(sec["C"]?.firstOrNull())
         val count = maxOf(present, (cores.keys.maxOrNull() ?: -1) + 1)
-        return Sample(cpu, cores, count, kb("MemTotal"), kb("MemAvailable"), temperature(sec["H"]?.firstOrNull()))
+        val uptime = sec["U"]?.firstOrNull()?.split(' ')?.firstOrNull()?.toDoubleOrNull()?.toLong()
+        val df = disk(sec["D"].orEmpty())
+        val net = netBytes(sec["N"].orEmpty())
+        return Sample(cpu, cores, count, kb("MemTotal"), kb("MemAvailable"), temperature(sec["H"]?.firstOrNull()),
+            uptime, df?.first, df?.second, net?.first, net?.second)
+    }
+
+    /** `df -k /data` satırlarından (toplam, dolu) KB; dolu = toplam − boş (sistem payı dahil, Ayarlar'daki gibi). */
+    fun disk(lines: List<String>): Pair<Long, Long>? {
+        // Uzun aygıt adında satır ikiye bölünebilir: sayılar /data ile biten satırda
+        val l = lines.lastOrNull { it.trim().endsWith("/data") } ?: return null
+        val n = l.trim().split(Regex("\\s+")).mapNotNull { it.toLongOrNull() }
+        if (n.size < 3 || n[0] <= 0) return null
+        return n[0] to (n[0] - n[2]).coerceAtLeast(0)
+    }
+
+    /** `/proc/net/dev` satırları ("wlan0: alınan_bayt ... gönderilen_bayt ...") → (alınan, gönderilen) toplamı. */
+    fun netBytes(lines: List<String>): Pair<Long, Long>? {
+        var rx = 0L; var tx = 0L; var any = false
+        for (l in lines) {
+            if (!l.contains(':')) continue
+            val n = l.substringAfter(':').trim().split(Regex("\\s+")).mapNotNull { it.toLongOrNull() }
+            if (n.size < 9) continue
+            rx += n[0]; tx += n[8]; any = true
+        }
+        return if (any) rx to tx else null
+    }
+
+    /** İki sayaç ve aradaki süreden saniyelik hız; sayaç sıfırlandıysa (arayüz yeniden kalktı) null. */
+    fun rate(a: Long?, b: Long?, ms: Long): Long? {
+        if (a == null || b == null || ms <= 0 || b < a) return null
+        return (b - a) * 1000 / ms
+    }
+
+    /** Bayt/sn → "1 KB/sn", "2,4 MB/sn". */
+    fun rateText(bps: Long?): String = when {
+        bps == null -> "—"
+        bps < 1024 * 1024 -> "${Math.round(bps / 1024.0)} KB/sn"
+        else -> String.format(java.util.Locale.forLanguageTag("tr"), "%.1f MB/sn", bps / 1048576.0)
     }
 
     /** `paste` satırı: ilk yarısı bölge adları, ikinci yarısı değerler (milli°C). İşlemci bölgesi seçilir. */
@@ -76,14 +128,125 @@ object PerfStats {
     }
 
     /** İlk ölçümde (önceki yoksa) yüzdeler boş kalır, bellek hemen görünür. */
-    fun view(prev: Sample?, now: Sample): View = View(
+    fun view(prev: Sample?, now: Sample, elapsedMs: Long = 1000): View = View(
         cpu = percent(prev?.cpu, now.cpu),
         cores = (0 until now.coreCount).map { percent(prev?.cores?.get(it), now.cores[it]) },
         offline = (0 until now.coreCount).filter { it !in now.cores }.toSet(),
         totalKb = now.totalKb,
         availKb = now.availKb,
-        tempC = now.tempC
+        tempC = now.tempC,
+        uptimeSec = now.uptimeSec,
+        dataTotalKb = now.dataTotalKb,
+        dataUsedKb = now.dataUsedKb,
+        rxRate = rate(prev?.rxBytes, now.rxBytes, elapsedMs),
+        txRate = rate(prev?.txBytes, now.txBytes, elapsedMs)
     )
+
+    // ---------------- Genel bakış: durum, ağ, donanım ----------------
+
+    /**
+     * Pencere açılınca ve "Yenile"de (saniyede bir değil): W = güç durumu, F = ekrandaki uygulama,
+     * S = Wi-Fi bilgisi, N = IP adresleri.
+     */
+    const val STATUS_COMMAND = "echo '##W'; dumpsys power 2>/dev/null | grep -m1 'mWakefulness='; " +
+        "echo '##F'; dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity'; " +
+        "echo '##S'; dumpsys wifi 2>/dev/null | grep -m1 'mWifiInfo'; " +
+        "echo '##N'; ip -4 -o addr show 2>/dev/null"
+
+    /** Bağlantı başına bir kez: donanım bilgileri değişmez. P = getprop, C = cpuinfo, W = wm, Y = görüntü modu. */
+    const val HARDWARE_COMMAND = "echo '##P'; getprop; echo '##C'; cat /proc/cpuinfo; " +
+        "echo '##W'; wm size; wm density; echo '##Y'; dumpsys display 2>/dev/null | grep -m1 'mBaseDisplayInfo'"
+
+    enum class Power { ON, SLEEP }
+
+    data class Net(
+        val wired: Boolean, val ip: String?, val ssid: String?, val rssi: Int?, val freqMhz: Int?, val linkMbps: Int?
+    )
+
+    data class Status(val power: Power?, val foreground: String?, val net: Net)
+
+    fun parseStatus(out: String): Status {
+        val s = SysInfo.sections(out)
+        val wake = Regex("""mWakefulness=(\w+)""").find(s["W"].orEmpty())?.groupValues?.get(1)
+        val power = when {
+            wake == null -> null
+            wake.equals("Awake", true) -> Power.ON
+            else -> Power.SLEEP // Asleep, Dozing, Dreaming
+        }
+        return Status(power, parseForeground(s["F"].orEmpty()), parseNet(s["S"].orEmpty(), s["N"].orEmpty()))
+    }
+
+    fun parseNet(wifi: String, ipText: String): Net {
+        val lines = ipText.lines().filter { it.contains("inet ") && !it.contains(" lo ") }
+        val line = lines.firstOrNull { it.contains("eth") } ?: lines.firstOrNull { it.contains("wlan") } ?: lines.firstOrNull()
+        val ip = line?.let { Regex("""inet (\d+\.\d+\.\d+\.\d+)""").find(it)?.groupValues?.get(1) }
+        val wired = line?.trim()?.split(Regex("\\s+"))?.getOrNull(1)?.startsWith("eth") == true
+        val ssid = Regex("""SSID: "?([^",]+)"?""").find(wifi)?.groupValues?.get(1)?.trim()
+            ?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+        val rssi = Regex("""RSSI: (-?\d+)""").find(wifi)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in -120..-1 }
+        val freq = Regex("""Frequency: (\d+)""").find(wifi)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+        val link = Regex("""Link speed: (\d+)""").find(wifi)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+        return Net(wired, ip, ssid, rssi, freq, link)
+    }
+
+    /** Ağ kartındaki kısa öneri. */
+    fun advice(n: Net): String {
+        val r = n.rssi
+        return when {
+            n.wired -> "Kablolu bağlantı, en sağlam yol. Yapılacak bir şey yok."
+            r == null -> "Wi-Fi bilgisi okunamadı."
+            r < -75 -> "Sinyal zayıf: modemi TV'ye yaklaştır, araya duvar girmesin ya da kablo kullan."
+            r < -67 -> "Sinyal orta: 4K yayında takılma olursa modemi yaklaştırmak işe yarar."
+            n.freqMhz != null && n.freqMhz < 3000 -> "Sinyal iyi. 5 GHz ağın varsa ona geçmek daha hızlı olur."
+            else -> "Sinyal iyi, yapılacak bir şey yok."
+        }
+    }
+
+    /** Donanım kartı satırları; RAM ayrı verilir ki bellek kartıyla aynı sayı görünsün. */
+    fun hardware(out: String, ramKb: Long?): List<Pair<String, String>> {
+        val s = SysInfo.sections(out)
+        val p = SysInfo.props(s["P"].orEmpty())
+        fun prop(vararg keys: String) = keys.firstNotNullOfOrNull { k -> p[k]?.trim()?.takeIf { it.isNotEmpty() } }
+        val cpu = SysInfo.cpu(s["C"].orEmpty())
+        val rows = ArrayList<Pair<String, String>>()
+        val model = prop("ro.product.model", "ro.product.vendor.model")
+        val brand = prop("ro.product.brand", "ro.product.vendor.brand")?.replaceFirstChar { it.uppercase() }
+        when {
+            model != null && brand != null && !model.contains(brand, true) -> rows += "Cihaz" to "$brand $model"
+            model != null -> rows += "Cihaz" to model
+            brand != null -> rows += "Cihaz" to brand
+        }
+        prop("ro.build.version.release")?.let { r -> rows += "Android" to "$r${prop("ro.build.version.sdk")?.let { " (SDK $it)" }.orEmpty()}" }
+        prop("ro.build.version.security_patch")?.let { rows += "Güvenlik yaması" to it }
+        listOfNotNull(
+            prop("ro.soc.model")?.let { m -> prop("ro.soc.manufacturer")?.let { "$it $m" } ?: m },
+            cpu.hardware, prop("ro.hardware.chipname"), prop("ro.board.platform"), prop("ro.hardware")
+        ).firstOrNull { it.isNotBlank() }?.let { rows += "Yonga" to SysInfo.chipName(it) }
+        prop("ro.product.cpu.abi", "ro.product.cpu.abilist")?.substringBefore(',')?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { rows += "Mimari" to it }
+        when {
+            cpu.cores.isNotEmpty() -> rows += "İşlemci çekirdeği" to cpu.cores
+            cpu.count > 0 -> rows += "İşlemci çekirdeği" to "${cpu.count}"
+        }
+        ramKb?.takeIf { it > 0 }?.let { rows += "RAM" to SysInfo.gb(it) }
+        val wm = s["W"].orEmpty()
+        fun wmPick(what: String): String? {
+            val all = Regex("""(Override|Physical) $what:\s*(\S+)""").findAll(wm).toList()
+            return (all.firstOrNull { it.groupValues[1] == "Override" } ?: all.firstOrNull())?.groupValues?.get(2)
+        }
+        val disp = s["Y"].orEmpty()
+        val curId = Regex("""modeId (\d+)""").find(disp)?.groupValues?.get(1)?.toIntOrNull()
+        val fps = SysInfo.displayModes(disp).firstOrNull { it.id == curId }?.fps
+        wmPick("size")?.let { Regex("""(\d+)x(\d+)""").find(it) }?.let { m ->
+            rows += "Ekran" to "${m.groupValues[1]}×${m.groupValues[2]}" + (fps?.let { " · ${Math.round(it)} Hz" }.orEmpty())
+        }
+        wmPick("density")?.let { rows += "Piksel yoğunluğu" to "$it dpi" }
+        return rows
+    }
+
+    /** "En çok işlemci kullananlar": işlemciye, eşitse belleğe göre ilk [n]. */
+    fun topCpu(apps: List<AppUse>, n: Int = 5): List<AppUse> =
+        apps.sortedWith(compareByDescending<AppUse> { it.cpu ?: -1.0 }.thenByDescending { it.kb }).take(n)
 
     // ---------------- Çalışan uygulamalar ----------------
 

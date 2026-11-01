@@ -15,9 +15,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.DeveloperBoard
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.SettingsEthernet
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -65,6 +76,9 @@ private object PerfCache {
     var snapAt = 0L
     var pss: Map<String, Long>? = null
     var foreground: String? = null
+    /** Genel bakış: son durum okuması (güç, ekrandaki uygulama, Wi-Fi) ve donanım satırları (bağlantı başına bir kez). */
+    var status: PerfStats.Status? = null
+    var hardware: List<Pair<String, String>>? = null
     val cpuHist = ArrayList<Int>()
     val memHist = ArrayList<Int>()
     const val HIST = 60
@@ -73,6 +87,7 @@ private object PerfCache {
         val now = TvTools.adb
         if (owner !== now) {
             owner = now; packages = null; launchable = null; apps = null; snap = null; pss = null; foreground = null
+            status = null; hardware = null
             cpuHist.clear(); memHist.clear()
         }
     }
@@ -98,7 +113,7 @@ private object PerfCache {
     fun push(h: ArrayList<Int>, v: Int) { h.add(v); while (h.size > HIST) h.removeAt(0) }
 }
 
-/** Performans: bellek kartı + işlemci halkaları; kartlara dokununca çalışan uygulamalar. */
+/** Performans: genel bakış, sistem yükü, en çok işlemci kullananlar, ağ, donanım, çekirdekler; halkalara dokununca çalışan uygulamalar. */
 @Composable
 internal fun PerformanceTool() {
     // Liste açıkken de son değerler korunur; geri dönünce boş ekran görünmez
@@ -118,26 +133,40 @@ internal fun RunningAppsTool() {
 
 @Composable
 private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Unit, onOpen: (AppSort) -> Unit) {
+    val run = rememberRunner()
     var error by remember { mutableStateOf<String?>(null) }
     var hist by remember { mutableIntStateOf(0) } // grafiği yeniden çizdirmek için sayaç
-    LaunchedEffect(Unit) { PerfCache.prewarm() }
+    var latency by remember { mutableStateOf<Long?>(null) }
+    var status by remember { mutableStateOf(PerfCache.status) }
+    var statusTick by remember { mutableIntStateOf(0) }
+    var statusBusy by remember { mutableStateOf(false) }
+    var hardware by remember { mutableStateOf(PerfCache.hardware) }
+    var packages by remember { mutableStateOf(PerfCache.packages) }
+    var top by remember { mutableStateOf(PerfCache.apps?.let { PerfStats.topCpu(it) }) }
+    var ramBusy by remember { mutableStateOf(false) }
+    var ramResult by remember { mutableStateOf<ToolResult?>(null) }
+    LaunchedEffect(Unit) { PerfCache.prewarm(); packages = PerfCache.packages }
     LaunchedEffect(Unit) {
         // Pencere kapanınca ya da liste açılınca bu döngü de kendiliğinden durur
         PerfCache.check()
         var prev: PerfStats.Sample? = null
+        var prevAt = 0L
         while (true) {
+            val t0 = SystemClock.elapsedRealtime()
             val r = io { TvTools.perfSample() }
+            val t1 = SystemClock.elapsedRealtime()
             r.onSuccess { s ->
-                val v = PerfStats.view(prev, s)
+                latency = t1 - t0
+                val v = PerfStats.view(prev, s, t1 - prevAt)
                 // Geri dönüşte ilk ölçümün boş yüzdeleri eski değerleri silmesin
                 if (prev != null || view == null || view.cores.size != v.cores.size) setView(v)
-                else setView(v.copy(cpu = view.cpu, cores = view.cores))
+                else setView(v.copy(cpu = view.cpu, cores = view.cores, rxRate = view.rxRate, txRate = view.txRate))
                 v.cpu?.let { PerfCache.push(PerfCache.cpuHist, it) }
                 if (prev != null) PerfCache.push(PerfCache.memHist, v.usedPercent)
                 hist++
                 error = null
                 val first = prev == null
-                prev = s
+                prev = s; prevAt = t1
                 delay(if (first) 400 else 1000)
             }.onFailure {
                 error = errorText(it)
@@ -145,28 +174,161 @@ private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Uni
             }
         }
     }
+    // Güç, ekrandaki uygulama ve Wi-Fi: saniyede bir değil, açılışta ve "Yenile"de (TV'yi yormasın)
+    LaunchedEffect(statusTick) {
+        PerfCache.check()
+        statusBusy = true
+        io { TvTools.perfStatus() }.onSuccess { status = it; PerfCache.status = it; PerfCache.foreground = it.foreground }
+        statusBusy = false
+    }
+    // En çok işlemci kullananlar: 3 sn'de bir süreç ölçümü (Çalışan uygulamalar'daki 2 sn'den seyrek)
+    LaunchedEffect(Unit) {
+        var prevSnap = PerfCache.freshSnap()
+        if (prevSnap != null) delay(1500)
+        while (true) {
+            io { TvTools.procSnap() }.onSuccess { snap ->
+                val list = PerfStats.apps(prevSnap, snap, PerfCache.pss)
+                if (prevSnap != null || top == null) top = PerfStats.topCpu(list)
+                PerfCache.store(snap, list)
+                prevSnap = snap
+            }
+            delay(3000)
+        }
+    }
     val v = view
+    // Donanım değişmez: bağlantı başına bir kez, RAM bellek kartıyla aynı sayı olsun diye ilk ölçümden sonra
+    LaunchedEffect(v != null) {
+        if (v == null || PerfCache.hardware != null) return@LaunchedEffect
+        io { TvTools.hardwareRows(v.totalKb) }.onSuccess { hardware = it; PerfCache.hardware = it }
+    }
     when {
         v == null && error != null -> ResultLine(ToolResult(false, error!!))
         v == null -> Loading("TV'den ölçülüyor…")
         else -> {
             val maxH = (LocalConfiguration.current.screenHeightDp * 0.72f).dp
+            fun label(pkg: String) = packages?.get(pkg)?.label ?: appName(pkg)
             Column(Modifier.heightIn(max = maxH).verticalScroll(rememberScrollState())) {
-                MemoryCard(v) { onOpen(AppSort.RAM) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Durum, ağ ve uygulama bilgisi açılışta okunur", color = Pal.Sub, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    SortChip(if (statusBusy) "Okunuyor…" else "Yenile", false) { if (!statusBusy) statusTick++ }
+                }
                 Spacer(Modifier.height(12.dp))
-                data class RingItem(val label: String, val text: String, val f: Float, val dim: Boolean, val icon: ImageVector, val sort: AppSort)
-                fun pct(p: Int?) = if (p == null) "—" else "%$p"
-                val cards = buildList {
-                    add(RingItem("İşlemci kullanımı", pct(v.cpu), (v.cpu ?: 0) / 100f, false, Icons.Outlined.Memory, AppSort.CPU))
-                    v.cores.forEachIndexed { i, p ->
-                        val off = i in v.offline
-                        add(RingItem("Çekirdek ${i + 1}", if (off) "Kapalı" else pct(p), (p ?: 0) / 100f, off, Icons.Outlined.Memory, AppSort.CPU))
+
+                // Genel bakış
+                PerfCard(Modifier.fillMaxWidth(), null) {
+                    CardTitle(Icons.Outlined.Dashboard, "Genel bakış", Pal.Blue)
+                    val st = status
+                    InfoRow(Icons.Outlined.PowerSettingsNew, "Güç", when (st?.power) {
+                        PerfStats.Power.ON -> "Açık"; PerfStats.Power.SLEEP -> "Uykuda"; null -> if (st == null) "…" else "—"
+                    }, when (st?.power) { PerfStats.Power.ON -> Pal.Green; PerfStats.Power.SLEEP -> Pal.Amber; null -> Pal.Text })
+                    InfoRow(Icons.Outlined.Tv, "Ekranda", st?.foreground?.let { label(it) } ?: if (st == null) "…" else "—")
+                    InfoRow(Icons.Outlined.Bolt, "ADB gecikmesi", latency?.let { "$it ms" } ?: "—")
+                    v.uptimeSec?.let { InfoRow(Icons.Outlined.Schedule, "Açık kalma süresi", SysInfo.duration(it)) }
+                    val dt = v.dataTotalKb; val du = v.dataUsedKb
+                    if (dt != null && du != null && dt > 0) {
+                        InfoRow(Icons.Outlined.Storage, "Depolama", "${SysInfo.gb(du)} / ${SysInfo.gb(dt)}")
+                        Spacer(Modifier.height(6.dp))
+                        SplitBar((du.toFloat() / dt).coerceIn(0f, 1f))
                     }
                 }
-                cards.chunked(2).forEach { row ->
+                Spacer(Modifier.height(12.dp))
+
+                // Sistem yükü: işlemci + bellek halkası, RAM boşalt
+                PerfCard(Modifier.fillMaxWidth(), null) {
+                    CardTitle(Icons.Outlined.Speed, "Sistem yükü", Pal.Purple)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val active = v.cores.indices.count { it !in v.offline }
+                        MiniRing("İşlemci", v.cpu?.let { "%$it" } ?: "—", (v.cpu ?: 0) / 100f,
+                            "$active çekirdek açık", Modifier.weight(1f)) { onOpen(AppSort.CPU) }
+                        MiniRing("Bellek", "%${v.usedPercent}", v.usedPercent / 100f,
+                            "${SysInfo.mb(v.usedKb)} / ${SysInfo.mb(v.totalKb)}", Modifier.weight(1f)) { onOpen(AppSort.RAM) }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    SecondaryButton(if (ramBusy) "Boşaltılıyor…" else "RAM boşalt", Modifier.fillMaxWidth(), enabled = !ramBusy) {
+                        ramBusy = true; ramResult = null
+                        run {
+                            io { TvTools.freeRam() }
+                                .onSuccess { (_, freed) ->
+                                    ramResult = ToolResult(true, if (freed > 0) "${TvTools.mb(freed)} boşaldı" else "Zaten boştu, boşaltılacak bir şey yoktu")
+                                }
+                                .onFailure { ramResult = ToolResult(false, errorText(it)) }
+                            ramBusy = false
+                        }
+                    }
+                    ResultLine(ramResult)
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // En çok işlemci kullananlar
+                PerfCard(Modifier.fillMaxWidth(), null) {
+                    Text("En çok işlemci kullananlar", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    val list = top
+                    when {
+                        list == null -> Text("Ölçülüyor…", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                        list.isEmpty() -> Text("Çalışan uygulama yok.", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                        else -> list.forEachIndexed { i, a ->
+                            if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Pal.Pad))
+                            Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label(a.pkg), color = Pal.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(8.dp))
+                                val cpu = a.cpu?.let { "%" + String.format(java.util.Locale.forLanguageTag("tr"), "%.1f", it) } ?: "—"
+                                Text("$cpu · ${SysInfo.mb(a.kb)}", color = Pal.Sub, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpen(AppSort.CPU) }.padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Tümünü gör", color = Pal.Blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Blue, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // Ağ
+                PerfCard(Modifier.fillMaxWidth(), null) {
+                    val n = status?.net
+                    CardTitle(if (n?.wired == true) Icons.Outlined.SettingsEthernet else Icons.Outlined.Wifi, "Ağ", Pal.Green)
+                    KvRow("Şu an indirme", PerfStats.rateText(v.rxRate))
+                    KvRow("Şu an yükleme", PerfStats.rateText(v.txRate))
+                    when {
+                        n == null -> KvRow("Bağlantı", "…")
+                        n.wired -> KvRow("Bağlantı", "Kablolu (Ethernet)")
+                        else -> {
+                            KvRow("Wi-Fi", n.ssid ?: "—")
+                            n.rssi?.let { r ->
+                                KvRow("Sinyal", "$r dBm · ${SysInfo.rssiQuality(r)}",
+                                    if (r >= -67) Pal.Green else if (r >= -75) Pal.Amber else Pal.Red)
+                            }
+                            n.linkMbps?.let { KvRow("Bağlantı kapasitesi", "$it Mbps", note = "teorik üst sınır") }
+                            n.freqMhz?.let { KvRow("Bant", "${SysInfo.band(it)} · $it MHz") }
+                        }
+                    }
+                    n?.ip?.let { KvRow("IP adresi", it) }
+                    n?.let { KvRow("Öneri", PerfStats.advice(it)) }
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // Donanım
+                PerfCard(Modifier.fillMaxWidth(), null) {
+                    CardTitle(Icons.Outlined.DeveloperBoard, "Donanım", Pal.Purple)
+                    val hw = hardware
+                    if (hw == null) Text("Okunuyor…", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                    else hw.forEach { (k, value) -> KvRow(k, value) }
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // Çekirdekler (toplam işlemci ve bellek yukarıdaki Sistem yükü kartında)
+                v.cores.indices.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { c ->
-                            RingCard(c.label, c.text, c.f, c.dim, c.icon, null, Modifier.weight(1f)) { onOpen(c.sort) }
+                        row.forEach { i ->
+                            val off = i in v.offline
+                            val p = v.cores[i]
+                            RingCard("Çekirdek ${i + 1}", if (off) "Kapalı" else p?.let { "%$it" } ?: "—", (p ?: 0) / 100f, off,
+                                Icons.Outlined.Memory, null, Modifier.weight(1f)) { onOpen(AppSort.CPU) }
                         }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
@@ -174,10 +336,64 @@ private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Uni
                 }
                 key(hist) { HistoryCard() }
                 Spacer(Modifier.height(10.dp))
-                Text("Kartlara dokun: çalışan uygulamalar", color = Pal.Sub, fontSize = 12.sp,
+                Text("Halkalara dokun: çalışan uygulamalar", color = Pal.Sub, fontSize = 12.sp,
                     modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 error?.let { ResultLine(ToolResult(false, it)) }
             }
+        }
+    }
+}
+
+@Composable
+private fun CardTitle(icon: ImageVector, text: String, tint: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = Pal.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+/** Simgeli satır: solda ad, sağda değer. */
+@Composable
+private fun InfoRow(icon: ImageVector, label: String, value: String, valueColor: Color = Pal.Text) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = Pal.Sub, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = Pal.Sub, fontSize = 14.sp)
+        Spacer(Modifier.width(12.dp))
+        Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.End,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Simgesiz satır (Ağ ve Donanım kartları); uzun değer sağa yaslı alt satıra kayar, [note] gri ek. */
+@Composable
+private fun KvRow(label: String, value: String, valueColor: Color = Pal.Text, note: String? = null) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(label, color = Pal.Sub, fontSize = 14.sp)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+            Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+            note?.let { Text(it, color = Pal.Sub, fontSize = 11.sp, textAlign = TextAlign.End) }
+        }
+    }
+}
+
+/** Sistem yükü kartındaki küçük halka: solda halka, sağda ad ve ayrıntı. */
+@Composable
+private fun MiniRing(label: String, text: String, f: Float, detail: String, modifier: Modifier, onClick: () -> Unit) {
+    val anim by animateFloatAsState(f.coerceIn(0f, 1f), tween(600), label = "mini")
+    Row(modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+            Ring(anim, accent(anim), Modifier.fillMaxSize(), stroke = 6.dp)
+            Text(text, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(detail, color = Pal.Sub, fontSize = 11.sp, maxLines = 2)
         }
     }
 }
@@ -439,30 +655,6 @@ private fun PerfCard(modifier: Modifier = Modifier, onClick: (() -> Unit)?, cont
     )
 }
 
-@Composable
-private fun MemoryCard(v: PerfStats.View, onClick: () -> Unit) {
-    val f = if (v.totalKb > 0) (v.usedKb.toFloat() / v.totalKb).coerceIn(0f, 1f) else 0f
-    val anim by animateFloatAsState(f, tween(600), label = "ram")
-    PerfCard(Modifier.fillMaxWidth(), onClick) {
-        Text("Bellek", color = Pal.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(10.dp))
-        val free = 100 - v.usedPercent
-        MemLine("Kullanılan", "${SysInfo.mb(v.usedKb)} (%${v.usedPercent})")
-        MemLine("Boş", "${SysInfo.mb(v.availKb)} (%$free)")
-        MemLine("Toplam", SysInfo.mb(v.totalKb))
-        Spacer(Modifier.height(14.dp))
-        SplitBar(anim)
-    }
-}
-
-@Composable
-private fun MemLine(k: String, value: String) {
-    Row(Modifier.padding(vertical = 2.dp)) {
-        Text(k, color = Pal.Sub, fontSize = 14.sp, modifier = Modifier.width(92.dp))
-        Text(value, color = Pal.Text, fontSize = 14.sp)
-    }
-}
-
 /** Dolu kısım ve boş kısım arasında küçük boşluk; boşun ucunda bitiş noktası. */
 @Composable
 private fun SplitBar(f: Float) {
@@ -500,9 +692,9 @@ private fun RingCard(label: String, text: String, f: Float, dim: Boolean, icon: 
 
 /** Saat 12'den başlayan halka: dolu yay + aralıklı boş yay (ekran görüntüsündeki gibi). */
 @Composable
-private fun Ring(f: Float, color: Color, modifier: Modifier) {
+private fun Ring(f: Float, color: Color, modifier: Modifier, stroke: androidx.compose.ui.unit.Dp = 9.dp) {
     Canvas(modifier.padding(4.dp)) {
-        val w = 9.dp.toPx()
+        val w = stroke.toPx()
         val d = size.minDimension - w
         val tl = Offset((size.width - d) / 2, (size.height - d) / 2)
         val sz = Size(d, d)
