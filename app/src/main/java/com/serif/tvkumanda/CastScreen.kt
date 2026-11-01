@@ -514,7 +514,7 @@ private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit)
     val others = cc.devices.filter { it.ip != cc.tvIp }
     Box {
         Row(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true; if (others.isEmpty()) onSearch() }
+            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true }
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -535,12 +535,6 @@ private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit)
                 },
                 onClick = { open = false; onPick(null) }
             )
-            if (others.isEmpty() && !cc.searching) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Ağda başka Chromecast cihazı yok", color = Pal.Sub) },
-                    onClick = {}, enabled = false
-                )
-            }
             for (d in others) {
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text((if (d.ip == cc.selected?.ip) "✓ " else "") + d.name + "  ·  " + d.ip) },

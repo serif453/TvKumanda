@@ -161,7 +161,8 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
 - Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
 - Chromecast alıcısı (`CcUi`, `CcPicker`, `MainActivity.searchCc/pickCc/ccTargetIp`): varsayılan bağlı TV; ağdaki
   `_googlecast` cihazlarından biri seçilebilir (TV bağlantısı gerekmez, uyandırma yalnızca bağlı TV'de). Seçim adıyla
-  hatırlanır (`cc_cihaz`). Arama 20 sn sürer, sonra durur (pil); "Yeniden ara" yeniler. Serif'in ağında başka
+  hatırlanır (`cc_cihaz`). Seçiciyi açmak arama başlatmaz; "Yeniden ara" elle arar (Serif'in isteği). Sekme açılınca
+  yalnızca hiç hedef yoksa ya da hatırlanan cihazın adresi bulunacaksa aranır. Arama 20 sn sürer, sonra durur (pil). Serif'in ağında başka
   Chromecast yok; başka cihazda denenmedi.
 
 ### Testler

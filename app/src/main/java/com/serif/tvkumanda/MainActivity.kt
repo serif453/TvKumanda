@@ -955,7 +955,10 @@ class MainActivity : ComponentActivity() {
     /** Cast sekmesi açılınca: TV'nin Chromecast'ine görünmeden bağlanır (TV ekranı değişmez). */
     private fun castWarmup() {
         if (!dlnaSearchedOnce) searchDlna(force = false)
-        searchCc(force = false)
+        // Gönderilecek cihaz zaten varsa aranmaz; yalnızca hiçbir hedef yokken ya da daha önce
+        // seçilen başka Chromecast'in adresi bulunacaksa kendiliğinden aranır ("Yeniden ara" her zaman elle arar)
+        val needCc = ccTargetIp().isBlank() || (ccUi.selected == null && prefs.getString("cc_cihaz", null) != null)
+        if (needCc) searchCc(force = false)
         val ip = ccTargetIp()
         if (ip.isBlank()) return
         // Başka cihaza yayın sürüyorsa bağlantısı bozulmasın
