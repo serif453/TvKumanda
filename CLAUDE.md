@@ -163,8 +163,13 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
     klasörleri). Yalnızca TV dosyaları (elle liste), Broadlink/ESPHome/Pronto → süre; NEC/Samsung32/RC5/RC6 çözülebilenler P,
     kalanlar W (38 kHz). Setler markanın sonuna, yeni markalar dosya sonuna. "off" = power, farklıysa "on" → `x:Aç`; kaynaklar
     `x:HDMI…`. 14 set, 6 yeni marka (Xiaomi, Kivi, Noblex, OKI, TurboX, Andersson). Lisans metni `assets/ir/SMARTIR-LICENSE.txt`.
-  - Lisans: probonopd/irdb APK'ya gömülmez (lisansı GPL ile çelişen ek şart koyuyor: ürün kopyası verme). İleride "Çevrimiçi kod
-    ara" ile ağdan okunabilir (lisansı izin veriyor; önce irdb'ye issue ile bildirim, uygulamada not). Serif şimdilik bekletti.
+  - **irdb çevrimiçi** (`IrdbCodes` saf, `IrOnline.kt`: `IrdbOnline` + `IrdbPicker`): irdb **APK'ya gömülmez** (lisansı GPL ile
+    çelişen ek şart koyuyor: ürün kopyası verme; ağdan erişime izin veriyor). Kullanıcı isteyince raw.githubusercontent.com'dan
+    `index` (≈3200 dosya, 648 marka) ve markanın CSV'leri (en fazla 40 cihaz, TV adlılar önce, 4'ü aynı anda) iner. Aynı cihazın
+    dosyaları birleşir. Biçimler: NEC1/NEC2/NEC1-f16, NECx, RC5, RC6, Sony12/15/20, Pioneer, Panasonic, JVC, Sharp, Denon,
+    Mitsubishi (son beşi ham sinyal olarak kurulur; Panasonic Flipper'ın Kaseikyo'suyla birebir test edildi). Kalanlar (MCE, Aiwa,
+    kablo/uydu biçimleri) atlanır. Lisans şartları: Serif 1 Kasım 2026'da irdb'de issue açtı; `IrdbCodes.NOTICE` listede ve
+    README'de. **irdb verisi repoya da konmaz** (testler uydurma satırlarla).
 
 ### Cast
 - Chromecast: `CastClient.kt` (Cast v2, Default Media Receiver `CC1AD845`), dosyalar `MediaServer.kt` (rastgele
@@ -180,7 +185,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   Chromecast yok; başka cihazda denenmedi.
 
 ### Testler
-`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest` (kodlayıcı, aileler, güç taraması, .ir dosyası).
+`app/src/test`: protokol (`AtvProtocolTest`, `CastProtocolTest`), DLNA, altyazı, ağ ve test araçları (`NetToolsTest`). Saf (Android'siz) kod test edilir. Canlı yayın paketleyicisi, sunucu ve ekran kaydı mantığı: `LiveTsTest`, `ScreenRecTest`. Sistem bilgisi: `SysInfoTest`. Performans: `PerfStatsTest`. IR: `IrCodecTest` (kodlayıcı, aileler, güç taraması, .ir dosyası, irdb biçimleri).
 
 ## Bilinen kısıtlar
 

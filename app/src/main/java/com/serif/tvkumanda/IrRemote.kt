@@ -193,6 +193,7 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
     var setIndex by remember { mutableIntStateOf(0) }
     var pending by remember { mutableStateOf<IrPending?>(null) }
     var scanning by remember { mutableStateOf(false) }
+    var online by remember { mutableStateOf(false) }
     var exhausted by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf<String?>(null) }
     var fileError by remember { mutableStateOf<String?>(null) }
@@ -236,12 +237,14 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
             p != null -> pending = null
             scanning -> scanning = false
             b != null -> { brand = null; exhausted = false; sent = null }
+            online -> online = false
             else -> onClose()
         }
     }
     val subtitle = when {
         p != null -> "Son adım: adını ver"
         scanning -> "Markamı bilmiyorum"
+        b == null && online -> "Çevrimiçi kod ara (irdb)"
         b == null -> "1. Markanı seç"
         else -> "2. Kodu dene · ${b.name}"
     }
@@ -257,9 +260,11 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
             scanning -> PowerScan(brands!!) { cand ->
                 pending = IrPending(cand.brand, 0, cand.set.keys, "Güç kodu ${cand.brand} kumandasından. Diğer tuşlar da aynı kumandadan gelir.")
             }
+            b == null && online -> IrdbPicker { brand = it; setIndex = 0; exhausted = false; sent = null }
             b == null -> BrandPicker(
                 brands!!, fileError,
                 onScan = { fileError = null; scanning = true },
+                onOnline = { fileError = null; online = true },
                 onFile = { fileError = null; runCatching { importer.launch(arrayOf("*/*")) }.onFailure { fileError = "Dosya seçici açılamadı." } }
             ) { brand = it; setIndex = 0; exhausted = false; sent = null; fileError = null }
             else -> {
@@ -274,6 +279,9 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
                     Text("Kod seti ${setIndex + 1} / ${b.sets.size}", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     set.source?.let {
                         Text("$it kumandasından · aynı fabrikanın markası", color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                    set.device?.let {
+                        Text("irdb · $it", color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -293,14 +301,19 @@ private fun IrAddPage(onClose: () -> Unit, onSaved: (String) -> Unit) {
                         Text("Bu markanın kodlarından hiçbiri tutmadıysa \"Markamı bilmiyorum\" taramasını dene; TV'ler çoğu zaman başka markanın kumanda dilini kullanır.",
                             color = Pal.Amber, fontSize = 13.sp)
                         Spacer(Modifier.height(10.dp))
-                        MainButton("Markamı bilmiyorum, tara") { brand = null; exhausted = false; sent = null; scanning = true }
+                        MainButton("Markamı bilmiyorum, tara") { brand = null; online = false; exhausted = false; sent = null; scanning = true }
+                        if (!online) {
+                            Spacer(Modifier.height(10.dp))
+                            SecondaryButton("Çevrimiçi kod ara (irdb)", Modifier.fillMaxWidth()) { brand = null; online = true; exhausted = false; sent = null }
+                        }
                         Spacer(Modifier.height(10.dp))
-                        SecondaryButton("Başka marka seç", Modifier.fillMaxWidth()) { brand = null; exhausted = false; sent = null }
+                        SecondaryButton("Başka marka seç", Modifier.fillMaxWidth()) { brand = null; online = false; exhausted = false; sent = null }
                         Spacer(Modifier.height(10.dp))
                         SecondaryButton("Baştan dene", Modifier.fillMaxWidth()) { setIndex = 0; exhausted = false; sent = null }
                     } else {
                         MainButton("Çalıştı") {
-                            val note = "${b.name} · kod seti ${setIndex + 1}" + (set.source?.let { " ($it kumandası)" } ?: "")
+                            val note = "${b.name} · kod seti ${setIndex + 1}" + (set.source?.let { " ($it kumandası)" } ?: "") +
+                                (set.device?.let { " · irdb: $it" } ?: "")
                             pending = IrPending(b.name, setIndex, set.keys, note)
                         }
                         Spacer(Modifier.height(10.dp))
@@ -432,7 +445,7 @@ private fun TryButton(text: String, icon: ImageVector, modifier: Modifier, onCli
 
 @Composable
 private fun BrandPicker(
-    brands: List<IrDb.Brand>, fileError: String?, onScan: () -> Unit, onFile: () -> Unit, onPick: (IrDb.Brand) -> Unit
+    brands: List<IrDb.Brand>, fileError: String?, onScan: () -> Unit, onOnline: () -> Unit, onFile: () -> Unit, onPick: (IrDb.Brand) -> Unit
 ) {
     var q by remember { mutableStateOf("") }
     OutlinedTextField(
@@ -452,14 +465,17 @@ private fun BrandPicker(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
         if (query.isEmpty()) {
             item(key = "_tara") { OptionRow(Icons.Filled.Search, "Markamı bilmiyorum", "Tüm güç kodlarını sırayla dener", onScan) }
+            item(key = "_irdb") { OptionRow(Icons.Filled.CloudDownload, "Çevrimiçi kod ara", "irdb: 600'den fazla marka, internetten indirilir", onOnline) }
             item(key = "_dosya") { OptionRow(Icons.Outlined.FileOpen, "Dosyadan ekle", "Flipper Zero kumanda dosyası (.ir)", onFile) }
             if (fileError != null) item(key = "_hata") { ResultLine(ToolResult(false, fileError)) }
         }
         if (list.isEmpty()) item {
             Column(Modifier.padding(vertical = 8.dp)) {
-                Text("Bu marka listede yok. \"Markamı bilmiyorum\" taraması TV'nin kullandığı kodu bulabilir.",
+                Text("Bu marka listede yok. Çevrimiçi kod aramada (irdb) olabilir; \"Markamı bilmiyorum\" taraması da TV'nin kullandığı kodu bulabilir.",
                     color = Navy.Sub, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
+                SecondaryButton("Çevrimiçi kod ara", Modifier.fillMaxWidth(), onClick = onOnline)
+                Spacer(Modifier.height(8.dp))
                 SecondaryButton("Markamı bilmiyorum, tara", Modifier.fillMaxWidth(), onClick = onScan)
             }
         }

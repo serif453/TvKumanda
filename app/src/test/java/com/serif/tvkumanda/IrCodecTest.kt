@@ -217,6 +217,70 @@ class IrCodecTest {
         assertTrue(IrDb.parseFlipper("bozuk dosya").keys.isEmpty())
     }
 
+    @Test fun irdbDizini() {
+        val idx = IrdbCodes.parseIndex("""
+            codes/Philips/CD-R/20,-1.csv
+            codes/Philips/Unknown_TV/0,-1.csv
+            codes/Philips/Unknown_TV/5,-1.csv
+            codes/One For All/Unknown_control/0,-1.csv
+            bozuk satır
+        """.trimIndent())
+        assertEquals(listOf("One For All", "Philips"), idx.map { it.name })
+        val ph = idx[1]
+        assertEquals(listOf("Unknown_TV", "CD-R"), ph.devices.map { it.name }) // TV önce
+        assertEquals("TV", ph.devices[0].label)
+        assertEquals(2, ph.devices[0].paths.size) // aynı kumandanın iki dosyası tek cihaz
+        assertEquals(IrdbCodes.BASE + "codes/One%20For%20All/Unknown_control/0%2C-1.csv", IrdbCodes.url(idx[0].devices[0].paths[0]))
+        val m = IrdbCodes.merge(listOf(IrdbCodes.parseCsv("KEY_POWER,RC5,0,-1,12"), IrdbCodes.parseCsv("KEY_POWER,RC5,5,-1,1\nKEY_MUTE,RC5,5,-1,13")))
+        assertEquals("P,RC5,0,C", m.keys["power"]); assertEquals("P,RC5,5,D", m.keys["mute"])
+    }
+
+    @Test fun irdbBicimleri() {
+        // Bilinen kodlarla: LG güç (NEC1 4/8), Samsung güç (NECx2 7/2), Philips (RC5 0/12)
+        assertEquals("P,NEC,4,8", IrdbCodes.code("NEC1", 4, -1, 8))
+        assertEquals("P,NEC,4,8", IrdbCodes.code("NEC1", 4, 0xFB, 8))
+        assertEquals("P,NECext,7D02,EF10", IrdbCodes.code("NEC1", 2, 0x7D, 0x10))
+        assertEquals("P,Samsung32,7,2", IrdbCodes.code("NECx2", 7, 7, 2))
+        assertEquals("P,RC5,0,C", IrdbCodes.code("RC5", 0, -1, 12))
+        assertEquals("P,RC5X,0,5", IrdbCodes.code("RC5", 0, -1, 69))
+        assertEquals("P,SIRC,1,15", IrdbCodes.code("Sony12", 1, -1, 21))
+        assertEquals("P,NECext,FB04,1234", IrdbCodes.code("NEC1-f16", 4, -1, 0x1234))
+        assertNull(IrdbCodes.code("Bilinmez", 1, -1, 1))
+        assertNull(IrdbCodes.code("RC5", 40, -1, 1))
+        // Panasonic: Flipper veritabanındaki Panasonic güç koduyla (Kaseikyo) aynı sinyal çıkmalı
+        val pana = IrdbCodes.code("Panasonic", 128, 0, 61)!!
+        assertArrayEquals(sig("P,Kaseikyo,200280,3D0").pattern, sig(pana).pattern)
+        // JVC, Sharp, Denon, Mitsubishi: geçerli, 2 sn'den kısa ham sinyal
+        for ((p, d, f) in listOf(Triple("JVC", 3, 23), Triple("Sharp", 1, 22), Triple("Denon", 2, 30), Triple("Mitsubishi", 1, 2))) {
+            val s = sig(IrdbCodes.code(p, d, -1, f)!!)
+            assertTrue(p, s.pattern.size % 2 == 1 && s.pattern.all { it > 0 } && s.pattern.sum() < 2_000_000)
+        }
+        val sharp = sig(IrdbCodes.code("Sharp", 1, -1, 22)!!).pattern
+        assertEquals(2 * (15 * 2 + 1) + 1, sharp.size) // iki yarım çerçeve (15 bit + bitiş işareti) ve aradaki boşluk
+    }
+
+    @Test fun irdbCsv() {
+        val r = IrdbCodes.parseCsv("""
+            functionname,protocol,device,subdevice,function
+            KEY_POWER,NEC1,4,-1,8
+            KEY_VOLUMEUP,NEC1,4,-1,2
+            VOL_m,NEC1,4,-1,3
+            KEY_CHANNELUP,NEC1,4,-1,0
+            KEY_0,NEC1,4,-1,16
+            KEY_AUX,NEC1,4,-1,90
+            KEY_X,Zenith,1,-1,1
+        """.trimIndent())
+        assertEquals("P,NEC,4,8", r.keys["power"])
+        assertEquals("P,NEC,4,2", r.keys["vol_up"])
+        assertEquals("P,NEC,4,3", r.keys["vol_dn"])
+        assertEquals("P,NEC,4,0", r.keys["ch_up"])
+        assertEquals("P,NEC,4,10", r.keys["0"])
+        assertEquals("P,NEC,4,5A", r.keys["${IrDb.EXTRA}AUX"])
+        assertEquals(1, r.skipped)
+        // Güç yoksa "OFF" güç sayılır
+        assertEquals("P,RC5,0,C", IrdbCodes.parseCsv("OFF,RC5,0,-1,12\nKEY_MUTE,RC5,0,-1,13").keys["power"])
+    }
+
     @Test fun gercekVeritabani() {
         val f = listOf("src/main/assets/ir/tv.txt", "app/src/main/assets/ir/tv.txt").map { java.io.File(it) }.firstOrNull { it.exists() }
         assertNotNull("tv.txt bulunamadı", f)

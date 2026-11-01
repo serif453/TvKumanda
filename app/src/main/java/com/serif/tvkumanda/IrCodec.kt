@@ -187,8 +187,9 @@ object IrDb {
     /**
      * Bir markanın kod seti: [remotes] kaç kumandadan birleştiği (çok olan önce denenir).
      * [source] null değilse set aynı fabrikadan çıkan başka bir markadan gelir (bkz. [FAMILIES]).
+     * [device] çevrimiçi (irdb) setin cihaz adı.
      */
-    class CodeSet(val remotes: Int, val keys: Map<String, String>, val source: String? = null)
+    class CodeSet(val remotes: Int, val keys: Map<String, String>, val source: String? = null, val device: String? = null)
     class Brand(val name: String, val sets: List<CodeSet>) {
         /** Markanın kendi kodu yok, yalnızca aile kodları var. */
         val familyOnly get() = sets.isNotEmpty() && sets.all { it.source != null }
@@ -207,7 +208,7 @@ object IrDb {
         listOf("Arçelik", "Beko", "Grundig", "Altus")
     )
 
-    private fun signature(s: CodeSet) = s.keys["power"] to (s.keys["vol_up"] ?: s.keys["mute"] ?: s.keys["up"])
+    internal fun signature(s: CodeSet) = s.keys["power"] to (s.keys["vol_up"] ?: s.keys["mute"] ?: s.keys["up"])
 
     /** Her markaya ailesinin kodlarını ekler; kodu olmayan aile markalarını da listeye katar. */
     fun withFamilies(brands: List<Brand>): List<Brand> {
@@ -254,7 +255,7 @@ object IrDb {
     // ---------------- Flipper .ir dosyası ----------------
 
     /** Flipper tuş adı → uygulamanın ortak adı (tools/ir_db_build.py ile aynı liste). */
-    private val aliases: Map<String, String> = buildMap {
+    internal val aliases: Map<String, String> = buildMap {
         fun a(to: String, vararg from: String) { for (f in from) put(f, to) }
         a("power", "power", "on_off", "standby", "power_toggle")
         a("vol_up", "vol_up", "vol+", "volume_up", "plus")
@@ -367,4 +368,164 @@ object IrDb {
 
     /** Deneme tuşu: sesi aç (TV'yi kapatmaz, tepkisi hemen görülür); yoksa sessiz, kanal, yön. */
     fun testKey(set: CodeSet): String? = listOf("vol_up", "mute", "ch_up", "up", "power").firstOrNull { it in set.keys }
+}
+
+/**
+ * irdb (github.com/probonopd/irdb): APK'ya gömülmez, kullanıcı isteyince GitHub'dan okunur. Lisansı ağdan erişime izin
+ * verir; şartları: projeyi irdb'ye bildirmek (Serif 1 Kasım 2026'da issue açtı) ve [NOTICE]'ı uygulamada göstermek.
+ * Bu nesne saf kısımdır: dizin ve CSV okuma, irdb'nin biçim adlarından (IRP: NEC1, Sony12, RC5…) uygulamanın koduna çeviri.
+ * CSV satırı: functionname,protocol,device,subdevice,function (subdevice yoksa -1).
+ */
+object IrdbCodes {
+    const val NOTICE = "Contains/accesses irdb by Simon Peter and contributors, used under permission. " +
+        "For licensing details and for information on how to contribute to the database, see https://github.com/probonopd/irdb"
+    const val BASE = "https://raw.githubusercontent.com/probonopd/irdb/master/"
+
+    /** Bir cihaz (kumanda); irdb bazı kumandaları aygıt numarasına göre birkaç CSV dosyasına böler, hepsi birleşir. */
+    class Device(val name: String, val paths: List<String>, val tv: Boolean) {
+        val label get() = name.removePrefix("Unknown_").replace('_', ' ').trim().ifEmpty { name }
+    }
+    class Brand(val name: String, val devices: List<Device>)
+
+    private val tvWords = listOf("tv", "television", "lcd", "led", "plasma", "oled", "qled", "crt")
+    fun isTv(device: String) = device.lowercase().let { d -> tvWords.any { it in d } }
+
+    /** "codes/Marka/Cihaz/D,S.csv" satırları → markalar; her markada TV cihazları önce. */
+    fun parseIndex(text: String): List<Brand> {
+        val map = LinkedHashMap<String, LinkedHashMap<String, MutableList<String>>>()
+        for (line in text.lineSequence()) {
+            val l = line.trim()
+            if (!l.startsWith("codes/") || !l.endsWith(".csv")) continue
+            val p = l.split('/')
+            if (p.size < 4) continue
+            map.getOrPut(p[1]) { LinkedHashMap() }.getOrPut(p[2]) { ArrayList() }.add(l)
+        }
+        return map.map { (b, devs) ->
+            Brand(b, devs.map { (d, paths) -> Device(d, paths, isTv(d)) }.sortedBy { if (it.tv) 0 else 1 })
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    /** Aynı kumandanın birkaç dosyası: ilk gelen tuş kalır. */
+    fun merge(parts: List<IrDb.Imported>): IrDb.Imported {
+        val keys = LinkedHashMap<String, String>()
+        for (p in parts) for ((k, v) in p.keys) keys.putIfAbsent(k, v)
+        return IrDb.Imported(keys, parts.sumOf { it.skipped })
+    }
+
+    /** Yoldaki her parça ayrı kodlanır (boşluk, virgül, Türkçe harf). */
+    fun url(path: String) = BASE + path.split('/').joinToString("/") {
+        java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+    }
+
+    private val extraAliases = mapOf(
+        "volumeup" to "vol_up", "volup" to "vol_up", "vol_p" to "vol_up", "volume+" to "vol_up",
+        "volumedown" to "vol_dn", "voldown" to "vol_dn", "vol_m" to "vol_dn", "volume-" to "vol_dn",
+        "channelup" to "ch_up", "channel_up" to "ch_up", "chup" to "ch_up", "prog+" to "ch_up", "program_up" to "ch_up",
+        "channeldown" to "ch_dn", "channel_down" to "ch_dn", "chdown" to "ch_dn", "prog-" to "ch_dn", "program_down" to "ch_dn",
+        "poweronoff" to "power", "power_onoff" to "power", "playpause" to "play_pause", "fastforward" to "ffwd",
+        "inputselect" to "source", "av" to "source", "mode" to "source", "exit_menu" to "exit"
+    )
+    /** Güç tuşu yoksa bunlar güç sayılır. */
+    private val powerFallback = setOf("off", "poweroff", "power_off", "standby", "on")
+
+    private fun keyName(fn: String): String? {
+        val n = fn.trim().lowercase().removePrefix("key_")
+        return IrDb.aliases[n] ?: extraAliases[n]
+    }
+
+    /** Bir irdb satırını uygulamanın koduna çevirir; desteklenmeyen biçimde null. */
+    fun code(protocol: String, d: Int, s: Int, f: Int): String? {
+        if (d < 0 || f < 0) return null
+        return when (protocol.trim().lowercase()) {
+            "nec1", "nec", "nec2" -> {
+                if (d > 255 || f > 255 || s > 255) null
+                else if (s < 0 || s == d xor 0xFF) "P,NEC,%X,%X".format(d, f)
+                else "P,NECext,%X,%X".format(d or (s shl 8), f or ((f xor 0xFF) shl 8))
+            }
+            // 16 bitlik komut: {D:8,S:8,F:16}
+            "nec1-f16" -> {
+                val ss = if (s < 0) d xor 0xFF else s
+                if (d > 255 || ss > 255 || f > 0xFFFF) null else "P,NECext,%X,%X".format(d or (ss shl 8), f)
+            }
+            "necx1", "necx2" -> {
+                val ss = if (s < 0) d else s
+                if (d > 255 || f > 255 || ss > 255) null
+                else if (ss == d) "P,Samsung32,%X,%X".format(d, f)
+                else raw(38000) { mark(4500); space(4500); bytes(intArrayOf(d, ss, f, f xor 0xFF), 560, 560, 1690); mark(560) }
+            }
+            "rc5" -> when {
+                d > 31 || f > 127 -> null
+                f >= 64 -> "P,RC5X,%X,%X".format(d, f - 64)
+                else -> "P,RC5,%X,%X".format(d, f)
+            }
+            "rc6" -> if (d > 255 || f > 255) null else "P,RC6,%X,%X".format(d, f)
+            "sony12" -> if (d > 31 || f > 127) null else "P,SIRC,%X,%X".format(d, f)
+            "sony15" -> if (d > 255 || f > 127) null else "P,SIRC15,%X,%X".format(d, f)
+            "sony20" -> if (d > 31 || f > 127 || s > 255) null else "P,SIRC20,%X,%X".format(d or (maxOf(s, 0) shl 5), f)
+            "pioneer" -> if (s >= 0 || d > 255 || f > 255) null else "P,Pioneer,%X,%X".format(d, f)
+            // {37k,432}<1,-1|1,-3>(8,-4,2:8,32:8,D:8,S:8,F:8,(D^S^F):8,1,-173)
+            "panasonic" -> {
+                val ss = maxOf(s, 0)
+                if (d > 255 || f > 255 || ss > 255) null
+                else raw(37000) { mark(8 * 432); space(4 * 432); bytes(intArrayOf(2, 32, d, ss, f, d xor ss xor f), 432, 432, 3 * 432); mark(432) }
+            }
+            // {38k,525}<1,-1|1,-3>(16,-8,D:8,F:8,1,-45)
+            "jvc" -> if (d > 255 || f > 255) null else raw(38000) { mark(16 * 525); space(8 * 525); bytes(intArrayOf(d, f), 525, 525, 3 * 525); mark(525) }
+            // {38k,264}<1,-3|1,-7>(D:5,F:8,1:2,1,-165,D:5,~F:8,2:2,1,-165): Sharp; Denon'da son iki bit 0 ve 3
+            "sharp", "denon" -> {
+                if (d > 31 || f > 255) null else {
+                    val (e1, e2) = if (protocol.trim().equals("sharp", true)) 1 to 2 else 0 to 3
+                    raw(38000) {
+                        bits(d, 5, 264, 792, 1848); bits(f, 8, 264, 792, 1848); bits(e1, 2, 264, 792, 1848); mark(264); space(165 * 264)
+                        bits(d, 5, 264, 792, 1848); bits(f xor 0xFF, 8, 264, 792, 1848); bits(e2, 2, 264, 792, 1848); mark(264)
+                    }
+                }
+            }
+            // {32.6k,300}<1,-3|1,-7>(D:8,F:8,1,-80)
+            "mitsubishi" -> if (d > 255 || f > 255) null else raw(32600) { bytes(intArrayOf(d, f), 300, 900, 2100); mark(300) }
+            else -> null
+        }
+    }
+
+    /** Süre dizisini işaret/boşluk sırasıyla kurar; bitler düşük bitten başlar. */
+    private class RawBuilder {
+        val out = ArrayList<Int>()
+        fun mark(us: Int) { if (out.size % 2 == 0) out.add(us) else out[out.size - 1] += us }
+        fun space(us: Int) { if (out.isEmpty()) return; if (out.size % 2 == 1) out.add(us) else out[out.size - 1] += us }
+        fun bits(v: Int, n: Int, mark: Int, zero: Int, one: Int) { for (i in 0 until n) { mark(mark); space(if ((v shr i) and 1 == 1) one else zero) } }
+        fun bytes(b: IntArray, mark: Int, zero: Int, one: Int) { for (x in b) bits(x and 0xFF, 8, mark, zero, one) }
+    }
+
+    private fun raw(freq: Int, block: RawBuilder.() -> Unit): String {
+        val r = RawBuilder().apply(block).out
+        if (r.size % 2 == 0) r.removeAt(r.size - 1)
+        return "W,$freq,${r.joinToString(" ")}"
+    }
+
+    /** Bir irdb CSV dosyası → tuşlar. Uygulamanın tanımadığı tuşlar (en fazla 48) "Diğer tuşlar"a gider. */
+    fun parseCsv(text: String): IrDb.Imported {
+        val keys = LinkedHashMap<String, String>()
+        val fallback = LinkedHashMap<String, String>()
+        var skipped = 0
+        var extras = 0
+        for ((i, line) in text.lineSequence().withIndex()) {
+            if (i == 0 && line.startsWith("functionname")) continue
+            val p = line.split(',')
+            if (p.size < 5) continue
+            val fn = p[0].trim()
+            val code = code(p[1], p[2].trim().toIntOrNull() ?: -1, p[3].trim().toIntOrNull() ?: -1, p[4].trim().toIntOrNull() ?: -1)
+            if (code == null || IrCodec.parseCode(code) == null) { skipped++; continue }
+            val k = keyName(fn)
+            when {
+                k != null -> keys.putIfAbsent(k, code)
+                fn.trim().lowercase().removePrefix("key_") in powerFallback -> fallback.putIfAbsent("power", code)
+                else -> {
+                    val x = IrDb.EXTRA + fn.removePrefix("KEY_").take(24)
+                    if (x !in keys && extras < 48) { keys[x] = code; extras++ }
+                }
+            }
+        }
+        if ("power" !in keys) fallback["power"]?.let { keys["power"] = it }
+        return IrDb.Imported(keys, skipped)
+    }
 }

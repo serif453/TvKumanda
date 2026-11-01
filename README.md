@@ -75,6 +75,10 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
     Toshiba, Hitachi, JVC…) ve Arçelik ailesi (Arçelik, Beko, Grundig, Altus)
   - "Markamı bilmiyorum": veritabanındaki tüm farklı güç kodlarını sırayla dener, TV kapanınca doğru kodu bulur
   - "Dosyadan ekle": Flipper Zero kumanda dosyası (.ir); uygulamanın tanımadığı tuşlar "Diğer tuşlar"da adıyla görünür
+  - "Çevrimiçi kod ara": [irdb](https://github.com/probonopd/irdb)'den 600'den fazla marka; kodlar yalnızca istenince
+    internetten indirilir, uygulamanın içinde gelmez. Kaydedilen kumanda internetsiz çalışır.
+    *Contains/accesses irdb by Simon Peter and contributors, used under permission. For licensing details and for
+    information on how to contribute to the database, see https://github.com/probonopd/irdb*
 
 - **Deneysel (telefondan TV'ye canlı yayın):** ekran yansıtma (telefonun ekranı ve sesi TV'de görünür) ve telefonu TV
   hoparlörüne bağlama (telefonda çalan ses TV'den gelir). İkisi de ADB gerektirmez. TV'de 2-5 saniye gecikme olur;
