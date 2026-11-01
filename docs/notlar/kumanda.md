@@ -18,5 +18,6 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     uzar; TV adı kutusunda iç boşluk, ad sığmazsa "…"; üstteki mor ışık keskin kenarsız; alttaki şerit `glassSwoosh` ile
     boşluğun içine çizilir (oynatıcı çubuğuna binmesin).
     Oynatıcı çubuğunda (`NowPlayingBar`, TV'de bir şey çalarken) Önceki/Oynat/Sonraki tuşları yok: alttaki medya çubuğunda
-    zaten var (Serif'in isteği, 1 Kasım 2026). Çubukta yalnızca simge, başlık, kanal ve sarma çubuğu.
+    zaten var (Serif'in isteği, 1 Kasım 2026). Küçültüldü (v0.124): üst satır simge (28 dp) · süre · sarma çubuğu · toplam,
+    alt satır tek satır başlık ("…" ile kesilir). Kanal adı yok. Başlık yoksa uygulama adı; süre bilinmiyorsa tek satır simge + başlık.
 - TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
