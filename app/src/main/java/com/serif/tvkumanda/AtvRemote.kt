@@ -72,6 +72,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     /** Kör modda (TV kutu bilgisi göndermezken) TV'ye gönderdiğimiz son metin. */
     @Volatile private var blindText = ""
     @Volatile private var volumeInfo: Pair<Int, Int>? = null
+    @Volatile private var mutedInfo: Boolean? = null
     /** TV açık mı (remote_start ile bildirilir; bilinmiyorsa null). */
     @Volatile var isOn: Boolean? = null
         private set
@@ -241,6 +242,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
                 val v = m.msg(50) ?: return
                 val max = v.int(6)
                 val level = v.int(7)
+                mutedInfo = v.int(8) != 0                                        // volume_muted
                 if (max > 0) {
                     volumeInfo = level to max
                     onVolume?.invoke(level, max)
@@ -428,6 +430,7 @@ class AtvRemote(private val context: Context) : RemoteLink {
     override fun launch(app: TvApp) {}
 
     override fun volume(): Pair<Int, Int>? = volumeInfo
+    override fun muted(): Boolean? = mutedInfo
 
     @Synchronized
     override fun close() {

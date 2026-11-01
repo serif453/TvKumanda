@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
     private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var volume by mutableStateOf<Int?>(null)
     private var volumeMax by mutableStateOf(100)
+    private var muted by mutableStateOf<Boolean?>(null)
     private var volumeJob: Job? = null
     private var volumeTick by mutableStateOf(0)
 
@@ -187,7 +188,7 @@ class MainActivity : ComponentActivity() {
         }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
         VolumeCtl.setTo = { v -> runOnUiThread { setVolumeTo(v) } }
-        atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max } }
+        atv.onVolume = { level, max -> runOnUiThread { volume = level; volumeMax = max; muted = atv.muted() } }
         atv.onDisconnected = { runOnUiThread { onStandardDisconnected() } }
         atv.onImeShow = { value -> runOnUiThread { onTvKeyboard(value) } }
         atv.onImeHide = { runOnUiThread { if (typing) closeTyping() } }
@@ -213,7 +214,7 @@ class MainActivity : ComponentActivity() {
             RemoteTheme {
                 RemoteScreen(
                     ui = UiState(state, message, tvName, fastMode, apps, volume, volumeMax, volumeTick, method, pairing, pairingError, savedTvs, micActive, micLevel,
-                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick, nowPlaying),
+                        typing, typingSeed, typingSeedTick, imeReady, typingHint, castTabTick, nowPlaying, muted),
                     initialIp = savedIp,
                     onConnect = { ip ->
                         prefs.edit().putString("ip", ip).apply()
@@ -382,6 +383,7 @@ class MainActivity : ComponentActivity() {
         fastMode = false
         apps = emptyList()
         volume = null
+        muted = null
         message = "Bağlı değil"
     }
 
@@ -411,6 +413,7 @@ class MainActivity : ComponentActivity() {
         fastMode = false
         apps = emptyList()
         volume = null
+        muted = null
         message = "Bağlı değil"
     }
 
@@ -505,6 +508,7 @@ class MainActivity : ComponentActivity() {
             val link = remote
             val v = withContext(Dispatchers.IO) { runCatching { link.volume() }.getOrNull() }
             if (v != null) { volume = v.first; volumeMax = v.second }
+            muted = withContext(Dispatchers.IO) { runCatching { link.muted() }.getOrNull() }
         }
     }
 
@@ -1607,7 +1611,9 @@ data class UiState(
     /** Artınca alt menü Cast sekmesine geçer (Paylaş ile dosya gelince). */
     val castTabTick: Int = 0,
     /** TV'de çalan medya (yalnızca ADB). */
-    val nowPlaying: NowPlaying? = null
+    val nowPlaying: NowPlaying? = null,
+    /** TV sessizde mi; bilinmiyorsa null. */
+    val muted: Boolean? = null
 )
 
 /**

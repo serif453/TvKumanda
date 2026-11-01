@@ -5,7 +5,7 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - Kumanda: `RemoteUi.kt`, `RemoteLayout.kt` (üst çubuk, uygulama satırı). Modlar: yön tuşları, kaydırma, fare (ADB).
   Yön kartının üstünde kapsül ses çubuğu (`GlassVolumePill`: Sessiz · − · çubuk · +; Serif'in örneğinden). Dokun/sürükle-bırak →
   `VolumeCtl.setTo` → `MainActivity.setVolumeTo`: ADB'de `TvRemote.setVolume` (media_session --set, geri okunarak doğrulanır),
-  olmazsa ya da Standart'ta fark kadar ses tuşu. Sessiz durumu bilinmiyor (iki bağlantı da bildirmiyor), çubukta gösterilmez.
+  olmazsa ya da Standart'ta fark kadar ses tuşu. Sessiz durumu (`UiState.muted`, bilinmiyorsa null, tahmin yok): Standart'ta ses mesajının 8. alanı (volume_muted), ADB'de `dumpsys audio` STREAM_MUSIC "Muted" / master mute (`parseMuted`; Philips'te doğru yazıp yazmadığı denenecek). Sessizken tuş kırmızı parlar, çubuk griye döner. Sessiz tuşu soldan 14 dp içeride (Serif'in isteği).
   - Uygulama satırını düzenleme (`EditAppsSheet`): basılı tutup sürükleyerek sıralama (oklar kaldırıldı, Serif'in isteği); kenara gelince liste kendiliğinden kayar, sıra bırakınca kaydedilir.
   - **Cam tasarım (1 Kasım 2026, Serif'in gönderdiği görselin birebiri, onayıyla):** `GlassUi.kt` (renkler `Glass`, arka plan
     `glassBackdrop`, cam yüzey `Modifier.glass`, parlama `glow`, özel simgeler `GlassIcons`: sessiz = hoparlör+çarpı, Rehber = TV+satırlar)

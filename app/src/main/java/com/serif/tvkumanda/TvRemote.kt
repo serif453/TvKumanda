@@ -333,6 +333,13 @@ class TvRemote(private val context: Context) : RemoteLink {
         if (app.activity.isNotEmpty()) "am start -n ${app.pkg}/${app.activity}"
         else "monkey -p ${app.pkg} -c android.intent.category.LEANBACK_LAUNCHER 1"
 
+    /** Sessiz durumu: dumpsys audio'daki STREAM_MUSIC "Muted" ya da ana sessiz satırı. Bulunamazsa null. */
+    override fun muted(): Boolean? {
+        val d = dadb ?: return null
+        val dump = runCatching { d.shell("dumpsys audio").output }.getOrDefault("")
+        return parseMuted(dump)
+    }
+
     /** Medya ses seviyesi (değer, en yüksek). Kilit tutmaz; birkaç yöntemi sırayla dener. */
     override fun volume(): Pair<Int, Int>? {
         val d = dadb ?: return null
@@ -492,3 +499,13 @@ private val NAME_SKIP = setOf("com", "tv", "android", "app", "apps", "mobile", "
  * Giriş kaynağı, Rehber, Bilgi, Altyazı, Ses dili.
  */
 private val SLOW_KEYS = setOf(178, 172, 165, 175, 222)
+
+/** dumpsys audio çıktısından sessiz durumu (saf, test edilebilir). Hiçbir bilgi yoksa null. */
+fun parseMuted(dump: String): Boolean? {
+    val master = Regex("""(?i)master\s*mute[^:\n]*:\s*(true|false)""").find(dump)?.groupValues?.get(1)?.toBoolean()
+    val start = dump.indexOf("STREAM_MUSIC:")
+    val stream = if (start < 0) null else
+        Regex("""Muted:\s*(true|false)""").find(dump.substring(start, minOf(dump.length, start + 1500)))?.groupValues?.get(1)?.toBoolean()
+    if (master == null && stream == null) return null
+    return master == true || stream == true
+}

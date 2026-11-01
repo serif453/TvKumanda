@@ -325,31 +325,46 @@ private const val KEY_GUIDE = 172  // KEYCODE_GUIDE
 private fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
     val shape = RoundedCornerShape(29.dp)
     Row(
-        modifier.glass(shape, strength = 0.8f).padding(horizontal = 4.dp),
+        // Sessiz tuşu soldan biraz içeride (Serif'in isteği); çubuk o kadar kısalır
+        modifier.glass(shape, strength = 0.8f).padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PillButton(GlassIcons.Mute, "Sessiz") { onKey(Keys.MUTE) }
+        val isMuted = ui.muted == true
+        PillButton(GlassIcons.Mute, if (isMuted) "Sesi aç" else "Sessiz", active = isMuted) { onKey(Keys.MUTE) }
         PillButton(Icons.Filled.Remove, "Ses kıs", repeat = true) { onKey(Keys.VOL_DOWN) }
-        GlassVolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), Modifier.weight(1f).fillMaxHeight())
+        GlassVolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), isMuted, Modifier.weight(1f).fillMaxHeight())
         PillButton(Icons.Filled.Add, "Ses aç", repeat = true) { onKey(Keys.VOL_UP) }
     }
 }
 
 @Composable
-private fun PillButton(icon: ImageVector, label: String, repeat: Boolean = false, onClick: () -> Unit) {
+private fun PillButton(icon: ImageVector, label: String, repeat: Boolean = false, active: Boolean = false, onClick: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val scale = pressScale(inter)
     val pressed by inter.collectIsPressedAsState()
+    // active: TV sessizde — tuş kırmızımsı parıltıyla yanar
+    val on by animateFloatAsState(if (active) 1f else 0f, label = "active")
     Box(
-        Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
-            .background(if (pressed) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+        Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(if (active) Modifier.glow(Glass.Red, 10.dp) else Modifier)
+            .clip(CircleShape)
+            .background(
+                when {
+                    on > 0f -> Glass.Red.copy(alpha = 0.22f * on + if (pressed) 0.08f else 0f)
+                    pressed -> Color.White.copy(alpha = 0.10f)
+                    else -> Color.Transparent
+                }
+            )
             .pressable(inter, repeat = repeat, onClick = onClick),
         contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Glass.Text, modifier = Modifier.size(26.dp)) }
+    ) { Icon(icon, label, tint = androidx.compose.ui.graphics.lerp(Glass.Text, Glass.Red, on), modifier = Modifier.size(26.dp)) }
 }
 
+/** Sessizken çubuğun dolu kısmı: gri. */
+private val MutedFill = Brush.horizontalGradient(listOf(Color(0xFF5A5A68), Color(0xFF7A7A88)))
+
 @Composable
-private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
+private fun GlassVolumeTrack(volume: Int?, max: Int, muted: Boolean, modifier: Modifier) {
     var drag by remember { mutableStateOf<Float?>(null) }
     val known = volume != null
     val frac = (drag ?: ((volume ?: (max / 2)).toFloat() / max)).coerceIn(0f, 1f)
@@ -379,7 +394,7 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
         Box(Modifier.fillMaxWidth().height(track).clip(RoundedCornerShape(7.dp)).background(Color(0xFF0C0D1E).copy(alpha = 0.75f)))
         Box(
             Modifier.width((w - thumb) * frac + thumb / 2).height(track).clip(RoundedCornerShape(7.dp))
-                .background(Glass.VolumeFill)
+                .background(if (muted) MutedFill else Glass.VolumeFill)
         )
         Box(
             Modifier.offset(x = (w - thumb) * frac).size(thumb)
@@ -387,7 +402,7 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
                 .clip(CircleShape).background(Brush.verticalGradient(listOf(Color.White, Color(0xFFE6E4F5)))),
             contentAlignment = Alignment.Center
         ) {
-            if (shown != null) Text("$shown", color = Color(0xFF1B1840), fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp, textAlign = TextAlign.Center)
+            if (shown != null) Text("$shown", color = Color(0xFF1B1840).copy(alpha = if (muted) 0.4f else 1f), fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp, textAlign = TextAlign.Center)
         }
     }
 }

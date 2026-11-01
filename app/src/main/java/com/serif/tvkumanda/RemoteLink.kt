@@ -18,6 +18,8 @@ interface RemoteLink {
     fun listApps(): List<TvApp>
     /** (değer, en yüksek) ya da bilinmiyorsa null. */
     fun volume(): Pair<Int, Int>?
+    /** TV sessizde mi; bilinmiyorsa null (tahmin yürütülmez). */
+    fun muted(): Boolean? = null
     /** ADB'de TV'deki tuş sunucusunun (fare dahil) çalıştığını belirtir. */
     val isFast: Boolean
     fun close()
