@@ -196,6 +196,7 @@ fun RemoteScreen(
     var pickerOpen by remember { mutableStateOf(initialIp.isBlank()) }
     var pickerExpanded by remember { mutableStateOf(initialIp.isBlank()) }
     var navTop by remember { mutableFloatStateOf(0f) }
+    var rootH by remember { mutableFloatStateOf(0f) }
     val openTvs = { pickerExpanded = true; pickerOpen = true }
     var rootTop by remember { mutableFloatStateOf(0f) }
     var barBottom by remember { mutableFloatStateOf(0f) }
@@ -207,6 +208,20 @@ fun RemoteScreen(
     LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = 0 }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
+    // Alt menüdeki sekmeler (Ayarlar → Alt menü). Gizli bir sekmedeyken (ör. paylaşımla açılan Cast) o sekme
+    // o seferlik menüde görünür; başka sekmeye geçince yine kaybolur.
+    val visibleTabs = AppSettings.visibleTabs()
+    val navTabs = if (tab in visibleTabs) visibleTabs else (visibleTabs + tab).sortedBy { it.ordinal }
+    val showNav = navTabs.size > 1
+    SideEffect { NavBar.visible = showNav }
+    // Ayarlardan şu anki sekme gizlenirse açık kalan ilk sekmeye geçilir
+    // (yalnızca ayar değişince; açılışta paylaşımla gelen geçici Cast'i bozmasın)
+    var seenHidden by remember { mutableStateOf(AppSettings.hiddenTabs) }
+    LaunchedEffect(AppSettings.hiddenTabs) {
+        if (AppSettings.hiddenTabs == seenHidden) return@LaunchedEffect
+        seenHidden = AppSettings.hiddenTabs
+        if (tab !in AppSettings.visibleTabs()) tab = AppSettings.visibleTabs().first()
+    }
     LaunchedEffect(tab) { LiveUi.remoteTabOpen = tab == Tab.REMOTE }
     val tabContext = LocalContext.current
     LaunchedEffect(tab) { AppSettings.rememberTab(tabContext, tab) }
@@ -232,7 +247,8 @@ fun RemoteScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
-        if (ui.state == ConnState.ERROR) openTvs()
+        // Paylaşılan dosya Cast ekranında cihaz seçimini bekliyorsa TV paneli üstüne açılmaz
+        if (ui.state == ConnState.ERROR && !(tab == Tab.CAST && SharedWait.title != null)) openTvs()
         if (ui.state == ConnState.CONNECTED && pickerOpen && pickerExpanded) pickerOpen = false
     }
 
@@ -243,7 +259,7 @@ fun RemoteScreen(
     val bgMod = if (tab == Tab.REMOTE) Modifier.glassBackdrop() else Modifier.background(screenBg)
     // Arka plan içerikte (Column) bir kez çizilir; dış katman yalnızca yazma ekranında bulanıklaşan kenarların arkasını doldurur
     Box(
-        Modifier.fillMaxSize().then(if (typingOpen) bgMod else Modifier).onSizeChanged { playerSheet.height = it.height.toFloat() }
+        Modifier.fillMaxSize().then(if (typingOpen) bgMod else Modifier).onSizeChanged { playerSheet.height = it.height.toFloat(); rootH = it.height.toFloat() }
             .onGloballyPositioned { rootTop = it.positionInRoot().y }
     ) {
     Column(
@@ -322,8 +338,9 @@ fun RemoteScreen(
         }
     }
     // Alt menü: Kumanda / Cast / Araçlar / Kısayollar — içeriğin üstünde yüzen cam kapsül
-    BottomNav(
-        tab, hazeState,
+    // Tek sekme açıksa gizli (Serif'in isteği)
+    if (showNav) BottomNav(
+        tab, navTabs, hazeState,
         Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = 10.dp)
             .onGloballyPositioned { navTop = it.positionInRoot().y }
     ) { tab = it }
@@ -369,7 +386,9 @@ fun RemoteScreen(
         expanded = pickerExpanded,
         topOffset = with(density) { (barBottom - rootTop).coerceAtLeast(0f).toDp() } + 8.dp,
         // Büyükken alt menünün 12 dp üstüne kadar
-        maxExpandedHeight = with(density) { (navTop - barBottom).coerceAtLeast(0f).toDp() } - 20.dp,
+        maxExpandedHeight = with(density) {
+            ((if (NavBar.visible) navTop else rootTop + rootH) - barBottom).coerceAtLeast(0f).toDp()
+        } - 20.dp,
         initialIp = initialIp,
         ui = ui,
         onPickSaved = onPickSaved, onWake = onWake,

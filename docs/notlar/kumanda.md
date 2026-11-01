@@ -70,3 +70,7 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   `MouseSettings` ile aynı değer ("Fare ▾" penceresiyle ortak). "TV'ler ve bağlantı türü" satırı mevcut TV seçme penceresini açar.
 - **Sıkça sorulan sorular (1 Kasım 2026, içerik Serif'in onayıyla):** Ayarlar → Hakkında → "Sıkça sorulan sorular" → tam sayfa
   `FaqPage` (`FaqPage.kt`), gruplu; soruya dokununca cevap açılır (aynı anda bir tane). Kurulum / Sorun giderme değişirse burası da güncellenir.
+- **Alt menü özelleştirme (2 Kasım 2026, Serif'in isteği):** Ayarlar → Alt menü'de her sekme için anahtar (`AppSettings.hiddenTabs`,
+  "gizli_sekmeler"). En az biri açık (son anahtar kilitli). Tek sekme kalınca `BottomNav` çizilmez, `NavBar.visible` false ve
+  `BarSpace` 16 dp'ye iner. Açılış sekmesi gizliyse açık ilk sekme; o anki sekme gizlenirse ilk açık sekmeye geçilir. Paylaşımla
+  açılan gizli Cast o seferlik menüde görünür.

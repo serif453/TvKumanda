@@ -53,6 +53,9 @@ object AppSettings {
     var startTab by mutableStateOf("REMOTE")
         private set
     private var lastTab = "REMOTE"
+    /** Alt menüden kaldırılan sekmeler (Serif'in isteği, 2 Kasım 2026). En az bir sekme hep açık kalır. */
+    var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
+        private set
     private var loaded = false
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
@@ -67,6 +70,7 @@ object AppSettings {
         autoConnect = p.getBoolean("oto_baglan", true)
         startTab = p.getString("acilis_sekme", "REMOTE") ?: "REMOTE"
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
+        hiddenTabs = p.getStringSet("gizli_sekmeler", emptySet())?.toSet().orEmpty()
     }
 
     fun setHaptic(c: Context, v: Boolean) { haptic = v; prefs(c).edit().putBoolean("titresim", v).apply(); if (v) tap(c) }
@@ -75,10 +79,24 @@ object AppSettings {
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
     fun setStartTab(c: Context, v: String) { startTab = v; prefs(c).edit().putString("acilis_sekme", v).apply() }
 
-    /** Uygulama açılınca gösterilecek sekme. */
+    /** Alt menüde görünen sekmeler, sırasıyla (hiçbiri kalmazsa Kumanda). */
+    fun visibleTabs(): List<Tab> = Tab.values().filter { it.name !in hiddenTabs }.ifEmpty { listOf(Tab.REMOTE) }
+
+    fun isTabVisible(t: Tab): Boolean = t in visibleTabs()
+
+    /** Sekmeyi alt menüde gösterir ya da gizler; son açık sekme kapatılamaz. */
+    fun setTabVisible(c: Context, t: Tab, v: Boolean) {
+        val next = if (v) hiddenTabs - t.name else hiddenTabs + t.name
+        if (Tab.values().all { it.name in next }) return
+        hiddenTabs = next
+        prefs(c).edit().putStringSet("gizli_sekmeler", next).apply()
+    }
+
+    /** Uygulama açılınca gösterilecek sekme; gizlenmişse açık kalan ilk sekme. */
     fun initialTab(): Tab {
         val name = if (startTab == "LAST") lastTab else startTab
-        return runCatching { Tab.valueOf(name) }.getOrDefault(Tab.REMOTE)
+        val t = runCatching { Tab.valueOf(name) }.getOrDefault(Tab.REMOTE)
+        return if (isTabVisible(t)) t else visibleTabs().first()
     }
 
     /** Sekme değişince "son kalınan" olarak saklanır. */
@@ -197,12 +215,43 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
                         Text("Açılış sekmesi", color = Pal.Text, fontSize = 15.sp)
                     }
                     Spacer(Modifier.height(10.dp))
-                    Segmented(
-                        listOf("REMOTE" to "Kumanda", "CAST" to "Cast", "TOOLS" to "Araçlar", "LAST" to "Son kalınan"),
-                        AppSettings.startTab
-                    ) { AppSettings.setStartTab(context, it) }
+                    // Yalnızca alt menüde açık olan sekmeler seçilebilir
+                    val startOptions = listOf("REMOTE" to "Kumanda", "CAST" to "Cast", "TOOLS" to "Araçlar")
+                        .filter { (k, _) -> AppSettings.isTabVisible(Tab.valueOf(k)) } + ("LAST" to "Son kalınan")
+                    val shownStart = AppSettings.startTab.takeIf { s -> startOptions.any { it.first == s } } ?: AppSettings.initialTab().name
+                    Segmented(startOptions, shownStart) { AppSettings.setStartTab(context, it) }
                 }
             }
+            Spacer(Modifier.height(24.dp))
+
+            // ---- Alt menü ----
+            SettingsHeader("Alt menü")
+            SettingsGroup {
+                val onlyOne = AppSettings.visibleTabs().size == 1
+                for ((t, label, icon) in listOf(
+                    Triple(Tab.REMOTE, "Kumanda", Icons.Outlined.Tv),
+                    Triple(Tab.CAST, "Cast", Icons.Outlined.Cast),
+                    Triple(Tab.TOOLS, "Araçlar", Icons.Outlined.Build),
+                    Triple(Tab.SHORTCUTS, "Kısayollar", Icons.Outlined.Bolt)
+                )) {
+                    val on = AppSettings.isTabVisible(t)
+                    val locked = on && onlyOne
+                    SettingsRow(
+                        icon, label,
+                        when {
+                            locked -> "En az bir sekme açık kalmalı"
+                            on -> "Alt menüde görünür"
+                            else -> "Gizli"
+                        }
+                    ) {
+                        SettingsSwitch(on, enabled = !locked) { AppSettings.setTabVisible(context, t, it) }
+                    }
+                }
+            }
+            Text(
+                "Tek sekme açık kalınca alt menü gizlenir.",
+                color = Pal.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+            )
             Spacer(Modifier.height(24.dp))
 
             // ---- Hakkında ----
@@ -265,9 +314,9 @@ private fun SettingsRow(
 }
 
 @Composable
-private fun SettingsSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun SettingsSwitch(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Switch(
-        checked = checked, onCheckedChange = onChange,
+        checked = checked, onCheckedChange = onChange, enabled = enabled,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White, checkedTrackColor = Pal.Green,
             uncheckedThumbColor = Pal.Sub, uncheckedTrackColor = Pal.Bg, uncheckedBorderColor = Pal.Sub.copy(alpha = 0.5f)

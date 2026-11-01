@@ -48,6 +48,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Fare imleç hızı ve kaydırma şeridinin tarafı
 - Açılışta son TV'ye kendiliğinden bağlanma; kayıtlı TV'ler ve bağlantı türü
 - Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
+- Alt menü: istemediğin sekmeleri gizleme (en az biri açık kalır; tek sekme kalınca alt menü gizlenir)
 - Hakkında: sürüm, sıkça sorulan sorular, lisans ve GitHub sayfası
 
 ### Cast
@@ -56,7 +57,8 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam
 - SRT altyazı (Türkçe karakter kodlaması otomatik düzeltilir)
 - Telefon ekranı kapalıyken de devam eder; bildirimde ve kilit ekranında oynatıcı kontrolleri
-- Paylaş menüsünden "TV'de aç": medya dosyaları ve linkler
+- Paylaş menüsünden "TV'de aç": medya dosyaları ve linkler. Cihaz seçili değilse Cast ekranında seçici açılıp aranır, seçince hemen oynar
+- Paylaş menüsünün üst satırında "TV'de oynat" ve "TV'ye gönder" kısayolları (telefonun paylaşım menüsü destekliyorsa)
 - **DLNA Sunucu:** telefon ağda medya sunucusu olur; TV'nin kendi oynatıcısından telefondaki klasörlere göz atılır
 
 ### Araçlar

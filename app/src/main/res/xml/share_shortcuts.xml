@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paylaş menüsünün üst satırındaki doğrudan kısayollar (Android "Sharing Shortcuts").
+  Kısayolların kendisi uygulama açılınca ShareShortcuts.publish() ile kaydedilir; burada hangi dosya türlerinde
+  hangi kısayolun çıkacağı yazılı. İkisi de MainActivity'ye gelir, hangisinin seçildiği kısayol kimliğinden anlaşılır.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="com.serif.tvkumanda.MainActivity">
+        <data android:mimeType="image/*" />
+        <data android:mimeType="video/*" />
+        <data android:mimeType="audio/*" />
+        <category android:name="com.serif.tvkumanda.category.TV_OYNAT" />
+    </share-target>
+    <share-target android:targetClass="com.serif.tvkumanda.MainActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="com.serif.tvkumanda.category.TV_GONDER" />
+    </share-target>
+</shortcuts>

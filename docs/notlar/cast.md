@@ -21,3 +21,12 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   yeniden girince anında görünür, telefondan arkadan yenilenir; değişiklik yoksa aynı liste döner. Küçük resim önbelleği
   belleğin 1/6'sı (24–96 MB); önbellekteki resim anında gösterilir; yükleme en fazla 4 eş zamanlı (`ThumbLoader`);
   müzikte kapak albüm başına bir kez. Okuma tabloları (`addedAt`, albüm adları) her okumaya yerel (eş zamanlı okumada çakışmasın).
+
+## Paylaşımdan oynatma (2 Kasım 2026, Serif'in isteği)
+- "TV'de aç" ile gelen medya: seçili yolda (Chromecast/DLNA) cihaz hazırsa hemen oynar. "Bağlı TV" seçili ve TV'ye
+  bağlanılıyorsa bağlanınca oynar. Aksi hâlde `SharedWait` (CastScreen.kt): Cast ekranı başa döner, ilgili seçici kendiliğinden
+  açılır ve aranır, üstte "Paylaşılan dosya bekliyor" satırı (✕ vazgeç). `pickCc`/`pickDlna` seçince `playPendingIfReady()`.
+  Eskiden cihaz seçili değilse dosya sessizce düşüyordu. Bekleyen paylaşım varken bağlantı hatası TV panelini açmaz.
+- Paylaşım menüsü kısayolları (`ShareShortcuts.kt`, `res/xml/share_shortcuts.xml`, Android 11+): "TV'de oynat" (görsel/video/ses)
+  ve "TV'ye gönder" (her dosya), ikisi de MainActivity'ye, `EXTRA_SHORTCUT_ID` ile ayrılır. Honor'un paylaşım menüsü aynı
+  uygulamanın seçeneklerini tek simgede topluyor; bu üst satırı gösterip göstermediği denenecek.

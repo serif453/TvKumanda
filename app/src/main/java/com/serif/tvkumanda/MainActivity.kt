@@ -299,6 +299,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (savedIp.isNotBlank() && AppSettings.autoConnect) connect(savedIp)
+        ShareShortcuts.publish(this)
         handleShare(intent)
         // Oynatıcı durumu değiştikçe bildirim ve kilit ekranı güncellenir
         scope.launch { androidx.compose.runtime.snapshotFlow { cast }.collect { syncMediaSession(it) } }
@@ -322,6 +323,8 @@ class MainActivity : ComponentActivity() {
                 state = ConnState.ERROR
                 message = "Bağlanamadı: ${e.message ?: e.javaClass.simpleName}"
                 DiagLog.log("Bağlanamadı: $ip (${methodLabel()}) — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+                // TV'ye bağlanınca oynayacak paylaşım bekliyordu: cihaz seçiciye geçilir
+                pendingShare?.let { if (!castTargetReady()) waitForCastDevice(it) }
             }
         }
     }
@@ -351,7 +354,7 @@ class MainActivity : ComponentActivity() {
         apps = emptyList()
         loadApps(ip)
         refreshVolume(0)
-        pendingShare?.let { list -> pendingShare = null; playShared(list) }
+        playPendingIfReady()
         pendingLink?.let { url -> pendingLink = null; openSharedLink(url) }
         startShareSend()
     }
@@ -935,7 +938,8 @@ class MainActivity : ComponentActivity() {
             else -> return
         }
         // "TV'ye gönder": her türlü dosya TV'nin Download klasörüne (link paylaşılırsa aşağıda TV'de açılır)
-        if (intent.component?.className?.endsWith(".SendToTv") == true && uris.isNotEmpty()) {
+        val viaSend = intent.component?.className?.endsWith(".SendToTv") == true || ShareShortcuts.idOf(intent) == ShareShortcuts.SEND
+        if (viaSend && uris.isNotEmpty()) {
             intent.action = null
             if (ShareSend.job?.busy == true) { toast("Önceki gönderim sürüyor; bitince tekrar paylaş"); return }
             ShareSend.job = SendJob(uris)
@@ -968,11 +972,42 @@ class MainActivity : ComponentActivity() {
                 mime = mime.ifBlank { kind.fallbackMime }, kind = kind)
         }
         castTabTick++
-        if (state == ConnState.CONNECTED) playShared(items)
-        else {
-            pendingShare = items
-            if (state != ConnState.CONNECTING) toast("Önce TV'ye bağlan; bağlanınca dosya TV'de açılacak")
+        when {
+            castTargetReady() -> playShared(items)
+            // "Bağlı TV" seçili ve TV'ye şu an bağlanılıyor: bağlanınca kendiliğinden oynar
+            state == ConnState.CONNECTING && selectedRoute == CastRoute.CHROMECAST && ccUi.useTv && ccUi.selected == null -> {
+                pendingShare = items
+                SharedWait.title = sharedTitle(items)
+            }
+            // Cihaz yok ya da hazır değil: Cast ekranında cihaz seçici açılır ve aranır; seçilince oynar (Serif, 2 Kasım 2026)
+            else -> waitForCastDevice(items)
         }
+    }
+
+    /** Seçili yayın yolunda (Chromecast / DLNA) gönderilecek bir cihaz hazır mı. */
+    private fun castTargetReady(): Boolean =
+        if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else ccTargetIp().isNotBlank()
+
+    private fun sharedTitle(items: List<MediaItem>) = if (items.size > 1) "${items.size} dosya" else items.first().title
+
+    /** Paylaşılan dosyayı bekletir, Cast ekranında cihaz seçiciyi açtırır ve ağda arar. */
+    private fun waitForCastDevice(items: List<MediaItem>) {
+        pendingShare = items
+        SharedWait.title = sharedTitle(items)
+        SharedWait.route = selectedRoute
+        SharedWait.cancel = { pendingShare = null; SharedWait.title = null }
+        SharedWait.pickTick++
+        if (selectedRoute == CastRoute.DLNA) searchDlna(true) else searchCc(true)
+        DiagLog.log("Paylaşılan dosya cihaz seçimini bekliyor")
+    }
+
+    /** Bekleyen paylaşım varsa ve cihaz artık hazırsa oynatır. */
+    private fun playPendingIfReady() {
+        val list = pendingShare ?: return
+        if (!castTargetReady()) return
+        pendingShare = null
+        SharedWait.title = null
+        playShared(list)
     }
 
     private var pendingLink: String? = null
@@ -1070,6 +1105,8 @@ class MainActivity : ComponentActivity() {
         ccUi = ccUi.copy(selected = sel, useTv = isTv)
         DiagLog.log("Chromecast alıcısı: ${if (sel == null) "bağlı TV" else "başka cihaz"}")
         val ip = ccTargetIp()
+        // Paylaşımdan bekleyen dosya varsa seçer seçmez oynar (bağlantıyı castMedia kendisi kurar)
+        if (pendingShare != null && castTargetReady()) { playPendingIfReady(); return }
         if (ip.isNotBlank()) scope.launch(castIo) { runCatching { castClient.connect(ip) } }
     }
 
@@ -1117,6 +1154,7 @@ class MainActivity : ComponentActivity() {
     private fun pickDlna(d: DlnaDevice) {
         saveDlna(d)
         dlnaUi = dlnaUi.copy(selected = d)
+        playPendingIfReady()
     }
 
     private fun saveDlna(d: DlnaDevice) {

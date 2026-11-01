@@ -54,6 +54,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Paylaş menüsünün üst satırına "TV'de oynat" ve "TV'ye gönder" kısayolları -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/share_shortcuts" />
             <!-- Paylaş menüsü: fotoğraf, video ve müzikleri "TV'de aç" -->
             <intent-filter android:label="@string/share_label">
                 <action android:name="android.intent.action.SEND" />

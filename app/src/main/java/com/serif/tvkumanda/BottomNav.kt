@@ -38,6 +38,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -45,8 +46,16 @@ import kotlin.math.roundToInt
 
 private class NavEntry(val tab: Tab, val icon: ImageVector, val selectedIcon: ImageVector, val label: String)
 
-/** Alt menünün kapladığı yükseklik (kapsül + alt boşluk + nefes payı); içerikler en alta bu kadar boşluk bırakır. */
-val BarSpace = 86.dp
+/** Alt menü görünüyor mu (tek sekme açık kalınca gizlenir; Serif'in isteği, 2 Kasım 2026). */
+object NavBar {
+    var visible by mutableStateOf(true)
+}
+
+/**
+ * Alt menünün kapladığı yükseklik (kapsül + alt boşluk + nefes payı); içerikler en alta bu kadar boşluk bırakır.
+ * Alt menü gizliyken yalnızca küçük bir kenar boşluğu.
+ */
+val BarSpace: Dp get() = if (NavBar.visible) 86.dp else 16.dp
 
 /** Alt menünün arkasından akan listelerin en altta bırakacağı boşluk. */
 val LocalListBottom = compositionLocalOf { 0.dp }
@@ -71,14 +80,15 @@ private val TvFilled: ImageVector by lazy {
  * takip eder ve bırakılan sekme açılır.
  */
 @Composable
-fun BottomNav(tab: Tab, hazeState: HazeState, modifier: Modifier = Modifier, onTab: (Tab) -> Unit) {
-    val entries = remember {
+fun BottomNav(tab: Tab, tabs: List<Tab>, hazeState: HazeState, modifier: Modifier = Modifier, onTab: (Tab) -> Unit) {
+    // Yalnızca Ayarlar → Alt menü'de açık olan sekmeler, her zaman aynı sırada
+    val entries = remember(tabs) {
         listOf(
             NavEntry(Tab.REMOTE, AppIcons.Tv, TvFilled, "Kumanda"),
             NavEntry(Tab.CAST, AppIcons.Cast, Icons.Filled.CastConnected, "Cast"),
             NavEntry(Tab.TOOLS, Icons.Outlined.Build, Icons.Filled.Build, "Araçlar"),
             NavEntry(Tab.SHORTCUTS, Icons.Outlined.Bolt, Icons.Filled.Bolt, "Kısayollar")
-        )
+        ).filter { it.tab in tabs }
     }
     val count = entries.size
     val selectedIndex = entries.indexOfFirst { it.tab == tab }.coerceAtLeast(0)
