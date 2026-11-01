@@ -82,10 +82,7 @@ private val toolGroups = listOf(
         Tool("Bağlantıyı TV'de aç", Icons.Outlined.Link, id = ToolId.OPEN_LINK),
         Tool("Panodan yaz", Icons.Outlined.ContentPaste, id = ToolId.CLIPBOARD)
     )),
-    ToolGroup("Gelişmiş tuşlar", listOf(
-        Tool("Medya tuşları", Icons.Outlined.QueueMusic, id = ToolId.MEDIA_KEYS),
-        Tool("Sistem kısayolları", Icons.Outlined.Keyboard, id = ToolId.SYSTEM_KEYS)
-    )),
+    // "Gelişmiş tuşlar" (Medya tuşları, Sistem kısayolları) kaldırıldı: ikisi de Kumanda'daki 🎵 ve fn tuşlarında (Serif, v0.148)
     ToolGroup("Ağ ve test", listOf(
         Tool("Ağ tarayıcı", Icons.Outlined.Radar, offline = true, id = ToolId.NET_SCAN),
         Tool("Bağlantı testi", Icons.Outlined.NetworkCheck, offline = true, id = ToolId.CONN_TEST),

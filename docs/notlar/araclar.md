@@ -77,3 +77,4 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
   Dosyayı hemen okuyacak yer önce `DiagLog.flush()` çağırır (test de öyle).
 - Genel tarama (1 Kasım 2026): kullanılmayan 3 fonksiyon ve dadb'nin `adbserver`/`forwarding` parçaları (bilgisayardaki
   ADB sunucusu, port yönlendirme; uygulamada hiç kullanılmıyordu) silindi.
+- **Gelişmiş tuşlar bölümü kaldırıldı (v0.148, Serif'in isteği):** Medya tuşları ve Sistem kısayolları yalnızca Kumanda'daki 🎵 ve fn tuşlarından açılır (aynı `ToolSheet`, `ToolId`'ler duruyor).

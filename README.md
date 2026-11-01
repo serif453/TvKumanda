@@ -69,7 +69,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - **Dosyalar:** TV'ye dosya gönderme (paylaş menüsünden "TV'ye gönder" ile her türlü dosya, her uygulamadan), TV dosya gezgini, TV'nin kendi oynatıcısında açma (deneysel)
 - **Ekran:** ekran görüntüsü, ekran kaydı (deneysel; TV ekranı videoya çekilir, en fazla 3 dk, ses yok, ADB), animasyon hızı ⚠
 - **Gelişmiş:** özel DNS ⚠, ana ekran değiştirme ⚠, ADB komut satırı, sistem kayıtları
-- **İçerik ve tuşlar:** linki TV'de açma, panodan yazma, medya tuşları, sistem kısayolları
+- **İçerik açma:** linki TV'de açma, panodan yazma (medya tuşları ve sistem kısayolları Kumanda'daki 🎵 ve fn tuşlarında)
 - **Zamanlama ve güç:** uyku zamanlayıcısı (ADB'de son dakikada ses yavaşça kısılır), zamanlı açma (Wi-Fi ile uyandırma,
   tek sefer ya da her gün), ses sınırı (ADB), ekran süresi sınırı (günlük süre ve gece saatleri, ADB). ADB'li araçları TV'de
   arka planda çalışan küçük bir "nöbetçi" yürütür; telefon kapalıyken de geçerlidir
