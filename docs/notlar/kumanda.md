@@ -59,3 +59,5 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   titremez), `ses_tuslari` (varsayılan açık), `ekran_acik` (yalnızca Kumanda sekmesindeyken FLAG_KEEP_SCREEN_ON),
   `oto_baglan` (varsayılan açık), `acilis_sekme` (REMOTE/CAST/TOOLS/LAST; LAST için `son_sekme`). Fare hızı ve şerit
   `MouseSettings` ile aynı değer ("Fare ▾" penceresiyle ortak). "TV'ler ve bağlantı türü" satırı mevcut TV seçme penceresini açar.
+- **Sıkça sorulan sorular (1 Kasım 2026, içerik Serif'in onayıyla):** Ayarlar → Hakkında → "Sıkça sorulan sorular" → tam sayfa
+  `FaqPage` (`FaqPage.kt`), gruplu; soruya dokununca cevap açılır (aynı anda bir tane). Kurulum / Sorun giderme değişirse burası da güncellenir.

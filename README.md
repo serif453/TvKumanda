@@ -47,7 +47,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Fare imleç hızı ve kaydırma şeridinin tarafı
 - Açılışta son TV'ye kendiliğinden bağlanma; kayıtlı TV'ler ve bağlantı türü
 - Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
-- Sürüm, lisans ve GitHub sayfası
+- Hakkında: sürüm, sıkça sorulan sorular, lisans ve GitHub sayfası
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)

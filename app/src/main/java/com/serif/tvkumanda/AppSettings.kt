@@ -110,7 +110,9 @@ object AppSettings {
 fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) { MouseSettings.load(context) }
-    BackHandler(onBack = onClose)
+    // Hakkında → Sıkça sorulan sorular (tam sayfa, Ayarlar'ın üstünde açılır)
+    var faqOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = !faqOpen, onBack = onClose)
 
     Box(
         Modifier.fillMaxSize().background(Pal.Bg)
@@ -210,6 +212,9 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
             }
             SettingsGroup {
                 SettingsRow(Icons.Outlined.Info, "TV Kumanda", "Sürüm $version") {}
+                SettingsRow(Icons.Outlined.HelpOutline, "Sıkça sorulan sorular", "Bağlantı, kumanda, Cast ve daha fazlası", onClick = { faqOpen = true }) {
+                    Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp))
+                }
                 SettingsRow(Icons.Outlined.Gavel, "Lisans", "GPL-3.0 (özgür yazılım)") {}
                 SettingsRow(Icons.Outlined.Code, "GitHub sayfası", "github.com/serif453/TvKumanda", onClick = {
                     runCatching {
@@ -223,6 +228,8 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
             }
             Spacer(Modifier.height(28.dp))
         }
+
+        if (faqOpen) FaqPage { faqOpen = false }
     }
 }
 
