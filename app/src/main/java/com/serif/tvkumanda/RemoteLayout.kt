@@ -298,22 +298,14 @@ fun NowPlayingContent(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit)
     // Kart çizilmez: medya çubuğuyla aynı cam kartın üst bölümü (GlassMediaBar header).
     // Başlık yoksa uygulamanın adı yazılır. Kanal/sanatçı adı gösterilmez (Serif'in isteği).
     val title = np.title.ifBlank { app?.name ?: "Oynatılıyor" }
-    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp)) {
         // Üst: başlık tek satır, sığmazsa "…"
         Text(title, color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp))
-        // Alt: simge + süre + sarma çubuğu (süre bilinmiyorsa yalnızca başlık)
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp, top = 6.dp))
+        // Alt: sarma çubuğu en soldan; süreler sağda yan yana "6:57 / 18:23" (süre bilinmiyorsa yalnızca başlık)
         if (dur > 0) {
-            Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val bmp = app?.icon
-                Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
-                    if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                    else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(16.dp))
-                }
-                Spacer(Modifier.width(8.dp))
                 val shown = dragging?.let { (it * dur).toLong() } ?: pos
-                Text(hms(shown), color = Navy.Sub, fontSize = 12.sp, modifier = Modifier.width(48.dp))
                 androidx.compose.material3.Slider(
                     value = dragging ?: (pos.toFloat() / dur).coerceIn(0f, 1f),
                     onValueChange = { dragging = it },
@@ -325,9 +317,20 @@ fun NowPlayingContent(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit)
                     ),
                     modifier = Modifier.weight(1f).height(28.dp)
                 )
-                Text(hms(dur), color = Navy.Sub, fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.width(48.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("${hms(shown)} / ${hms(dur)}", color = Navy.Sub, fontSize = 12.sp, maxLines = 1)
             }
         }
+    }
+}
+
+/** Oynatılan uygulamanın simgesi; birleşik kartta medya tuşlarının solunda durur. */
+@Composable
+fun NowPlayingIcon(np: NowPlaying, apps: List<TvApp>) {
+    val bmp = apps.firstOrNull { it.pkg == np.pkg }?.icon
+    Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Navy.Btn), contentAlignment = Alignment.Center) {
+        if (bmp != null) Image(bmp, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        else Icon(Icons.Filled.PlayArrow, null, tint = Navy.Sub, modifier = Modifier.size(18.dp))
     }
 }
 

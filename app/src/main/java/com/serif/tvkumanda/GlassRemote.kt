@@ -395,25 +395,27 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
 // ---------------- Medya çubuğu ----------------
 
 @Composable
-fun GlassMediaBar(onKey: (Int) -> Unit, header: (@Composable () -> Unit)? = null) {
+fun GlassMediaBar(onKey: (Int) -> Unit, header: (@Composable () -> Unit)? = null, leading: (@Composable () -> Unit)? = null) {
     // TV'de bir şey çalarken oynatıcı (başlık + sarma çubuğu) aynı cam kartın üstüne girer: tek kart
     if (header == null) {
         MediaKeysRow(Modifier.fillMaxWidth().height(68.dp).glass(RoundedCornerShape(34.dp), strength = 0.65f), onKey)
     } else {
         Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(28.dp), strength = 0.65f)) {
             header()
-            MediaKeysRow(Modifier.fillMaxWidth().height(64.dp), onKey)
+            MediaKeysRow(Modifier.fillMaxWidth().height(64.dp), onKey, leading)
         }
     }
 }
 
 @Composable
-private fun MediaKeysRow(modifier: Modifier, onKey: (Int) -> Unit) {
+private fun MediaKeysRow(modifier: Modifier, onKey: (Int) -> Unit, leading: (@Composable () -> Unit)? = null) {
     Row(
         modifier.padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Video açıkken oynatılan uygulamanın simgesi tuşların solunda
+        leading?.invoke()
         BarKey(AppIcons.SkipPrevious, "Önceki") { onKey(Keys.PREV) }
         BarKey(Icons.Filled.FastRewind, "Geri sar", repeat = true) { onKey(89) }
         val inter = remember { MutableInteractionSource() }

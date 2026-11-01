@@ -18,7 +18,8 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     uzar; TV adı kutusunda iç boşluk, ad sığmazsa "…"; üstteki mor ışık keskin kenarsız; alttaki şerit `glassSwoosh` ile
     boşluğun içine çizilir (oynatıcı çubuğuna binmesin).
     Oynatıcı çubuğunda (`NowPlayingBar`, TV'de bir şey çalarken) Önceki/Oynat/Sonraki tuşları yok: alttaki medya çubuğunda
-    zaten var (Serif'in isteği, 1 Kasım 2026). v0.125: oynatıcı ayrı kart değil, medya çubuğuyla **tek cam kart**
-    (`GlassMediaBar(header = NowPlayingContent)`): üstte tek satır başlık ("…"), altında simge (28 dp) · süre · sarma çubuğu ·
-    toplam, en altta medya tuşları. Kanal adı yok; başlık yoksa uygulama adı. Video açıkken kumanda kartıyla arası 20 dp (yoksa 12).
+    zaten var (Serif'in isteği, 1 Kasım 2026). v0.126: oynatıcı ayrı kart değil, medya çubuğuyla **tek cam kart**
+    (`GlassMediaBar(header = NowPlayingContent, leading = NowPlayingIcon)`): üstte tek satır başlık ("…", üst boşluk kısa),
+    altında en soldan sarma çubuğu + sağda "6:57 / 18:23", en altta uygulama simgesi (32 dp, ⏮'nin solunda; Serif'in isteği) +
+    medya tuşları. Kanal adı yok; başlık yoksa uygulama adı. Video açıkken kumanda kartıyla arası 10 dp (kart uzar).
 - TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
