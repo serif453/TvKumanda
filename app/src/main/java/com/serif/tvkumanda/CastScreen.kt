@@ -116,21 +116,6 @@ data class CcUi(
     val tvIp: String = ""
 )
 
-/**
- * Paylaş → "TV'de oynat" ile gelen ama gönderilecek cihaz seçili olmadığı için bekleyen dosya (Serif'in isteği,
- * 2 Kasım 2026). MainActivity yazar; Cast ekranı başa döner, ilgili cihaz seçiciyi açar ve "bekliyor" satırını
- * gösterir. Cihaz seçilince dosya hemen oynar.
- */
-object SharedWait {
-    /** Bekleyen dosyanın adı (bekleyen yoksa null). */
-    var title by mutableStateOf<String?>(null)
-    var route by mutableStateOf(CastRoute.CHROMECAST)
-    /** Artınca seçici bir kez açılır; [handledTick] aynı isteğin sekme değişiminde yeniden açılmasını önler. */
-    var pickTick by mutableIntStateOf(0)
-    var handledTick = 0
-    var cancel: () -> Unit = {}
-}
-
 /** DLNA bölümünün durumu. */
 data class DlnaUi(
     val devices: List<DlnaDevice> = emptyList(),
@@ -169,13 +154,12 @@ fun CastScreen(
     onCcSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Sekme açılınca kendiliğinden arama ya da bağlantı yok (onWarmup boş); cihazlar seçicideki "Ara" ile bulunur
-    LaunchedEffect(connected) { onWarmup() }
+    // Sekme açılınca: Ayarlar → Cast "Kendiliğinden bağlan" ise son cihaz sessizce aranır (MainActivity.castWarmup)
+    LaunchedEffect(Unit) { onWarmup() }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
     var browseRoute by remember { mutableStateOf(CastRoute.CHROMECAST) }
-    // Başka bir Chromecast seçiliyse TV'ye bağlı olmak gerekmez; bağlı TV seçiliyse TV bağlantısı gerekir
-    val ccReady = (cc.selected != null && cc.selected.ip != cc.tvIp) || ((cc.useTv || cc.selected != null) && connected)
-    val canCast = if (browseRoute == CastRoute.CHROMECAST) ccReady else dlna.selected != null
+    // Bağlanmadan da gezilir; bağlı değilken bir öğeye dokununca cihaz paneli açılır (Serif, 2 Kasım 2026)
+    val canCast = true
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
@@ -198,11 +182,6 @@ fun CastScreen(
         else { browse = cast.kind; album = null; jumpAlbum = target }
     }
 
-    // Paylaşımdan bekleyen dosya: galeriden çıkılır ki cihaz seçici görünsün
-    LaunchedEffect(SharedWait.pickTick) {
-        if (SharedWait.pickTick > SharedWait.handledTick) { browse = null; album = null }
-    }
-
     BackHandler(enabled = browse != null) {
         if (album != null) album = null else browse = null
     }
@@ -210,50 +189,17 @@ fun CastScreen(
     Column(modifier.fillMaxWidth().padding(top = 12.dp)) {
         val kind = browse
         if (kind == null) {
-            Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                CastButton(cc, dlna)
+            }
             Spacer(Modifier.height(14.dp))
-            SharedWait.title?.let { t -> SharedWaitLine(t, SharedWait.route) { SharedWait.cancel() } }
-
-            // ---- Chromecast ----
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionHeader("Chromecast")
-                Spacer(Modifier.weight(1f))
-                CcPicker(cc, onCcPick, onCcSearch, autoOpen = SharedWait.route == CastRoute.CHROMECAST)
-            }
-            Spacer(Modifier.height(6.dp))
-            if (!ccReady) Text(if (cc.selected == null && !cc.useTv) "Sağdaki seçiciden \"Ara\" ile bir cihaz seç" else "Önce TV'ye bağlan", color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
-            KindRow(ccReady) { k ->
-                browseRoute = CastRoute.CHROMECAST; onSelectRoute(CastRoute.CHROMECAST)
+            // Tek sıra: hangi yoldan (Chromecast / DLNA) gideceğini bağlanılan cihaz belirler
+            KindRow(true) { k ->
                 browse = k; album = null
                 if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
             }
-            Spacer(Modifier.height(20.dp))
-
-            // ---- DLNA (deneysel) ----
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionHeader("DLNA")
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "deneysel", color = Pal.Amber, fontSize = 11.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Pal.Amber.copy(alpha = 0.15f))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                )
-                Spacer(Modifier.weight(1f))
-                DlnaPicker(dlna, onDlnaPick, onDlnaSearch, autoOpen = SharedWait.route == CastRoute.DLNA)
-            }
-            Spacer(Modifier.height(6.dp))
-            if (dlna.selected == null) {
-                Text(
-                    if (dlna.searching) "Ağda DLNA cihazları aranıyor…" else "Ağda DLNA cihazı bulunamadı",
-                    color = Pal.Sub, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp)
-                )
-            }
-            KindRow(dlna.selected != null) { k ->
-                browseRoute = CastRoute.DLNA; onSelectRoute(CastRoute.DLNA)
-                browse = k; album = null
-                if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
-            }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
 
             // ---- DLNA Sunucu (deneysel): telefon ağda medya sunucusu olur ----
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -279,8 +225,10 @@ fun CastScreen(
                 Text(
                     album?.name ?: kind.label,
                     color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                 )
+                Spacer(Modifier.width(8.dp))
+                CastButton(cc, dlna)
             }
             Spacer(Modifier.height(10.dp))
             // Kart yokken galeri alt menünün arkasından akar; son öğeler için altta boşluk bırakılır
@@ -333,6 +281,7 @@ fun CastScreen(
             Spacer(Modifier.height(BarSpace))
         }
     }
+    CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
 }
 
 @Composable
@@ -539,101 +488,6 @@ private fun KindRow(enabled: Boolean, onKind: (MediaKind) -> Unit) {
     }
 }
 
-/** Chromecast alıcı seçici: seçili cihaz (hatırlanır); "Ara" ile bulunanlar listelenir, dokununca seçilir. */
-@Composable
-private fun CcPicker(cc: CcUi, onPick: (FoundTv?) -> Unit, onSearch: () -> Unit, autoOpen: Boolean = false) {
-    var open by remember { mutableStateOf(false) }
-    // Paylaşımdan gelen dosya cihaz bekliyor: seçici kendiliğinden açılır (arama MainActivity'de başladı)
-    LaunchedEffect(SharedWait.pickTick, autoOpen) {
-        if (autoOpen && SharedWait.pickTick > SharedWait.handledTick) { SharedWait.handledTick = SharedWait.pickTick; open = true }
-    }
-    val tvChosen = cc.selected == null && cc.useTv
-    Box {
-        Row(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                cc.selected?.name ?: if (tvChosen) cc.tvName.ifBlank { "Bağlı TV" } else if (cc.searching) "Aranıyor…" else "Cihaz seç",
-                color = Pal.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp)
-            )
-            Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
-        }
-        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            // Hatırlanan seçim aramada henüz bulunmadıysa da listede görünür
-            val shownSel = cc.selected?.takeIf { s -> cc.devices.none { it.ip == s.ip } }
-            if (shownSel != null) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("✓ " + shownSel.name + "  ·  " + shownSel.ip) },
-                    onClick = { open = false; onPick(shownSel) }
-                )
-            }
-            if (tvChosen && cc.devices.none { it.ip == cc.tvIp }) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("✓ " + if (cc.tvIp.isBlank()) "Bağlı TV (bağlı değil)" else cc.tvName.ifBlank { cc.tvIp } + "  ·  bağlı TV") },
-                    onClick = { open = false; onPick(null) }
-                )
-            }
-            for (d in cc.devices) {
-                val isTv = d.ip == cc.tvIp && cc.tvIp.isNotBlank()
-                val mark = d.ip == cc.selected?.ip || (isTv && tvChosen)
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text((if (mark) "✓ " else "") + d.name + "  ·  " + if (isTv) "bağlı TV" else d.ip) },
-                    onClick = { open = false; onPick(d) }
-                )
-            }
-            androidx.compose.material3.DropdownMenuItem(
-                text = { Text(if (cc.searching) "Aranıyor…" else if (cc.devices.isEmpty()) "Ara" else "Yeniden ara") },
-                onClick = { open = false; if (!cc.searching) onSearch() }
-            )
-        }
-    }
-}
-
-/** DLNA cihaz seçici: seçili cihazın adı; dokununca bulunan cihazlar ve "Yeniden ara". */
-@Composable
-private fun DlnaPicker(dlna: DlnaUi, onPick: (DlnaDevice) -> Unit, onSearch: () -> Unit, autoOpen: Boolean = false) {
-    var open by remember { mutableStateOf(false) }
-    LaunchedEffect(SharedWait.pickTick, autoOpen) {
-        if (autoOpen && SharedWait.pickTick > SharedWait.handledTick) { SharedWait.handledTick = SharedWait.pickTick; open = true }
-    }
-    Box {
-        Row(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.Btn).clickable { open = true }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                dlna.selected?.name ?: if (dlna.searching) "Aranıyor…" else "Cihaz seç",
-                color = Pal.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp)
-            )
-            Icon(androidx.compose.material.icons.Icons.Filled.ArrowDropDown, null, tint = Pal.Text, modifier = Modifier.size(20.dp))
-        }
-        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            // Hatırlanan seçim aramada henüz bulunmadıysa da listede görünür
-            dlna.selected?.takeIf { s -> dlna.devices.none { it.key == s.key } }?.let { s ->
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("✓ " + s.name + "  ·  " + s.ip) },
-                    onClick = { open = false; onPick(s) }
-                )
-            }
-            for (d in dlna.devices) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text((if (d.key == dlna.selected?.key) "✓ " else "") + d.name + "  ·  " + d.ip) },
-                    onClick = { open = false; onPick(d) }
-                )
-            }
-            androidx.compose.material3.DropdownMenuItem(
-                text = { Text(if (dlna.searching) "Aranıyor…" else if (dlna.devices.isEmpty()) "Ara" else "Yeniden ara") },
-                onClick = { open = false; if (!dlna.searching) onSearch() }
-            )
-        }
-    }
-}
-
 @Composable
 private fun KindButton(icon: ImageVector, label: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     Column(
@@ -790,23 +644,3 @@ internal fun timeText(sec: Double): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)
 }
 
-/** "Paylaşılan dosya bekliyor" satırı: hangi seçiciden cihaz seçileceğini söyler; ✕ ile vazgeçilir. */
-@Composable
-private fun SharedWaitLine(title: String, route: CastRoute, onCancel: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 14.dp).clip(RoundedCornerShape(14.dp))
-            .background(Pal.Blue.copy(alpha = 0.14f)).padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Paylaşılan dosya bekliyor", color = Pal.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                "$title · ${if (route == CastRoute.DLNA) "DLNA" else "Chromecast"} seçiciden bir cihaz seç, hemen oynar",
-                color = Pal.Sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
-        }
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(20.dp)).clickable(onClick = onCancel), contentAlignment = Alignment.Center) {
-            Icon(androidx.compose.material.icons.Icons.Filled.Close, "Vazgeç", tint = Pal.Sub, modifier = Modifier.size(20.dp))
-        }
-    }
-}

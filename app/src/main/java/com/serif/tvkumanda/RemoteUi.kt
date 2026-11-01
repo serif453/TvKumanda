@@ -248,7 +248,7 @@ fun RemoteScreen(
 
     LaunchedEffect(ui.state) {
         // Paylaşılan dosya Cast ekranında cihaz seçimini bekliyorsa TV paneli üstüne açılmaz
-        if (ui.state == ConnState.ERROR && !(tab == Tab.CAST && SharedWait.title != null)) openTvs()
+        if (ui.state == ConnState.ERROR && !(tab == Tab.CAST && CastPanel.open)) openTvs()
         if (ui.state == ConnState.CONNECTED && pickerOpen && pickerExpanded) pickerOpen = false
     }
 

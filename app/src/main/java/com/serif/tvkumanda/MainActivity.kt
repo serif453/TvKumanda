@@ -112,7 +112,6 @@ class MainActivity : ComponentActivity() {
     private var artFor: Long? = null
     private var artBitmap: android.graphics.Bitmap? = null
     // "Paylaş" ile gelen dosyalar (bağlantı kurulunca oynatılır)
-    private var pendingShare: List<MediaItem>? = null
     private var castTabTick by mutableStateOf(0)
     // DLNA (deneysel)
     private lateinit var dlnaClient: DlnaClient
@@ -219,7 +218,11 @@ class MainActivity : ComponentActivity() {
         castClient.onVolume = { v -> runOnUiThread { castVolumeKnown = v; if (cast.phase != CastPhase.NONE) cast = cast.copy(volume = v) } }
         prefs = getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         AppSettings.load(this)
-        restoreCastChoices()
+        restoreLastCast()
+        CastPanel.onOpen = { openCastPanel() }
+        CastPanel.onClose = ::closeCastPanel
+        CastPanel.onSearch = { searchCc(true); searchDlna(true) }
+        CastPanel.onDisconnect = ::disconnectCast
         savedTvs = SavedTv.load(prefs.getString("tvs", null))
         val savedIp = prefs.getString("ip", "") ?: ""
         method = runCatching { ConnMethod.valueOf(prefs.getString("method", null) ?: "ADB") }.getOrDefault(ConnMethod.ADB)
@@ -269,7 +272,11 @@ class MainActivity : ComponentActivity() {
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
                     cast = cast,
                     onCastPick = ::pickForCast,
-                    onCastItem = { item, list, albumId -> playAlbumId = albumId; playFromList(list, list.indexOf(item)) },
+                    onCastItem = { item, list, albumId ->
+                        val go = { playAlbumId = albumId; playFromList(list, list.indexOf(item)) }
+                        // Bağlı değilken dokunulan öğe: panel açılır, cihaz seçilince bu öğe oynar
+                        if (castTargetReady()) go() else openCastPanel(item.title, go)
+                    },
                     onCastPrev = { castStep(-1) },
                     onCastNext = { castStep(1) },
                     onCastSkip = ::castSkip,
@@ -323,8 +330,6 @@ class MainActivity : ComponentActivity() {
                 state = ConnState.ERROR
                 message = "Bağlanamadı: ${e.message ?: e.javaClass.simpleName}"
                 DiagLog.log("Bağlanamadı: $ip (${methodLabel()}) — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
-                // TV'ye bağlanınca oynayacak paylaşım bekliyordu: cihaz seçiciye geçilir
-                pendingShare?.let { if (!castTargetReady()) waitForCastDevice(it) }
             }
         }
     }
@@ -354,7 +359,6 @@ class MainActivity : ComponentActivity() {
         apps = emptyList()
         loadApps(ip)
         refreshVolume(0)
-        playPendingIfReady()
         pendingLink?.let { url -> pendingLink = null; openSharedLink(url) }
         startShareSend()
     }
@@ -669,8 +673,7 @@ class MainActivity : ComponentActivity() {
     // ---------- Cast ----------
 
     private fun pickForCast(kind: MediaKind) {
-        val ok = if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else ccTargetIp().isNotBlank()
-        if (!ok) { toast(if (selectedRoute == CastRoute.DLNA) "Önce bir DLNA cihazı seç" else ccMissingText()); return }
+        if (!castTargetReady()) { openCastPanel { pickForCast(kind) }; return }
         pendingKind = kind
         runCatching { pickMedia.launch(kind.mimeFilter) }.onFailure { toast("Dosya seçici açılamadı") }
     }
@@ -771,8 +774,8 @@ class MainActivity : ComponentActivity() {
                             mediaServer.publishBytes(Subtitles.convert(raw), "text/vtt; charset=utf-8", ip)
                         }.getOrElse { runOnUiThread { toast("Altyazı dosyası okunamadı") }; null }
                     }
-                    // TV uykudaysa önce uyandırılır (yalnızca bağlı TV; başka cihaz kumandayla uyandırılamaz)
-                    if (ccOther == null) wakeTvIfAsleep(ip)
+                    // Cast cihazı kumandanın bağlı olduğu TV ise ve uykudaysa önce uyandırılır (başka cihaz kumandayla uyandırılamaz)
+                    if (state == ConnState.CONNECTED && ip == currentIp) wakeTvIfAsleep(ip)
                     if (!castClient.isConnected || castClient.connectedIp != ip)
                         castStage(if (ccOther == null) "TV'ye bağlanılıyor…" else "${ccOther.name} cihazına bağlanılıyor…")
                     castClient.connect(ip)
@@ -972,42 +975,76 @@ class MainActivity : ComponentActivity() {
                 mime = mime.ifBlank { kind.fallbackMime }, kind = kind)
         }
         castTabTick++
-        when {
-            castTargetReady() -> playShared(items)
-            // "Bağlı TV" seçili ve TV'ye şu an bağlanılıyor: bağlanınca kendiliğinden oynar
-            state == ConnState.CONNECTING && selectedRoute == CastRoute.CHROMECAST && ccUi.useTv && ccUi.selected == null -> {
-                pendingShare = items
-                SharedWait.title = sharedTitle(items)
-            }
-            // Cihaz yok ya da hazır değil: Cast ekranında cihaz seçici açılır ve aranır; seçilince oynar (Serif, 2 Kasım 2026)
-            else -> waitForCastDevice(items)
-        }
+        // Cihaza bağlıysa hemen oynar; değilse cihaz paneli açılıp aranır, seçince oynar (Serif, 2 Kasım 2026)
+        if (castTargetReady()) playShared(items)
+        else openCastPanel(if (items.size > 1) "${items.size} dosya" else items.first().title) { playShared(items) }
     }
 
-    /** Seçili yayın yolunda (Chromecast / DLNA) gönderilecek bir cihaz hazır mı. */
+    // ---------- Cast cihazı (tek cast düğmesi + panel) ----------
+
+    /** Cihaz seçilince çalışacak iş (dokunulan öğe, paylaşılan dosya, dosya seçici). */
+    private var pendingPlay: (() -> Unit)? = null
+    /** Bu oturumda "Bağlantıyı kes" dendiyse "Otomatik" bağlanma bir daha denenmez. */
+    private var castUserDisconnected = false
+
+    private data class LastCast(val dlna: Boolean, val name: String)
+    private var lastCast: LastCast? = null
+
+    /** Bağlı cast cihazı var mı (Chromecast ya da DLNA; kumanda bağlantısından bağımsız). */
     private fun castTargetReady(): Boolean =
-        if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else ccTargetIp().isNotBlank()
+        if (selectedRoute == CastRoute.DLNA) dlnaUi.selected != null else ccUi.selected != null
 
-    private fun sharedTitle(items: List<MediaItem>) = if (items.size > 1) "${items.size} dosya" else items.first().title
-
-    /** Paylaşılan dosyayı bekletir, Cast ekranında cihaz seçiciyi açtırır ve ağda arar. */
-    private fun waitForCastDevice(items: List<MediaItem>) {
-        pendingShare = items
-        SharedWait.title = sharedTitle(items)
-        SharedWait.route = selectedRoute
-        SharedWait.cancel = { pendingShare = null; SharedWait.title = null }
-        SharedWait.pickTick++
-        if (selectedRoute == CastRoute.DLNA) searchDlna(true) else searchCc(true)
-        DiagLog.log("Paylaşılan dosya cihaz seçimini bekliyor")
+    private fun openCastPanel(waiting: String? = null, then: (() -> Unit)? = null) {
+        pendingPlay = then
+        CastPanel.waiting = waiting
+        CastPanel.lastName = lastCast?.name?.takeIf { AppSettings.castRemember != "NONE" }
+        CastPanel.open = true
+        searchCc(true)
+        searchDlna(true)
     }
 
-    /** Bekleyen paylaşım varsa ve cihaz artık hazırsa oynatır. */
-    private fun playPendingIfReady() {
-        val list = pendingShare ?: return
-        if (!castTargetReady()) return
-        pendingShare = null
-        SharedWait.title = null
-        playShared(list)
+    private fun closeCastPanel() {
+        CastPanel.open = false
+        CastPanel.waiting = null
+        pendingPlay = null
+    }
+
+    /** Cihaz seçildi: panel kapanır, bekleyen iş varsa çalışır. */
+    private fun afterCastPick() {
+        val p = pendingPlay
+        closeCastPanel()
+        p?.invoke()
+    }
+
+    private fun rememberCast(dlna: Boolean, name: String) {
+        lastCast = LastCast(dlna, name)
+        prefs.edit().putString("cast_son", (if (dlna) "D" else "C") + "\u0001" + name).apply()
+    }
+
+    private fun restoreLastCast() {
+        lastCast = prefs.getString("cast_son", null)?.split('\u0001')?.takeIf { it.size == 2 }?.let { LastCast(it[0] == "D", it[1]) }
+        // Eski "seçim hatırlansın" kayıtları artık kullanılmaz
+        prefs.edit().remove("cc_secim").remove("dlna_secim").apply()
+    }
+
+    /** "Otomatik" ayarında aramada son cihaz bulunursa ona bağlanılır. */
+    private fun maybeAutoPick() {
+        if (AppSettings.castRemember != "AUTO" || castUserDisconnected) return
+        if (ccUi.selected != null || dlnaUi.selected != null) return
+        val last = lastCast ?: return
+        if (last.dlna) dlnaUi.devices.firstOrNull { it.name == last.name }?.let { pickDlna(it) }
+        else ccUi.devices.firstOrNull { it.name == last.name }?.let { pickCc(it) }
+    }
+
+    /** Bağlantıyı kes: yayın durur, seçim kalkar. */
+    private fun disconnectCast() {
+        if (cast.phase != CastPhase.NONE) castStop()
+        scope.launch(castIo) { runCatching { castClient.close() } }
+        ccUi = ccUi.copy(selected = null, useTv = false)
+        dlnaUi = dlnaUi.copy(selected = null)
+        castUserDisconnected = true
+        closeCastPanel()
+        DiagLog.log("Cast bağlantısı kesildi")
     }
 
     private var pendingLink: String? = null
@@ -1047,33 +1084,21 @@ class MainActivity : ComponentActivity() {
         playFromList(items, 0)
     }
 
-    /**
-     * Cast sekmesi açılınca hiçbir şey yapılmaz (Serif'in isteği, 1 Kasım 2026): kendiliğinden arama ya da bağlantı yok.
-     * Cihaz seçicide "Ara" ile aranır, dokununca seçilir ve bağlanılır; seçim hatırlanır, sonraki açılışta ilk gönderimde bağlanılır.
-     */
-    private fun castWarmup() {}
-
-    /** Hatırlanan Chromecast ve DLNA seçimlerini geri yükler (bağlanmadan). */
-    private fun restoreCastChoices() {
-        when (val c = prefs.getString("cc_secim", null)) {
-            null -> {}
-            "tv" -> ccUi = ccUi.copy(useTv = true)
-            else -> c.split('\u0001').takeIf { it.size == 2 }?.let { ccUi = ccUi.copy(selected = FoundTv(it[0], it[1])) }
-        }
-        prefs.getString("dlna_secim", null)?.split('\u0001')?.takeIf { it.size == 5 }?.let {
-            dlnaUi = dlnaUi.copy(selected = DlnaDevice(it[0], it[1], it[2], it[3], it[4].ifBlank { null }))
-        }
+    /** Cast sekmesi açılınca: "Otomatik" ayarındaysa son cihaz sessizce aranır, bulununca bağlanılır. */
+    private fun castWarmup() {
+        if (AppSettings.castRemember != "AUTO" || castUserDisconnected) return
+        if (ccUi.selected != null || dlnaUi.selected != null) return
+        val last = lastCast ?: return
+        if (last.dlna) searchDlna(true) else searchCc(true)
     }
 
-    private fun ccMissingText() =
-        if (ccUi.useTv || ccUi.selected != null) "Önce TV'ye bağlan" else "Önce Chromecast cihazı seç (seçiciden \"Ara\")"
+    private fun ccMissingText() = "Önce cast düğmesinden bir cihaza bağlan"
 
-    /** Seçili başka Chromecast cihazı (bağlı TV seçiliyse ya da seçim yoksa null). */
-    private fun ccOther(): FoundTv? = ccUi.selected?.takeIf { !(state == ConnState.CONNECTED && it.ip == currentIp) }
+    /** Seçili Chromecast cihazı (yoksa null). */
+    private fun ccOther(): FoundTv? = ccUi.selected
 
-    /** Chromecast yayınının gideceği adres: seçili cihaz, "bağlı TV" seçiliyse bağlı TV ("" = seçim yok ya da TV bağlı değil). */
-    private fun ccTargetIp(): String =
-        ccOther()?.ip ?: if ((ccUi.useTv || ccUi.selected != null) && state == ConnState.CONNECTED) currentIp else ""
+    /** Chromecast yayınının gideceği adres ("" = cihaz seçili değil). Kumanda bağlantısından bağımsız. */
+    private fun ccTargetIp(): String = ccUi.selected?.ip ?: ""
 
     /** Ağdaki Chromecast'li cihazları mDNS ile arar (yalnızca "Ara"ya dokununca); seçim kendiliğinden yapılmaz. */
     private fun searchCc(force: Boolean) {
@@ -1085,6 +1110,7 @@ class MainActivity : ComponentActivity() {
             // Seçili cihazın adresi değiştiyse güncellenir; başka bir seçim yapılmaz
             val keep = ccUi.selected?.let { s -> found.firstOrNull { it.name == s.name } ?: s }
             ccUi = ccUi.copy(devices = found, selected = keep)
+            maybeAutoPick()
         }
         ccSearchJob?.cancel()
         ccSearchJob = scope.launch {
@@ -1096,18 +1122,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Chromecast alıcısını seçer, hatırlar ve hemen bağlanır. Bağlı TV'nin kendisi seçilirse bağlı TV'yi izler. */
+    /** Chromecast cihazına bağlanır (paneldeki dokunuş ya da "Otomatik"). Bekleyen iş varsa hemen oynar. */
     private fun pickCc(d: FoundTv?) {
-        val isTv = d == null || (state == ConnState.CONNECTED && d.ip == currentIp)
-        val sel = if (isTv) null else d
-        if (cast.phase != CastPhase.NONE && cast.route == CastRoute.CHROMECAST && ccTargetIp() != (sel?.ip ?: currentIp)) castStop()
-        prefs.edit().putString("cc_secim", if (sel == null) "tv" else sel.name + "\u0001" + sel.ip).apply()
-        ccUi = ccUi.copy(selected = sel, useTv = isTv)
-        DiagLog.log("Chromecast alıcısı: ${if (sel == null) "bağlı TV" else "başka cihaz"}")
-        val ip = ccTargetIp()
-        // Paylaşımdan bekleyen dosya varsa seçer seçmez oynar (bağlantıyı castMedia kendisi kurar)
-        if (pendingShare != null && castTargetReady()) { playPendingIfReady(); return }
-        if (ip.isNotBlank()) scope.launch(castIo) { runCatching { castClient.connect(ip) } }
+        d ?: return
+        // Başka cihaza ya da DLNA'ya yayın sürüyorsa durur (aynı anda iki cihaza yayın yok)
+        if (cast.phase != CastPhase.NONE && (cast.route == CastRoute.DLNA || ccUi.selected?.ip != d.ip)) castStop()
+        ccUi = ccUi.copy(selected = d, useTv = false)
+        dlnaUi = dlnaUi.copy(selected = null)
+        selectedRoute = CastRoute.CHROMECAST
+        castUserDisconnected = false
+        rememberCast(false, d.name)
+        DiagLog.log("Cast cihazı: Chromecast")
+        val waiting = pendingPlay != null
+        // Bekleyen iş yoksa bağlantı önceden kurulur; varsa castMedia kendisi kurar
+        if (!waiting) scope.launch(castIo) { runCatching { castClient.connect(d.ip) } }
+        afterCastPick()
     }
 
     /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */
@@ -1146,15 +1175,21 @@ class MainActivity : ComponentActivity() {
             val before = dlnaUi.selected
             val keep = before?.let { s -> found.firstOrNull { it.key == s.key } ?: found.firstOrNull { it.name == s.name } ?: s }
             dlnaUi = DlnaUi(found, keep, searching = false)
-            if (keep != null && keep != before) saveDlna(keep)
-            if (force && found.isEmpty()) toast("Ağda DLNA cihazı bulunamadı")
+            maybeAutoPick()
         }
     }
 
+    /** DLNA cihazını seçer (DLNA'da kalıcı bağlantı yok, seçim yeterli). Bekleyen iş varsa hemen oynar. */
     private fun pickDlna(d: DlnaDevice) {
-        saveDlna(d)
+        if (cast.phase != CastPhase.NONE && (cast.route == CastRoute.CHROMECAST || dlnaUi.selected?.key != d.key)) castStop()
+        if (ccUi.selected != null) scope.launch(castIo) { runCatching { castClient.close() } }
         dlnaUi = dlnaUi.copy(selected = d)
-        playPendingIfReady()
+        ccUi = ccUi.copy(selected = null, useTv = false)
+        selectedRoute = CastRoute.DLNA
+        castUserDisconnected = false
+        rememberCast(true, d.name)
+        DiagLog.log("Cast cihazı: DLNA")
+        afterCastPick()
     }
 
     private fun saveDlna(d: DlnaDevice) {
@@ -1175,12 +1210,14 @@ class MainActivity : ComponentActivity() {
     /** Başka yola geçerken önceki yayını sessizce durdurur. */
     private fun stopRouteQuietly(route: CastRoute) {
         castPollJob?.cancel()
-        scope.launch(castIo) { stopRouteBlocking(route) }
+        val dev = dlnaUi.selected
+        scope.launch(castIo) { stopRouteBlocking(route, dev) }
     }
 
-    private fun stopRouteBlocking(route: CastRoute) {
+    /** [dev]: durdurulacak DLNA cihazı; seçim hemen ardından değişebileceği için önceden alınır. */
+    private fun stopRouteBlocking(route: CastRoute, dev: DlnaDevice? = dlnaUi.selected) {
         if (route == CastRoute.DLNA) {
-            dlnaUi.selected?.let { d -> runCatching { dlnaClient.stop(d) } }
+            dev?.let { d -> runCatching { dlnaClient.stop(d) } }
         } else {
             runCatching { castClient.stopApp() }
             runCatching { Thread.sleep(300); castClient.close() }
@@ -1440,9 +1477,10 @@ class MainActivity : ComponentActivity() {
         playIndex = -1
         playAlbumId = null
         CastService.stop(this)
+        val stoppedDev = dlnaUi.selected
         scope.launch(castIo) {
             // TV'deki oynatıcı da kapatılır; bekleme ekranı kalmaz
-            stopRouteBlocking(stoppedRoute)
+            stopRouteBlocking(stoppedRoute, stoppedDev)
             mediaServer.stop()
         }
     }

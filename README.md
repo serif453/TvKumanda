@@ -53,11 +53,13 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
-- Chromecast alıcısını seçme: bağlı TV ya da ağdaki başka bir Chromecast'li cihaz (TV bağlantısı gerekmez)
+- Tek cast düğmesi: basınca o an ağdaki Chromecast ve DLNA cihazları tek listede aranır, dokununca bağlanılır (kumanda bağlantısı gerekmez)
+- Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
+- Son cihazı hatırlama Ayarlar'dan: hiç, listede başta ya da otomatik bağlan
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam
 - SRT altyazı (Türkçe karakter kodlaması otomatik düzeltilir)
 - Telefon ekranı kapalıyken de devam eder; bildirimde ve kilit ekranında oynatıcı kontrolleri
-- Paylaş menüsünden "TV'de aç": medya dosyaları ve linkler. Cihaz seçili değilse Cast ekranında seçici açılıp aranır, seçince hemen oynar
+- Paylaş menüsünden "TV'de aç": medya dosyaları ve linkler. Cihaza bağlı değilse cihaz listesi açılır, seçince hemen oynar
 - Paylaş menüsünün üst satırında "TV'de oynat" ve "TV'ye gönder" kısayolları (telefonun paylaşım menüsü destekliyorsa)
 - **DLNA Sunucu:** telefon ağda medya sunucusu olur; TV'nin kendi oynatıcısından telefondaki klasörlere göz atılır
 

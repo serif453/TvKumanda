@@ -30,3 +30,18 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
 - Paylaşım menüsü kısayolları (`ShareShortcuts.kt`, `res/xml/share_shortcuts.xml`, Android 11+): "TV'de oynat" (görsel/video/ses)
   ve "TV'ye gönder" (her dosya), ikisi de MainActivity'ye, `EXTRA_SHORTCUT_ID` ile ayrılır. Honor'un paylaşım menüsü aynı
   uygulamanın seçeneklerini tek simgede topluyor; bu üst satırı gösterip göstermediği denenecek.
+
+## Tek cast düğmesi (2 Kasım 2026 gece, Serif'in isteği; önceki "Paylaşımdan oynatma" notunun yerine)
+- Eski düzen (Chromecast ve DLNA için ayrı seçici + ayrı Fotoğraf/Video/Müzik sırası, "bağlı TV" seçeneği, seçimin
+  hatırlanıp açılışta geri yüklenmesi) kaldırıldı. `SharedWait` yok.
+- `CastDevices.kt`: `CastButton` (Cast ekranının ve albüm başlığının sağında), `CastDevicePanel` (alttan panel, açılınca
+  Chromecast mDNS + DLNA SSDP aramaları birlikte; tek liste, etiketli; bağlıyken "Bağlantıyı kes"). `CastPanel` nesnesi
+  MainActivity'nin `openCastPanel`/`closeCastPanel`/`disconnectCast` eylemlerini taşır.
+- Seçim tek: `pickCc` DLNA seçimini, `pickDlna` Chromecast seçimini temizler; `selectedRoute` seçilen cihazdan gelir. Chromecast
+  hedefi yalnızca `ccUi.selected` (kumanda bağlantısından bağımsız); cihaz kumandanın TV'siyse oynatmadan önce uyandırılır.
+- Bağlı değilken öğeye dokunma / paylaşım / dosya seçici: `openCastPanel(ad) { iş }` → seçince `afterCastPick()` işi çalıştırır.
+  Panel seçim yapmadan kapanırsa bekleyen iş iptal.
+- Hatırlama: `AppSettings.castRemember` ("cast_hatirla": NONE / TOP varsayılan / AUTO). Son cihaz "cast_son" (tür + ad).
+  TOP: panelde başta "Son kullanılan". AUTO: Cast sekmesine girince (`castWarmup`) ya da her aramada (`maybeAutoPick`) son cihaz
+  bulunursa bağlanılır; oturumda "Bağlantıyı kes" dendiyse denenmez. Uygulama açılışında arka planda bağlanılmaz.
+- DLNA durdurma, seçim hemen değişebileceği için cihaz önceden alınarak yapılır (`stopRouteBlocking(route, dev)`).

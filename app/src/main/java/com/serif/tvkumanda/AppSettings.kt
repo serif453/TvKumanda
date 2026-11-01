@@ -56,6 +56,9 @@ object AppSettings {
     /** Alt menüden kaldırılan sekmeler (Serif'in isteği, 2 Kasım 2026). En az bir sekme hep açık kalır. */
     var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
         private set
+    /** Cast'te son cihaz: NONE hatırlama, TOP listede başta göster (varsayılan), AUTO Cast'e girince kendiliğinden bağlan. */
+    var castRemember by mutableStateOf("TOP")
+        private set
     private var loaded = false
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
@@ -71,12 +74,14 @@ object AppSettings {
         startTab = p.getString("acilis_sekme", "REMOTE") ?: "REMOTE"
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
         hiddenTabs = p.getStringSet("gizli_sekmeler", emptySet())?.toSet().orEmpty()
+        castRemember = p.getString("cast_hatirla", "TOP") ?: "TOP"
     }
 
     fun setHaptic(c: Context, v: Boolean) { haptic = v; prefs(c).edit().putBoolean("titresim", v).apply(); if (v) tap(c) }
     fun setVolumeKeys(c: Context, v: Boolean) { volumeKeys = v; prefs(c).edit().putBoolean("ses_tuslari", v).apply() }
     fun setKeepScreenOn(c: Context, v: Boolean) { keepScreenOn = v; prefs(c).edit().putBoolean("ekran_acik", v).apply() }
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
+    fun setCastRemember(c: Context, v: String) { castRemember = v; prefs(c).edit().putString("cast_hatirla", v).apply() }
     fun setStartTab(c: Context, v: String) { startTab = v; prefs(c).edit().putString("acilis_sekme", v).apply() }
 
     /** Alt menüde görünen sekmeler, sırasıyla (hiçbiri kalmazsa Kumanda). */
@@ -220,6 +225,33 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
                         .filter { (k, _) -> AppSettings.isTabVisible(Tab.valueOf(k)) } + ("LAST" to "Son kalınan")
                     val shownStart = AppSettings.startTab.takeIf { s -> startOptions.any { it.first == s } } ?: AppSettings.initialTab().name
                     Segmented(startOptions, shownStart) { AppSettings.setStartTab(context, it) }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+
+            // ---- Cast ----
+            SettingsHeader("Cast")
+            SettingsGroup {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Cast, null, tint = Pal.Text, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Text("Son cihazı hatırla", color = Pal.Text, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Segmented(
+                        listOf("NONE" to "Hatırlama", "TOP" to "Başta göster", "AUTO" to "Otomatik"),
+                        AppSettings.castRemember
+                    ) { AppSettings.setCastRemember(context, it) }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        when (AppSettings.castRemember) {
+                            "NONE" -> "Her seferinde cast düğmesiyle arayıp seçersin."
+                            "AUTO" -> "Cast ekranına girince ya da bir şey oynatınca son cihaz ağdaysa ona bağlanılır."
+                            else -> "Son kullandığın cihaz taramada listenin en üstünde çıkar."
+                        },
+                        color = Pal.Sub, fontSize = 12.sp
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))
