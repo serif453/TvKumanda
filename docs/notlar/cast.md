@@ -54,3 +54,11 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   takibi açar (bağlı değilse cihaz paneli). Kaydırma durunca 350 ms sonra gönderilir. TV'deki foto başka yoldan değişirse
   (slayt, kart) görüntüleyici oraya kayar (`lastSent` ile kendi gönderdiğimizden ayrılır). Videolar eskisi gibi dokununca TV'ye.
 - Görüntüleyici açıkken cihaz paneli onun penceresinin içinde çizilir; Cast ekranı kendi panelini çizmez.
+
+## Telefonda müzik (2 Kasım 2026 gece, Serif'in isteği; sade)
+- `PhoneMusic.kt`: `PhonePlayer` (MediaPlayer, ses odağı; kayıpta duraklar) + `PhoneMiniCard` (Cast ekranının altında) +
+  `PhoneMusicPlayer` (tam ekran Dialog). Bağlı değilken şarkıya dokunmak telefonda çalar; bağlıyken eskisi gibi TV'de.
+- Serif'in kararı: yalnızca uygulama açıkken çalar (MainActivity ON_STOP → duraklat; arka plan servisi/bildirim yok),
+  karıştır/tekrarla yok; albüm sonunda durur.
+- "TV'de çal": konum saniye olarak `onCastItem(..., startAt)` → `playFromList(startAt)` → `castMedia(startAt)`. TV'de müzik
+  başlayınca `castMedia` `PhonePlayer.stop()` çağırır. Panel iptal edilirse telefon duraklatılmış kalır.

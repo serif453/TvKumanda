@@ -142,6 +142,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Telefonda müzik yalnızca uygulama açıkken çalar: arka plana geçince duraklar
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) PhonePlayer.pause()
+        })
         DiagLog.init(filesDir)
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
@@ -272,8 +276,8 @@ class MainActivity : ComponentActivity() {
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
                     cast = cast,
                     onCastPick = ::pickForCast,
-                    onCastItem = { item, list, albumId ->
-                        val go = { playAlbumId = albumId; playFromList(list, list.indexOf(item)) }
+                    onCastItem = { item, list, albumId, startAt ->
+                        val go = { playAlbumId = albumId; playFromList(list, list.indexOf(item), startAt = startAt) }
                         // Bağlı değilken dokunulan öğe: panel açılır, cihaz seçilince bu öğe oynar
                         if (castTargetReady()) go() else openCastPanel(item.title, go)
                     },
@@ -724,6 +728,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         currentUri = uri
+        // TV'de müzik başlıyorsa telefonda çalan müzik susar (iki yerden aynı anda çalmasın)
+        if (kind == MediaKind.MUSIC) PhonePlayer.stop()
         askNotificationPermissionOnce()
         val ccOther = ccOther()
         val ip = if (route == CastRoute.DLNA) dev!!.ip else ccTargetIp()
@@ -1140,12 +1146,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Klasör/albüm listesindeki [index]. öğeyi oynatır. */
-    private fun playFromList(list: List<MediaItem>, index: Int, route: CastRoute = selectedRoute) {
+    private fun playFromList(list: List<MediaItem>, index: Int, route: CastRoute = selectedRoute, startAt: Double = 0.0) {
         if (list.isEmpty() || index !in list.indices) return
         playlist = list
         playIndex = index
         val item = list[index]
-        castMedia(item.uri, item.kind, item.title, item.mime, route = route)
+        castMedia(item.uri, item.kind, item.title, item.mime, startAt = startAt, route = route)
     }
 
     /** Önceki (-1) / sonraki (+1); liste sonunda başa, başında sona döner. */
@@ -1708,6 +1714,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (!isChangingConfigurations) PhonePlayer.stop()
         micStop = true
         recognizer?.destroy()
         scope.cancel()

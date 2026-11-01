@@ -132,7 +132,7 @@ fun CastScreen(
     cast: CastUi,
     connected: Boolean,
     onPick: (MediaKind) -> Unit,
-    onCastItem: (MediaItem, List<MediaItem>, Long) -> Unit,
+    onCastItem: (MediaItem, List<MediaItem>, Long, Double) -> Unit,
     onToggle: () -> Unit,
     onSeek: (Double) -> Unit,
     onStop: () -> Unit,
@@ -163,6 +163,11 @@ fun CastScreen(
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
     // Telefonda açık fotoğraf görüntüleyicisi: albüm + başlangıç sırası
     var viewer by remember { mutableStateOf<Pair<MediaAlbum, Int>?>(null) }
+    // Telefonda müzik: tam ekran oynatıcı açık mı; çalan şarkı listede vurgulanır
+    var musicOpen by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val phoneCurrent = PhonePlayer.current?.id
+    LaunchedEffect(PhonePlayer.active) { if (!PhonePlayer.active) musicOpen = false }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
     var jumpAlbum by remember { mutableStateOf<Long?>(null) }
@@ -234,7 +239,7 @@ fun CastScreen(
             }
             Spacer(Modifier.height(10.dp))
             // Kart yokken galeri alt menünün arkasından akar; son öğeler için altta boşluk bırakılır
-            CompositionLocalProvider(LocalListBottom provides if (cast.phase == CastPhase.NONE) BarSpace else 0.dp) {
+            CompositionLocalProvider(LocalListBottom provides if (cast.phase == CastPhase.NONE && !PhonePlayer.active) BarSpace else 0.dp) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // permTick'e bağlı: izin cevabı gelince ya da uygulamaya dönülünce yeniden kontrol edilir
                 val granted = remember(kind, permTick) { library.hasPermission(kind) }
@@ -268,12 +273,16 @@ fun CastScreen(
                         list == null -> CenterText("Yükleniyor…")
                         list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
                         open == null -> AlbumGrid(list, library) { album = it }
-                        kind == MediaKind.MUSIC -> TrackList(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        // Müzik: bir cihaza bağlıysa TV'de, değilse telefonda çalar (tam ekran oynatıcı açılır)
+                        kind == MediaKind.MUSIC -> TrackList(open.items, library, canCast, current ?: phoneCurrent, scrollKey) {
+                            if (castDeviceName(cc, dlna) != null) onCastItem(it, open.items, open.id, 0.0)
+                            else { PhonePlayer.play(context, open.items, open.items.indexOf(it), open.id); musicOpen = true }
+                        }
                         // Fotoğraf: telefonda galeri gibi açılır (bağlıysa TV de hemen gösterir); video: doğrudan TV'ye
                         kind == MediaKind.PHOTO -> ItemGrid(open.items, library, canCast, current, scrollKey) {
                             viewer = open to open.items.indexOf(it)
                         }
-                        else -> ItemGrid(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        else -> ItemGrid(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id, 0.0) }
                     }
                 }
             }
@@ -285,15 +294,26 @@ fun CastScreen(
             PlayerCard(cast, onToggle, onSeek, onStop, onPrev, onNext, onSkip, sheet, onSlideshow, onSlideSec)
             // Oynatıcı kartı alt menünün üstünde durur
             Spacer(Modifier.height(BarSpace))
+        } else if (PhonePlayer.active) {
+            // Telefonda çalan müzik: küçük kart
+            Spacer(Modifier.height(8.dp))
+            PhoneMiniCard(library) { musicOpen = true }
+            Spacer(Modifier.height(BarSpace))
         }
     }
     val v = viewer
     if (v != null) {
         PhotoViewer(
             album = v.first, startIndex = v.second, library = library, cast = cast, cc = cc, dlna = dlna,
-            onCast = { onCastItem(it, v.first.items, v.first.id) },
+            onCast = { onCastItem(it, v.first.items, v.first.id, 0.0) },
             onCcPick = onCcPick, onDlnaPick = onDlnaPick,
             onClose = { viewer = null }
+        )
+    } else if (musicOpen && PhonePlayer.active) {
+        PhoneMusicPlayer(
+            library = library, cc = cc, dlna = dlna,
+            onTv = onCastItem, onCcPick = onCcPick, onDlnaPick = onDlnaPick,
+            onClose = { musicOpen = false }
         )
     } else CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
 }
