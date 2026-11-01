@@ -254,9 +254,8 @@ fun RemoteScreen(
 
     val hazeState = remember { HazeState() }
     val typingOpen = ui.typing && ui.method == ConnMethod.STANDARD && ui.state == ConnState.CONNECTED
-    val screenBg = if (tab == Tab.REMOTE) Navy.Bg else Pal.Bg
-    // Kumanda sekmesi: cam tasarımın mor ışıklı arka planı; diğer sekmeler düz renk
-    val bgMod = if (tab == Tab.REMOTE) Modifier.glassBackdrop() else Modifier.background(screenBg)
+    // Ortak tasarım dili (Serif, 2 Kasım 2026): tüm sekmelerde cam tasarımın mor ışıklı arka planı
+    val bgMod = Modifier.glassBackdrop()
     // Arka plan içerikte (Column) bir kez çizilir; dış katman yalnızca yazma ekranında bulanıklaşan kenarların arkasını doldurur
     Box(
         Modifier.fillMaxSize().then(if (typingOpen) bgMod else Modifier).onSizeChanged { playerSheet.height = it.height.toFloat(); rootH = it.height.toFloat() }
@@ -270,13 +269,15 @@ fun RemoteScreen(
             .then(bgMod)
             // Alt menünün arkasında bulanık görünecek içerik
             .haze(hazeState)
+            // Arka plan kenardan kenara; içerik saat şeridinin ve alttaki çizginin dışında kalır
+            .systemBarsPadding()
             .padding(horizontal = 16.dp)
             .padding(top = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.onGloballyPositioned { barBottom = it.positionInRoot().y + it.size.height }) {
             TopBarV2(
-                ui, navy = tab == Tab.REMOTE,
+                ui, navy = true,
                 onSettings = { settingsOpen = true },
                 // Kayıtlı TV yoksa seçilecek bir şey yok: doğrudan büyük "TV'ler" penceresi
                 onPicker = {
@@ -341,7 +342,7 @@ fun RemoteScreen(
     // Tek sekme açıksa gizli (Serif'in isteği)
     if (showNav) BottomNav(
         tab, navTabs, hazeState,
-        Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = 10.dp)
+        Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 10.dp)
             .onGloballyPositioned { navTop = it.positionInRoot().y }
     ) { tab = it }
 

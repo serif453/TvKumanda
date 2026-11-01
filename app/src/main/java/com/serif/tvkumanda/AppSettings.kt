@@ -143,7 +143,7 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
             .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp)
+            Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             // ---- Üst şerit ----
             Row(verticalAlignment = Alignment.CenterVertically) {

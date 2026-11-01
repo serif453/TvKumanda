@@ -247,7 +247,7 @@ fun PhoneMiniCard(library: MediaLibrary, sheet: MusicSheet) {
     val dur = PhonePlayer.durationMs
     val screenPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Pal.Btn)
+        Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp), strength = 1.2f)
             .clickable { sheet.open() }
             // Yukarı sürükleyince tam ekran oynatıcı parmakla birlikte yükselir; çeyrekten fazla çekilirse açılır
             .onGloballyPositioned { sheet.anchor = it.positionInWindow().y }
@@ -278,7 +278,7 @@ fun PhoneMiniCard(library: MediaLibrary, sheet: MusicSheet) {
             RoundAction(AppIcons.Close, "Kapat", size = 40.dp, iconSize = 20.dp) { PhonePlayer.stop() }
         }
         if (dur > 0) {
-            Box(Modifier.fillMaxWidth().height(3.dp).background(Pal.BtnPressed)) {
+            Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.10f))) {
                 Box(Modifier.fillMaxWidth((pos.toFloat() / dur).coerceIn(0f, 1f)).fillMaxHeight().background(Pal.Blue))
             }
         }
@@ -322,7 +322,7 @@ fun PhoneMusicPlayer(
                         onDragCancel = { sheet.settle(0.25f) }
                     ) { ch, dy -> ch.consume(); sheet.drag(dy / (sheet.anchor.takeIf { it > 0f } ?: size.height.toFloat())) }
                 }
-                .background(Pal.Bg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
+                .glassBackdrop().systemBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Üst: kapat + cihaz düğmesi

@@ -95,8 +95,7 @@ private fun ShortcutTile(sc: Shortcut, modifier: Modifier, onClick: () -> Unit) 
     Column(
         modifier
             .height(96.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Pal.Btn)
+            .glass(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween
@@ -114,8 +113,7 @@ private fun ChannelTile(no: String, name: String, modifier: Modifier, onClick: (
     Column(
         modifier
             .height(76.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Pal.Btn)
+            .glass(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

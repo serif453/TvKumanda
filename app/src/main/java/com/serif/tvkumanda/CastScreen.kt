@@ -361,8 +361,7 @@ private fun PermissionNeeded(onAsk: () -> Unit, onPicker: () -> Unit) {
 private fun PillButton(label: String, primary: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(if (primary) Pal.Blue else Pal.Btn)
+            .then(if (primary) Modifier.clip(RoundedCornerShape(22.dp)).background(Pal.Blue) else Modifier.glass(RoundedCornerShape(22.dp)))
             .clickable(onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 12.dp)
     ) { Text(label, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
@@ -379,7 +378,7 @@ internal fun Thumb(
         value = library.cachedThumbnail(item, px)?.asImageBitmap()
             ?: withContext(ThumbLoader) { library.thumbnail(item, px)?.asImageBitmap() }
     }
-    Box(modifier.background(Pal.Btn), contentAlignment = Alignment.Center) {
+    Box(modifier.background(Color.White.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
         val b = bmp
         if (b != null) Image(b, null, contentScale = scale, modifier = Modifier.fillMaxSize())
         else Icon(placeholder, null, tint = Pal.Sub, modifier = Modifier.size(placeholderSize))
@@ -498,7 +497,7 @@ private fun TrackList(
             val playing = item.id == currentId
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                    .background(if (playing) Pal.Blue.copy(alpha = 0.16f) else Pal.Bg)
+                    .background(if (playing) Pal.Blue.copy(alpha = 0.16f) else Color.Transparent)
                     .clickable(enabled = enabled) { onCast(item) }.padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -540,8 +539,7 @@ private fun KindButton(icon: ImageVector, label: String, modifier: Modifier, ena
     Column(
         modifier
             .height(92.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(Pal.Btn)
+            .glass(RoundedCornerShape(22.dp))
             .clickable(enabled = enabled, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -570,8 +568,7 @@ private fun PlayerCard(
             .fillMaxWidth()
             // Tam ekran oynatıcı bu kartın üst kenarından açılır ve buraya kapanır
             .onGloballyPositioned { sheet.cardTop = it.positionInRoot().y }
-            .clip(RoundedCornerShape(24.dp))
-            .background(Brush.verticalGradient(listOf(Pal.Btn, Pal.Pad)))
+            .glass(RoundedCornerShape(24.dp), strength = 1.2f)
             .padding(18.dp)
     ) {
         // Başlık satırı: dosya adı + durum, sağ üstte küçük durdur tuşu
@@ -661,7 +658,7 @@ internal fun RoundAction(
 ) {
     Box(
         Modifier.size(size).clip(CircleShape)
-            .background(if (primary) Pal.Blue else Pal.BtnPressed)
+            .background(if (primary) Pal.Blue else Color.White.copy(alpha = 0.10f))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -680,7 +677,7 @@ internal fun SlideshowControls(cast: CastUi, onSlideshow: () -> Unit, onSlideSec
     )
     Text(
         "${cast.slideSec} sn", color = Pal.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Pal.BtnPressed)
+        modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.10f))
             .clickable(onClick = onSlideSec).padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }

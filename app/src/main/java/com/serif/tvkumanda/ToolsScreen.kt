@@ -133,7 +133,7 @@ fun ToolsScreen(method: ConnMethod, connected: Boolean, modifier: Modifier = Mod
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("$ready / ${all.size} araç hazır", color = Pal.Sub, fontSize = 13.sp)
                 Spacer(Modifier.width(10.dp))
-                Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Pal.Btn)) {
+                Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.10f))) {
                     Box(Modifier.fillMaxWidth(ready.toFloat() / all.size).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Pal.Blue))
                 }
             }
@@ -174,8 +174,7 @@ private fun ToolTile(tool: Tool, dimmed: Boolean, modifier: Modifier, onClick: (
     Box(
         modifier
             .height(116.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Pal.Btn)
+            .glass(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .alpha(if (dimmed) 0.4f else 1f)
     ) {

@@ -127,7 +127,7 @@ fun FullPlayer(
         Modifier
             .fillMaxSize()
             .graphicsLayer { translationY = sheet.y.value }
-            .background(Brush.verticalGradient(listOf(Pal.Btn, Pal.Bg)))
+            .glassBackdrop()
             // Aşağı kaydırma: ekran parmağı takip eder; yeterince çekilirse kapanır
             .pointerInput(sheet) {
                 detectVerticalDragGestures(
@@ -138,7 +138,7 @@ fun FullPlayer(
             }
             .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
             // Üst çubuk: kapat + TV adı
             Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(

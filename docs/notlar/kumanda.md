@@ -74,3 +74,11 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   "gizli_sekmeler"). En az biri açık (son anahtar kilitli). Tek sekme kalınca `BottomNav` çizilmez, `NavBar.visible` false ve
   `BarSpace` 16 dp'ye iner. Açılış sekmesi gizliyse açık ilk sekme; o anki sekme gizlenirse ilk açık sekmeye geçilir. Paylaşımla
   açılan gizli Cast o seferlik menüde görünür.
+
+## Kenardan kenara ve ortak tasarım (2 Kasım 2026 gece, Serif'in isteği)
+- `enableEdgeToEdge` (şeffaf şeritler, açık simgeler): arka plan saat şeridinin ve alttaki çizginin arkasına uzanır.
+  Ana sütun `systemBarsPadding`, alt menü `navigationBarsPadding`; tam ekran sayfalar (Ayarlar, SSS, DLNA, IR, araç
+  sayfaları, yazma ekranı, tam ekran oynatıcı) arka planı tam çizip içeriği `systemBarsPadding` ile içeride tutar.
+  Yeni tam ekran sayfa eklerken aynısı yapılmalı. `themes.xml`'deki şerit renkleri artık etkisiz.
+- Tüm sekmeler Kumanda'nın arka planını (`glassBackdrop`) ve üst şeridini (navy) kullanır; Cast / Araçlar / Kısayollar
+  kartları `Modifier.glass`. Alt sayfalar (Ayarlar, araç sayfaları, DLNA sayfası) şimdilik düz koyu (Pal.Bg).

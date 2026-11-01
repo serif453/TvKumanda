@@ -39,7 +39,7 @@ fun DlnaServerCard(library: MediaLibrary) {
     val context = LocalContext.current
     val ask = rememberServerPermissionAsk(library) { DlnaServerUi.start(context) }
     Row(
-        Modifier.fillMaxWidth().height(76.dp).clip(RoundedCornerShape(20.dp)).background(Pal.Btn)
+        Modifier.fillMaxWidth().height(76.dp).glass(RoundedCornerShape(20.dp))
             .clickable { DlnaServerUi.pageOpen = true }
             .padding(start = 16.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -107,7 +107,7 @@ fun DlnaServerPage(library: MediaLibrary, onClose: () -> Unit) {
             // Arkadaki ekrana dokunulmasın
             .pointerInput(Unit) { detectTapGestures { } }
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp)) {
             // ---- Üst şerit ----
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
@@ -317,7 +317,7 @@ private fun AlbumPicker(library: MediaLibrary, onClose: () -> Unit) {
     Box(
         Modifier.fillMaxSize().background(Pal.Bg).pointerInput(Unit) { detectTapGestures { } }
     ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
                     Icon(AppIcons.ArrowBack, "Geri", tint = Pal.Text, modifier = Modifier.size(26.dp))

@@ -63,7 +63,7 @@ fun CastButton(cc: CcUi, dlna: DlnaUi, modifier: Modifier = Modifier) {
         modifier.clip(shape)
             .then(
                 if (name != null) Modifier.background(Pal.Blue.copy(alpha = 0.18f)).border(1.dp, Pal.Blue.copy(alpha = 0.7f), shape)
-                else Modifier.background(Pal.Btn)
+                else Modifier.glass(shape)
             )
             .clickable { CastPanel.onOpen() }
             .padding(horizontal = 12.dp, vertical = 7.dp),

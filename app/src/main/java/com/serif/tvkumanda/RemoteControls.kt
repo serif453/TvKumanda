@@ -444,6 +444,7 @@ internal fun TypingScreen(
             .fillMaxSize()
             .background(scrim)
             .pointerInput(Unit) { detectTapGestures { } }   // arkadaki kumandaya dokunulmasın
+            .systemBarsPadding()
     ) {
         Box(
             Modifier
