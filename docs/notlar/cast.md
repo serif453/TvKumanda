@@ -45,3 +45,12 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   TOP: panelde başta "Son kullanılan". AUTO: Cast sekmesine girince (`castWarmup`) ya da her aramada (`maybeAutoPick`) son cihaz
   bulunursa bağlanılır; oturumda "Bağlantıyı kes" dendiyse denenmez. Uygulama açılışında arka planda bağlanılmaz.
 - DLNA durdurma, seçim hemen değişebileceği için cihaz önceden alınarak yapılır (`stopRouteBlocking(route, dev)`).
+
+## Fotoğraf görüntüleyici (2 Kasım 2026 gece, Serif'in isteği)
+- Fotoğraf albümünde öğeye dokunmak artık doğrudan cast etmez: `PhotoViewer.kt` tam ekran (Dialog) açılır; `HorizontalPager` ile
+  gezinme, iki parmak / çift dokunma yakınlaştırma (yakınken sayfa kaydırma kapalı), tek dokunuş üst/alt çubukları gizler.
+- Tam boy foto `MediaLibrary.fullImage` (uzun kenar ~2048, 2'nin kuvvetiyle küçültme, EXIF yönü); önce küçük resim görünür.
+- Takip: açarken cihaz bağlıysa (`castDeviceName != null`) foto hemen TV'ye gider ve takip açık başlar. Değilse "TV'de göster"
+  takibi açar (bağlı değilse cihaz paneli). Kaydırma durunca 350 ms sonra gönderilir. TV'deki foto başka yoldan değişirse
+  (slayt, kart) görüntüleyici oraya kayar (`lastSent` ile kendi gönderdiğimizden ayrılır). Videolar eskisi gibi dokununca TV'ye.
+- Görüntüleyici açıkken cihaz paneli onun penceresinin içinde çizilir; Cast ekranı kendi panelini çizmez.

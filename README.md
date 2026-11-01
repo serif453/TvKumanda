@@ -54,6 +54,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
 - Tek cast düğmesi: basınca o an ağdaki Chromecast ve DLNA cihazları tek listede aranır, dokununca bağlanılır (kumanda bağlantısı gerekmez)
+- Fotoğraflar telefonda galeri gibi açılır (kaydırma, yakınlaştırma); "TV'de göster" ile TV'ye gider, sonra telefonda kaydırdıkça TV de takip eder. Bir cihaza bağlıyken dokunulan fotoğraf hemen TV'de de açılır
 - Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
 - Son cihazı hatırlama Ayarlar'dan: hiç, listede başta ya da otomatik bağlan
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam

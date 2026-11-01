@@ -161,6 +161,8 @@ fun CastScreen(
     // Bağlanmadan da gezilir; bağlı değilken bir öğeye dokununca cihaz paneli açılır (Serif, 2 Kasım 2026)
     val canCast = true
     var album by remember { mutableStateOf<MediaAlbum?>(null) }
+    // Telefonda açık fotoğraf görüntüleyicisi: albüm + başlangıç sırası
+    var viewer by remember { mutableStateOf<Pair<MediaAlbum, Int>?>(null) }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
     var jumpAlbum by remember { mutableStateOf<Long?>(null) }
@@ -267,6 +269,10 @@ fun CastScreen(
                         list.isEmpty() -> CenterText("Bu telefonda ${kind.label.lowercase()} bulunamadı")
                         open == null -> AlbumGrid(list, library) { album = it }
                         kind == MediaKind.MUSIC -> TrackList(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
+                        // Fotoğraf: telefonda galeri gibi açılır (bağlıysa TV de hemen gösterir); video: doğrudan TV'ye
+                        kind == MediaKind.PHOTO -> ItemGrid(open.items, library, canCast, current, scrollKey) {
+                            viewer = open to open.items.indexOf(it)
+                        }
                         else -> ItemGrid(open.items, library, canCast, current, scrollKey) { onCastItem(it, open.items, open.id) }
                     }
                 }
@@ -281,7 +287,15 @@ fun CastScreen(
             Spacer(Modifier.height(BarSpace))
         }
     }
-    CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
+    val v = viewer
+    if (v != null) {
+        PhotoViewer(
+            album = v.first, startIndex = v.second, library = library, cast = cast, cc = cc, dlna = dlna,
+            onCast = { onCastItem(it, v.first.items, v.first.id) },
+            onCcPick = onCcPick, onDlnaPick = onDlnaPick,
+            onClose = { viewer = null }
+        )
+    } else CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
 }
 
 @Composable

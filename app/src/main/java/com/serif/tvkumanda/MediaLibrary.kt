@@ -227,6 +227,36 @@ class MediaLibrary private constructor(private val context: Context) {
         return bmp
     }
 
+    /**
+     * Telefonda tam ekran görüntüleyici için fotoğraf: uzun kenarı ~[maxPx] olacak kadar küçültülür
+     * (2'nin kuvvetiyle; en boy oranı bozulmaz). Yön (EXIF) düzeltilir. Bloklayıcıdır.
+     */
+    fun fullImage(item: MediaItem, maxPx: Int = 2048): Bitmap? = runCatching {
+        fun sample(w: Int, h: Int): Int {
+            val s = maxOf(w, h); var ss = 1
+            while (s / ss > maxPx * 5 / 4) ss *= 2
+            return ss
+        }
+        if (Build.VERSION.SDK_INT >= 28) {
+            val src = android.graphics.ImageDecoder.createSource(context.contentResolver, item.uri)
+            android.graphics.ImageDecoder.decodeBitmap(src) { dec, info, _ ->
+                dec.setTargetSampleSize(sample(info.size.width, info.size.height))
+            }
+        } else {
+            val cr = context.contentResolver
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            cr.openInputStream(item.uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample(bounds.outWidth, bounds.outHeight) }
+            val bmp = cr.openInputStream(item.uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
+                ?: return@runCatching null
+            val deg = cr.openInputStream(item.uri)?.use {
+                android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+            }.let { when (it) { 6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f } }
+            if (deg == 0f) bmp
+            else Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(deg) }, true)
+        }
+    }.getOrNull()
+
     @Suppress("DEPRECATION")
     private fun legacyThumbnail(item: MediaItem): Bitmap? = when (item.kind) {
         MediaKind.PHOTO -> MediaStore.Images.Thumbnails.getThumbnail(
