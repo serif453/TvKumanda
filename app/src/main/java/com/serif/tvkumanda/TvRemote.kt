@@ -150,6 +150,17 @@ class TvRemote(private val context: Context) : RemoteLink {
         if (out.contains("Error", ignoreCase = true)) text(query)
     }
 
+    /**
+     * Komutu çalıştırır ve TV'de geçen süreyi (ms) de döndürür: sıra beklemesi sayılmaz
+     * (Performans'taki "ADB gecikmesi"; aynı anda çalışan başka ölçümü beklerken geçen süre girmesin).
+     */
+    @Synchronized
+    fun shellTimed(command: String): Pair<String, Long> {
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        val out = shell(command)
+        return out to (android.os.SystemClock.elapsedRealtime() - t0)
+    }
+
     /** Komut gönderir; bağlantı kopmuşsa bir kez yeniden bağlanmayı dener. */
     @Synchronized
     fun shell(command: String): String {

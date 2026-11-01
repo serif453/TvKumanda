@@ -69,3 +69,7 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
   `intent.component` ile ayırır; alttan pencere açılır, TV'ye bağlanınca `TvFiles.sendFiles` ile Download'a gönderir.
   Standart bağlantıda dosya taşınamaz: pencere "ADB ile bağlan" sunar (türü değiştirip aynı TV'ye yeniden bağlanır).
   Gönderim sürerken pencere kaydırılarak kapanmaz; "Durdur" yarım dosyayı siler.
+- **Hız (1 Kasım 2026, Serif'in onayıyla):** Performans ve Çalışan uygulamalar'daki sürekli ölçümler uygulama arkadayken
+  duraklar (`rememberForeground` + `awaitForeground`, ToolSheets.kt); dönünce önceki ölçüm bayat sayılır. Ekran kaydı yoklaması
+  bilerek hariç. "ADB gecikmesi" = `TvRemote.shellTimed` (kilit alındıktan sonraki süre; süreç ölçümünü bekleme sayılmaz).
+  Alarm izni saniyede bir değil, uygulamaya her dönüşte (ON_RESUME) kontrol edilir.

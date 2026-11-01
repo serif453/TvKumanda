@@ -146,17 +146,19 @@ private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Uni
     var ramBusy by remember { mutableStateOf(false) }
     var ramResult by remember { mutableStateOf<ToolResult?>(null) }
     LaunchedEffect(Unit) { PerfCache.prewarm(); packages = PerfCache.packages }
+    val appVisible = rememberForeground()
     LaunchedEffect(Unit) {
-        // Pencere kapanınca ya da liste açılınca bu döngü de kendiliğinden durur
+        // Pencere kapanınca ya da liste açılınca bu döngü de kendiliğinden durur; uygulama arkadayken duraklar
         PerfCache.check()
         var prev: PerfStats.Sample? = null
         var prevAt = 0L
         while (true) {
-            val t0 = SystemClock.elapsedRealtime()
-            val r = io { TvTools.perfSample() }
+            if (appVisible.awaitForeground()) prev = null
+            val r = io { TvTools.perfSampleTimed() }
             val t1 = SystemClock.elapsedRealtime()
-            r.onSuccess { s ->
-                latency = t1 - t0
+            r.onSuccess { (s, ms) ->
+                // Yalnızca TV'nin cevap süresi (aynı anda çalışan süreç ölçümünü beklerken geçen süre sayılmaz)
+                latency = ms
                 val v = PerfStats.view(prev, s, t1 - prevAt)
                 // Geri dönüşte ilk ölçümün boş yüzdeleri eski değerleri silmesin
                 if (prev != null || view == null || view.cores.size != v.cores.size) setView(v)
@@ -186,6 +188,7 @@ private fun PerfOverview(view: PerfStats.View?, setView: (PerfStats.View) -> Uni
         var prevSnap = PerfCache.freshSnap()
         if (prevSnap != null) delay(1500)
         while (true) {
+            if (appVisible.awaitForeground()) prevSnap = null
             io { TvTools.procSnap() }.onSuccess { snap ->
                 val list = PerfStats.apps(prevSnap, snap, PerfCache.pss)
                 if (prevSnap != null || top == null) top = PerfStats.topCpu(list)
@@ -409,6 +412,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
     var launchable by remember { mutableStateOf(PerfCache.launchable) }
     var showSystem by remember { mutableStateOf(false) }
     var foreground by remember { mutableStateOf(PerfCache.foreground) }
+    val appVisible = rememberForeground()
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<ToolResult?>(null) }
     var expanded by remember { mutableStateOf<String?>(null) }
@@ -422,6 +426,7 @@ private fun RunningApps(sort: AppSort, onSort: (AppSort) -> Unit, onBack: (() ->
         var prev = PerfCache.freshSnap()
         if (prev != null) delay(1000) // önbellekteki ölçümle işlemci farkı için kısa bekleme yeter
         while (true) {
+            if (appVisible.awaitForeground()) prev = null      // uygulama arkadayken duraklar
             io { TvTools.procSnap() }.onSuccess { snap ->
                 val list = PerfStats.apps(prev, snap, PerfCache.pss)
                 apps = if (prev == null && apps != null) list.map { a -> a.copy(cpu = apps!!.firstOrNull { it.pkg == a.pkg }?.cpu) } else list

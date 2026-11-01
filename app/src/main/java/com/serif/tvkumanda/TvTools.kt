@@ -66,7 +66,11 @@ object TvTools {
     fun systemInfo(): SysInfo.Report = SysInfo.build(sh(SysInfo.COMMAND))
 
     /** Performans aracı için tek ölçüm (işlemci sayaçları + bellek). */
-    fun perfSample(): PerfStats.Sample = PerfStats.parse(sh(PerfStats.COMMAND))
+    /** Ölçüm + TV'nin cevap süresi (ms; sıra beklemesi hariç). */
+    fun perfSampleTimed(): Pair<PerfStats.Sample, Long> {
+        val (out, ms) = (adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")).shellTimed(PerfStats.COMMAND)
+        return PerfStats.parse(out) to ms
+    }
 
     /** Çalışan uygulamalar için süreç ölçümü ve uygulama başına gerçek bellek (PSS). */
     fun procSnap(): PerfStats.ProcSnap = PerfStats.parseProcs(sh(PerfStats.APPS_COMMAND))

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -703,4 +704,26 @@ private fun OpenLinkTool() {
         }
     }
     ResultLine(result)
+}
+
+/** Uygulama ekranda mı: arkaya geçince (telefon kilitlenince, başka uygulamaya geçince) sürekli ölçümler duraklasın. */
+@Composable
+internal fun rememberForeground(): State<Boolean> {
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    val state = remember { mutableStateOf(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) }
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            state.value = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    return state
+}
+
+/** Uygulama ekrana dönene kadar bekler. Beklediyse true (eski ölçüm bayatladı, farkı ondan hesaplanmasın). */
+internal suspend fun State<Boolean>.awaitForeground(): Boolean {
+    if (value) return false
+    androidx.compose.runtime.snapshotFlow { value }.first { it }
+    return true
 }

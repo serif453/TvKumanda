@@ -100,11 +100,14 @@ private fun ExactAlarmNote(context: Context) {
 @Composable
 private fun rememberExactAlarm(context: Context): Boolean {
     var exact by remember { mutableStateOf(PhoneTimers.canExact(context)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            exact = PhoneTimers.canExact(context)
+    // İzin yalnızca Ayarlar'dan dönülünce değişebilir: saniyede bir değil, uygulamaya her dönüşte bakılır
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) exact = PhoneTimers.canExact(context)
         }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
     }
     return exact
 }
