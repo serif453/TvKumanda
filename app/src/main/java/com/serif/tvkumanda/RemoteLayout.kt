@@ -259,19 +259,6 @@ object VolumeCtl {
 }
 
 
-// ---------------- Medya çubuğu ----------------
-
-@Composable
-private fun MediaKey(icon: ImageVector, label: String, repeat: Boolean = false, onClick: () -> Unit) {
-    val inter = remember { MutableInteractionSource() }
-    val pressed by inter.collectIsPressedAsState()
-    Box(
-        Modifier.size(46.dp).clip(CircleShape).background(if (pressed) Navy.BtnPressed else Color.Transparent)
-            .pressable(inter, repeat = repeat, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Pal.Text, modifier = Modifier.size(26.dp)) }
-}
-
 // ---------------- Alt tuşlar ----------------
 
 @Composable
@@ -298,7 +285,7 @@ private fun hms(ms: Long): String {
 }
 
 @Composable
-fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onKey: (Int) -> Unit, onSeek: (Long) -> Unit) {
+fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onSeek: (Long) -> Unit) {
     // Çalarken konum her saniye ilerler
     var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
     LaunchedEffect(np.playing, np.at) {
@@ -324,15 +311,6 @@ fun NowPlayingBar(np: NowPlaying, apps: List<TvApp>, onKey: (Int) -> Unit, onSee
                 Text(np.title.ifBlank { app?.name ?: "Oynatılıyor" }, color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(np.artist.ifBlank { app?.name ?: np.pkg }, color = Navy.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            MediaKey(Icons.Filled.SkipPrevious, "Önceki") { onKey(Keys.PREV) }
-            val inter = remember { MutableInteractionSource() }
-            val scale = pressScale(inter)
-            Box(
-                Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape).background(Navy.Accent)
-                    .pressable(inter, onClick = { onKey(Keys.PLAY_PAUSE) }),
-                contentAlignment = Alignment.Center
-            ) { Icon(if (np.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Oynat/Duraklat", tint = Color.White, modifier = Modifier.size(24.dp)) }
-            MediaKey(Icons.Filled.SkipNext, "Sonraki") { onKey(Keys.NEXT) }
         }
         if (dur > 0) {
             Row(verticalAlignment = Alignment.CenterVertically) {

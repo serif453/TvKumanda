@@ -86,6 +86,8 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
     v0.121 düzeltmeleri (Serif): alt sıra Geri · Ana Sayfa · Mikrofon arası 9 dp (yarıya indi); ses çubuğu −'den +'ya kadar
     uzar; TV adı kutusunda iç boşluk, ad sığmazsa "…"; üstteki mor ışık keskin kenarsız; alttaki şerit `glassSwoosh` ile
     boşluğun içine çizilir (oynatıcı çubuğuna binmesin).
+    Oynatıcı çubuğunda (`NowPlayingBar`, TV'de bir şey çalarken) Önceki/Oynat/Sonraki tuşları yok: alttaki medya çubuğunda
+    zaten var (Serif'in isteği, 1 Kasım 2026). Çubukta yalnızca simge, başlık, kanal ve sarma çubuğu.
 - TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
 - Cast: `CastScreen.kt`, `MediaLibrary.kt`, `FullPlayer.kt`.
 - Araçlar: `ToolsScreen.kt` (kutucuklar), `ToolSheets.kt` / `ToolPages.kt` / `AdvancedTools.kt` (pencereler),

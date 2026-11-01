@@ -268,7 +268,7 @@ fun RemoteScreen(
         // TV'de bir şey çalınca: oynatıcı çubuğu (medya çubuğunun hemen üstünde)
         ui.nowPlaying?.let { np ->
             Spacer(Modifier.height(12.dp))
-            NowPlayingBar(np, ui.apps, onKey, onSeekTv)
+            NowPlayingBar(np, ui.apps, onSeekTv)
         }
         Spacer(Modifier.height(12.dp))
         GlassMediaBar(onKey)
