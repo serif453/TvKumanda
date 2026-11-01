@@ -18,8 +18,12 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncDisabled
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -43,14 +47,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * Cast → Fotoğraf albümünde bir fotoğrafa dokununca açılan tam ekran görüntüleyici (Serif, 2 Kasım 2026).
- * Telefonda galeri gibi gezilir: kaydırma, iki parmakla / çift dokunarak yakınlaştırma.
- * "TV'de göster" ile o fotoğraf TV'ye gider; ondan sonra (ya da açarken zaten bir cihaza bağlıysan baştan itibaren)
- * telefonda kaydırdıkça TV de takip eder. TV'deki fotoğraf başka yoldan değişirse (slayt, oynatıcı kartı)
- * görüntüleyici de o fotoğrafa kayar.
+ * Telefonda galeri gibi gezilir: kaydırma, iki parmakla / çift dokunarak yakınlaştırma, altta küçük resim şeridi.
+ * TV denetimi üst çubukta: bağlı değilken "Bağlan" → cihaz seçilince o an bakılan foto TV'ye gider; bağlıyken "Takip"
+ * açıksa telefonda kaydırdıkça TV de değişir, kapalıyken serbestçe gezilir. TV'deki fotoğraf başka yoldan değişirse
+ * (slayt, oynatıcı kartı) takip açıkken görüntüleyici de o fotoğrafa kayar.
  */
 @Composable
 fun PhotoViewer(
@@ -69,13 +74,14 @@ fun PhotoViewer(
     if (items.isEmpty()) return
     val connected = castDeviceName(cc, dlna) != null
     val pager = rememberPagerState(startIndex.coerceIn(0, items.lastIndex)) { items.size }
-    // Açarken bir cihaza bağlıysa fotoğraf hemen TV'ye gider ve takip başlar
-    var follow by remember { mutableStateOf(connected) }
+    // Takip başta açık: bağlıysa foto hemen TV'ye gider; bağlı değilken "Bağlan"dan cihaz seçilince o an bakılan foto gider
+    var follow by remember { mutableStateOf(true) }
     var chrome by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
     // Bizim gönderdiğimiz son fotoğraf: TV'den gelen değişiklikle karışmasın
     var lastSent by remember { mutableStateOf<Long?>(null) }
     val currentCast by rememberUpdatedState(cast)
+    val scope = rememberCoroutineScope()
     val onCastNow by rememberUpdatedState(onCast)
 
     fun sendCurrent() {
@@ -145,40 +151,45 @@ fun PhotoViewer(
                         Text("${pager.currentPage + 1} / ${items.size}", color = Pal.Sub, fontSize = 12.sp)
                     }
                     Spacer(Modifier.width(8.dp))
+                    // Bağlıyken: TV takibi aç/kapa (kapalıyken telefonda serbestçe gezilir, TV'deki foto değişmez)
+                    if (connected) {
+                        val shape = RoundedCornerShape(20.dp)
+                        Row(
+                            Modifier.clip(shape)
+                                .then(
+                                    if (follow) Modifier.background(Pal.Blue.copy(alpha = 0.18f)).border(1.dp, Pal.Blue.copy(alpha = 0.7f), shape)
+                                    else Modifier.background(Pal.Btn)
+                                )
+                                .clickable { follow = !follow }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (follow) Icons.Filled.Sync else Icons.Filled.SyncDisabled, null,
+                                tint = if (follow) Color(0xFF9DB8FF) else Pal.Sub, modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                "Takip", color = if (follow) Color(0xFFCFDBFF) else Pal.Sub,
+                                fontSize = 13.sp, fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    }
                     CastButton(cc, dlna)
                 }
             }
 
-            // Alt: TV'de göster / TV takip ediyor
+            // Alt: önceki / sıradaki fotoların küçük resim şeridi
             AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-                Box(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val on = follow && connected
-                    val shape = RoundedCornerShape(26.dp)
-                    Row(
-                        Modifier.clip(shape)
-                            .then(
-                                if (on) Modifier.background(Pal.Blue.copy(alpha = 0.25f)).border(1.dp, Pal.Blue, shape)
-                                else Modifier.background(Pal.Blue)
-                            )
-                            .clickable {
-                                if (on) follow = false
-                                else { follow = true; sendCurrent() }
-                            }
-                            .padding(horizontal = 22.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (on) Icons.Filled.CastConnected else Icons.Filled.Cast, null,
-                            tint = Color.White, modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (on) "TV takip ediyor · durdur" else "TV'de göster",
-                            color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
-                        )
+                val tvId = if (cast.phase != CastPhase.NONE && cast.kind == MediaKind.PHOTO) cast.currentId else null
+                Filmstrip(
+                    items = items, library = library, current = pager.currentPage, tvId = tvId,
+                    modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.45f))
+                        .navigationBarsPadding().padding(vertical = 10.dp)
+                ) { i ->
+                    scope.launch {
+                        if (kotlin.math.abs(i - pager.currentPage) > 3) pager.scrollToPage(i) else pager.animateScrollToPage(i)
                     }
                 }
             }
@@ -264,6 +275,54 @@ private fun ZoomablePhoto(
             )
         } else {
             Icon(placeholderFor(item.kind), null, tint = Pal.Sub, modifier = Modifier.size(40.dp))
+        }
+    }
+}
+
+/**
+ * Alttaki küçük resim şeridi: baktığın foto ortada ve çerçeveli; dokununca o fotoya atlanır.
+ * TV'de o an gösterilen fotonun köşesinde mavi cast işareti.
+ */
+@Composable
+private fun Filmstrip(
+    items: List<MediaItem>, library: MediaLibrary, current: Int, tvId: Long?,
+    modifier: Modifier, onPick: (Int) -> Unit
+) {
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = current)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val itemPx = with(density) { 60.dp.roundToPx() }   // 56 dp kutu + 4 dp aralık
+    // Baktığın foto şeridin ortasına gelsin
+    LaunchedEffect(current) {
+        val view = state.layoutInfo.viewportSize.width
+        val off = -(view / 2 - itemPx / 2)
+        if (view == 0) state.scrollToItem(current) else state.animateScrollToItem(current, off)
+    }
+    LazyRow(
+        state = state,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        modifier = modifier
+    ) {
+        itemsIndexed(items, key = { _, it -> it.id }) { i, item ->
+            val sel = i == current
+            val shape = RoundedCornerShape(8.dp)
+            Box(
+                Modifier.size(56.dp).clip(shape)
+                    .then(if (sel) Modifier.border(2.dp, Color.White, shape) else Modifier)
+                    .clickable { onPick(i) }
+            ) {
+                Thumb(
+                    item, library,
+                    Modifier.fillMaxSize().graphicsLayer { alpha = if (sel) 1f else 0.6f },
+                    placeholderFor(item.kind), placeholderSize = 20.dp
+                )
+                if (item.id == tvId) {
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(3.dp).size(18.dp).clip(CircleShape).background(Pal.Blue),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.CastConnected, "TV'de", tint = Color.White, modifier = Modifier.size(11.dp)) }
+                }
+            }
         }
     }
 }

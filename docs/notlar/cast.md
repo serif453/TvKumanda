@@ -62,3 +62,6 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   karıştır/tekrarla yok; albüm sonunda durur.
 - "TV'de çal": konum saniye olarak `onCastItem(..., startAt)` → `playFromList(startAt)` → `castMedia(startAt)`. TV'de müzik
   başlayınca `castMedia` `PhonePlayer.stop()` çağırır. Panel iptal edilirse telefon duraklatılmış kalır.
+- (2 Kasım gece, sonra) Alttaki "TV'de göster" düğmesi kaldırıldı. Yerine `Filmstrip` (küçük resim şeridi; seçili ortada ve
+  beyaz çerçeveli, TV'deki fotoda mavi cast işareti; dokununca atlar, 3'ten uzaksa animasyonsuz). Takip başta hep açık; bağlı
+  değilken üstteki "Bağlan"dan cihaz seçilince bakılan foto gider. Bağlıyken üst çubukta "Takip" aç/kapa.
