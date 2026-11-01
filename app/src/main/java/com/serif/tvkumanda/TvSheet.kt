@@ -123,10 +123,7 @@ fun TvSheet(
                 Spacer(Modifier.width(10.dp))
                 Text("Aranıyor…", color = Navy.Sub, fontSize = 13.sp)
             } else {
-                Text(
-                    if (!scanned) "" else if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu",
-                    color = Navy.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f)
-                )
+                // "Tekrar ara" solda (Serif'in isteği), sonuç yazısı sağında
                 Row(
                     Modifier.clip(RoundedCornerShape(12.dp)).background(Navy.Btn).clickable { scanTick++ }.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -134,6 +131,13 @@ fun TvSheet(
                     Icon(Icons.Outlined.Refresh, null, tint = Navy.Accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Tekrar ara", color = Navy.Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+                if (scanned) {
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu",
+                        color = Navy.Sub, fontSize = 13.sp
+                    )
                 }
             }
         }
