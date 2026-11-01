@@ -55,28 +55,33 @@ object Glass {
     val Mic = Brush.verticalGradient(listOf(Color(0xFF6B6CF6), Color(0xFF4A47D9)))
 }
 
-/** Ekranın arka planı: koyu geçiş + sağ üstte ve aşağıda mor ışık şeritleri. */
+/** Ekranın arka planı: koyu geçiş + üstte yumuşak mor ışık. Alttaki şerit `glassSwoosh` ile boşluğun içinde çizilir. */
 fun Modifier.glassBackdrop(): Modifier = drawBehind {
     val w = size.width
     val h = size.height
     drawRect(Brush.verticalGradient(listOf(Glass.BgTop, Glass.BgMid, Glass.BgBottom)))
-    // Üstte, sağa doğru yükselen yumuşak mor şerit
-    val top = Path().apply {
-        moveTo(w * 0.30f, 0f)
-        cubicTo(w * 0.45f, h * 0.05f, w * 0.62f, h * 0.035f, w * 0.80f, 0f)
-        close()
-    }
-    drawPath(top, Brush.radialGradient(listOf(Glass.Glow.copy(alpha = 0.55f), Color.Transparent), Offset(w * 0.6f, 0f), w * 0.55f))
-    drawCircle(Brush.radialGradient(listOf(Glass.Glow.copy(alpha = 0.22f), Color.Transparent), Offset(w * 0.62f, -h * 0.02f), w * 0.6f), w * 0.6f, Offset(w * 0.62f, -h * 0.02f))
-    // Altta, oynatıcının altındaki boşlukta soldan sağa kıvrılan ışık
+    // Üstte yumuşak mor ışık: keskin kenarı yok, durum çubuğunun altında kesik görünmez
+    val c = Offset(w * 0.62f, h * 0.035f)
+    drawCircle(Brush.radialGradient(listOf(Glass.Glow.copy(alpha = 0.34f), Glass.Glow.copy(alpha = 0.10f), Color.Transparent), c, w * 0.5f), w * 0.5f, c)
+}
+
+/**
+ * Medya çubuğu ile alt menü arasındaki boşlukta soldan sağa yükselen ince mor ışık şeridi.
+ * Boşluğun kendisine çizilir; böylece oynatıcı çubuğunun üstüne binmez, boşluk yoksa hiç görünmez.
+ */
+fun Modifier.glassSwoosh(): Modifier = drawBehind {
+    val w = size.width
+    val h = size.height
+    if (h < 8.dp.toPx()) return@drawBehind
     val low = Path().apply {
-        moveTo(w * 0.15f, h * 0.87f)
-        cubicTo(w * 0.40f, h * 0.86f, w * 0.65f, h * 0.83f, w * 0.85f, h * 0.795f)
-        cubicTo(w * 0.62f, h * 0.845f, w * 0.38f, h * 0.875f, w * 0.15f, h * 0.87f)
+        moveTo(w * 0.08f, h * 0.88f)
+        cubicTo(w * 0.38f, h * 0.86f, w * 0.66f, h * 0.62f, w * 0.92f, h * 0.18f)
+        cubicTo(w * 0.64f, h * 0.70f, w * 0.36f, h * 0.95f, w * 0.08f, h * 0.88f)
         close()
     }
-    drawPath(low, Brush.horizontalGradient(listOf(Color.Transparent, Glass.Glow.copy(alpha = 0.50f), Glass.Glow.copy(alpha = 0.15f)), w * 0.15f, w * 0.85f))
-    drawCircle(Brush.radialGradient(listOf(Glass.Glow.copy(alpha = 0.16f), Color.Transparent), Offset(w * 0.55f, h * 0.84f), w * 0.5f), w * 0.5f, Offset(w * 0.55f, h * 0.84f))
+    drawPath(low, Brush.horizontalGradient(listOf(Color.Transparent, Glass.Glow.copy(alpha = 0.55f), Glass.Glow.copy(alpha = 0.18f)), w * 0.08f, w * 0.92f))
+    val c = Offset(w * 0.55f, h * 0.7f)
+    drawCircle(Brush.radialGradient(listOf(Glass.Glow.copy(alpha = 0.14f), Color.Transparent), c, w * 0.45f), w * 0.45f, c)
 }
 
 /**

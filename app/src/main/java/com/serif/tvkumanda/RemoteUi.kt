@@ -281,7 +281,7 @@ fun RemoteScreen(
             screenH >= 720 -> 40.dp
             else -> 0.dp
         }
-        Spacer(Modifier.height(gap))
+        Spacer(Modifier.fillMaxWidth().height(gap).glassSwoosh())
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }

@@ -80,11 +80,13 @@ fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPow
             val pressed by inter.collectIsPressedAsState()
             Column(
                 Modifier.weight(1f).height(54.dp).glass(pillShape, pressed, strength = 0.8f)
-                    .clickable(interactionSource = inter, indication = null, onClick = onPicker),
+                    .clickable(interactionSource = inter, indication = null, onClick = onPicker)
+                    .padding(horizontal = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
+                // Uzun TV adı kutudan taşmasın: simge ve ok hep görünür, ad sığmazsa "…" ile kısalır
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Tv, null, tint = Glass.Text, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.Tv, null, tint = Glass.Text, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when (ui.state) {
@@ -92,8 +94,8 @@ fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPow
                             ConnState.CONNECTING -> "Bağlanıyor…"
                             else -> "TV Seç"
                         },
-                        color = Glass.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp)
+                        color = Glass.Text, fontSize = 17.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Filled.KeyboardArrowDown, null, tint = Glass.Text, modifier = Modifier.size(22.dp))
@@ -108,7 +110,8 @@ fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPow
                             ConnState.ERROR -> "Bağlantı yok"
                             ConnState.IDLE -> "Bağlı değil"
                         },
-                        color = Glass.Sub, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                        color = Glass.Sub, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -288,7 +291,7 @@ fun GlassPadCard(
                             }
                         }
                         Spacer(Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(if (inner < 300.dp) 12.dp else 18.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(if (inner < 300.dp) 6.dp else 9.dp)) {
                             GlassSquare(Modifier.size(key), onClick = { onKey(Keys.BACK) }) { SideIcon(AppIcons.Undo, "Geri") }
                             GlassSquare(Modifier.size(key), onClick = { onKey(Keys.HOME) }) { SideIcon(AppIcons.HomeOutline, "Ana Sayfa") }
                             GlassMic(key, ui.micActive, ui.micLevel, onMic)
@@ -322,7 +325,7 @@ private const val KEY_GUIDE = 172  // KEYCODE_GUIDE
 private fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
     val shape = RoundedCornerShape(29.dp)
     Row(
-        modifier.glass(shape, strength = 0.8f).padding(horizontal = 6.dp),
+        modifier.glass(shape, strength = 0.8f).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         PillButton(GlassIcons.Mute, "Sessiz") { onKey(Keys.MUTE) }
@@ -353,7 +356,7 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
     val shown = drag?.let { Math.round(it * max) } ?: volume
     val thumb = 34.dp
     BoxWithConstraints(
-        modifier.alpha(if (known) 1f else 0.4f).padding(horizontal = 8.dp)
+        modifier.alpha(if (known) 1f else 0.4f).padding(horizontal = 2.dp)
             .then(if (!known) Modifier else Modifier
                 .pointerInput(max) {
                     val r = thumb.toPx() / 2
@@ -373,9 +376,9 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, modifier: Modifier) {
     ) {
         val w = maxWidth
         val track = 14.dp
-        Box(Modifier.padding(horizontal = thumb / 2).fillMaxWidth().height(track).clip(RoundedCornerShape(7.dp)).background(Color(0xFF0C0D1E).copy(alpha = 0.75f)))
+        Box(Modifier.fillMaxWidth().height(track).clip(RoundedCornerShape(7.dp)).background(Color(0xFF0C0D1E).copy(alpha = 0.75f)))
         Box(
-            Modifier.padding(start = thumb / 2).width((w - thumb) * frac + thumb / 2).height(track).clip(RoundedCornerShape(7.dp))
+            Modifier.width((w - thumb) * frac + thumb / 2).height(track).clip(RoundedCornerShape(7.dp))
                 .background(Glass.VolumeFill)
         )
         Box(
