@@ -55,7 +55,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
 - Tek cast düğmesi: basınca o an ağdaki Chromecast ve DLNA cihazları tek listede aranır, dokununca bağlanılır (kumanda bağlantısı gerekmez)
 - Fotoğraflar telefonda galeri gibi açılır (kaydırma, yakınlaştırma, altta küçük resim şeridi). Bir cihaza bağlıyken baktığın foto TV'de de açılır ve telefonda kaydırdıkça TV takip eder; üstteki "Takip" ile bu kapatılabilir. Aşağı çekince kapanır
-- Müzikler telefonda da çalınabilir: bağlı değilken şarkıya dokununca telefonda çalar ve altta küçük kart çıkar; karta dokununca ya da yukarı sürükleyince tam ekran oynatıcı açılır, aşağı çekince yine karta küçülür. "TV'de çal" ile kaldığı saniyeden TV'de devam eder. Yalnızca uygulama açıkken çalar
+- Müzikler telefonda da çalınabilir: bağlı değilken şarkıya dokununca telefonda çalar ve altta küçük kart çıkar; karta dokununca ya da yukarı sürükleyince tam ekran oynatıcı açılır (10 sn ileri/geri, telefonun ses düzeyi), aşağı çekince yine karta küçülür. Çalarken üstten bir cihaza bağlanınca şarkı kaldığı saniyeden TV'de devam eder. Yalnızca uygulama açıkken çalar
 - Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
 - Son cihazı hatırlama Ayarlar'dan: hiç, listede başta ya da otomatik bağlan
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam

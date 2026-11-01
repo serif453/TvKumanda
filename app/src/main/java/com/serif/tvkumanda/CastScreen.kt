@@ -167,6 +167,20 @@ fun CastScreen(
     val musicSheet = rememberMusicSheet()
     val context = androidx.compose.ui.platform.LocalContext.current
     val phoneCurrent = PhonePlayer.current?.id
+    // Telefonda şarkı varken üstten bir cihaza bağlanılırsa şarkı kaldığı saniyeden TV'de devam eder
+    // (foto görüntüleyici açıkken değil: orada bağlanmak fotoyu gönderir)
+    val castName = castDeviceName(cc, dlna)
+    var lastCastName by remember { mutableStateOf(castName) }
+    LaunchedEffect(castName) {
+        val was = lastCastName
+        lastCastName = castName
+        val item = PhonePlayer.current
+        if (was == null && castName != null && item != null && viewer == null) {
+            val sec = PhonePlayer.positionMs() / 1000.0
+            PhonePlayer.pause()
+            onCastItem(item, PhonePlayer.list, PhonePlayer.albumId, sec)
+        }
+    }
     var permTick by remember { mutableStateOf(0) }
     // Oynatıcı kartından "oynatılan klasöre dön": klasör açılınca liste öğeye kaydırılır
     var jumpAlbum by remember { mutableStateOf<Long?>(null) }
@@ -311,7 +325,7 @@ fun CastScreen(
     } else if (musicSheet.visible && PhonePlayer.active) {
         PhoneMusicPlayer(
             library = library, cc = cc, dlna = dlna,
-            onTv = onCastItem, onCcPick = onCcPick, onDlnaPick = onDlnaPick,
+            onCcPick = onCcPick, onDlnaPick = onDlnaPick,
             sheet = musicSheet
         )
     } else CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)

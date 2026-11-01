@@ -34,6 +34,8 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -131,6 +133,12 @@ object PhonePlayer {
 
     fun seek(ms: Long) { mp?.takeIf { prepared }?.seekTo(ms.toInt()) }
 
+    /** [deltaMs] kadar ileri (artı) ya da geri (eksi). */
+    fun skip(deltaMs: Long) {
+        val end = if (durationMs > 0) durationMs - 500 else Long.MAX_VALUE
+        seek((positionMs() + deltaMs).coerceIn(0L, maxOf(0L, end)))
+    }
+
     /** Sonraki şarkı; albüm bitince durur (kendiliğinden geçişte) ya da başa döner (düğmeyle). */
     fun next(auto: Boolean = false) {
         if (list.isEmpty()) return
@@ -194,8 +202,10 @@ class MusicSheet(private val scope: CoroutineScope) {
     var visible by mutableStateOf(false)
         private set
     private var anim: Job? = null
+    /** Mini kartın üst kenarının ekrandaki yeri (px): oynatıcı buradan yükselir, buraya iner. */
+    var anchor by mutableStateOf(0f)
 
-    /** Sürükleme: [d] ekran yüksekliğine oranla (aşağı artı). */
+    /** Sürükleme: [d] kapalı konuma olan uzaklığa oranla (aşağı artı). */
     fun drag(d: Float) { anim?.cancel(); visible = true; frac = (frac + d).coerceIn(0f, 1f) }
     /** Bırakınca: [limit]'ten yukarıdaysa açılır, değilse kapanır. */
     fun settle(limit: Float) { if (frac < limit) open() else close() }
@@ -240,11 +250,12 @@ fun PhoneMiniCard(library: MediaLibrary, sheet: MusicSheet) {
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Pal.Btn)
             .clickable { sheet.open() }
             // Yukarı sürükleyince tam ekran oynatıcı parmakla birlikte yükselir; çeyrekten fazla çekilirse açılır
+            .onGloballyPositioned { sheet.anchor = it.positionInWindow().y }
             .pointerInput(screenPx) {
                 detectVerticalDragGestures(
                     onDragEnd = { sheet.settle(0.75f) },
                     onDragCancel = { sheet.settle(0.75f) }
-                ) { ch, dy -> ch.consume(); sheet.drag(dy / screenPx) }
+                ) { ch, dy -> ch.consume(); sheet.drag(dy / sheet.anchor.takeIf { it > 0f }.let { it ?: screenPx }) }
             }
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -280,7 +291,6 @@ fun PhoneMusicPlayer(
     library: MediaLibrary,
     cc: CcUi,
     dlna: DlnaUi,
-    onTv: (MediaItem, List<MediaItem>, Long, Double) -> Unit,
     onCcPick: (FoundTv?) -> Unit,
     onDlnaPick: (DlnaDevice) -> Unit,
     sheet: MusicSheet
@@ -299,13 +309,18 @@ fun PhoneMusicPlayer(
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setDimAmount(0f) }
         Column(
             Modifier.fillMaxSize()
-                .graphicsLayer { translationY = sheet.frac * size.height }
+                // Kapalıyken üst kenarı mini kartın üstünde durur; sona doğru kartın içinde kaybolur
+                .graphicsLayer {
+                    val dist = sheet.anchor.takeIf { it > 0f } ?: size.height.toFloat()
+                    translationY = sheet.frac * dist
+                    alpha = 1f - ((sheet.frac - 0.85f) / 0.15f).coerceIn(0f, 1f)
+                }
                 // Aşağı çekince parmakla birlikte iner; çeyrekten fazla çekilirse mini karta küçülür
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = { sheet.settle(0.25f) },
                         onDragCancel = { sheet.settle(0.25f) }
-                    ) { ch, dy -> ch.consume(); sheet.drag(dy / size.height) }
+                    ) { ch, dy -> ch.consume(); sheet.drag(dy / (sheet.anchor.takeIf { it > 0f } ?: size.height.toFloat())) }
                 }
                 .background(Pal.Bg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -356,39 +371,62 @@ fun PhoneMusicPlayer(
             }
             Spacer(Modifier.height(12.dp))
 
-            // Önceki / çal-duraklat / sonraki
+            // Önceki / 10 sn geri / çal-duraklat / 10 sn ileri / sonraki
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RoundAction(AppIcons.SkipPrevious, "Önceki", size = 56.dp, iconSize = 28.dp) { PhonePlayer.prev() }
-                Spacer(Modifier.width(24.dp))
+                RoundAction(AppIcons.SkipPrevious, "Önceki", size = 48.dp, iconSize = 24.dp) { PhonePlayer.prev() }
+                Spacer(Modifier.width(12.dp))
+                RoundAction(AppIcons.Replay10, "10 saniye geri", size = 52.dp, iconSize = 26.dp) { PhonePlayer.skip(-10_000) }
+                Spacer(Modifier.width(12.dp))
                 RoundAction(
                     if (PhonePlayer.playing) AppIcons.Pause else AppIcons.PlayArrow,
                     if (PhonePlayer.playing) "Duraklat" else "Çal",
-                    size = 76.dp, iconSize = 38.dp, primary = true
+                    size = 72.dp, iconSize = 36.dp, primary = true
                 ) { PhonePlayer.toggle() }
-                Spacer(Modifier.width(24.dp))
-                RoundAction(AppIcons.SkipNext, "Sonraki", size = 56.dp, iconSize = 28.dp) { PhonePlayer.next() }
+                Spacer(Modifier.width(12.dp))
+                RoundAction(AppIcons.Forward10, "10 saniye ileri", size = 52.dp, iconSize = 26.dp) { PhonePlayer.skip(10_000) }
+                Spacer(Modifier.width(12.dp))
+                RoundAction(AppIcons.SkipNext, "Sonraki", size = 48.dp, iconSize = 24.dp) { PhonePlayer.next() }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(20.dp))
 
-            // TV'de çal: kaldığı saniyeden TV'de devam eder (bağlı değilse önce cihaz paneli)
-            val shape = RoundedCornerShape(26.dp)
-            Row(
-                Modifier.clip(shape).background(Pal.Blue).border(1.dp, Pal.Blue, shape)
-                    .clickable {
-                        val sec = PhonePlayer.positionMs() / 1000.0
-                        PhonePlayer.pause()
-                        onTv(item, PhonePlayer.list, PhonePlayer.albumId, sec)
-                    }
-                    .padding(horizontal = 24.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Cast, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("TV'de çal", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(16.dp))
+            // Telefonun medya sesi (yan tuşlarla değişince çubuk da güncellenir)
+            PhoneVolumeRow()
+            Spacer(Modifier.weight(1f))
         }
         // Oynatıcı açıkken cihaz paneli onun üstünde açılır
         CastDevicePanel(cc, dlna, onCcPick, onDlnaPick)
+    }
+}
+
+/** Telefonun medya ses düzeyi çubuğu. */
+@Composable
+private fun PhoneVolumeRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val am = remember { ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val max = remember { am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
+    var vol by remember { mutableStateOf(am.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    DisposableEffect(Unit) {
+        val obs = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { vol = am.getStreamVolume(AudioManager.STREAM_MUSIC) }
+        }
+        ctx.contentResolver.registerContentObserver(android.provider.Settings.System.CONTENT_URI, true, obs)
+        onDispose { ctx.contentResolver.unregisterContentObserver(obs) }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(AppIcons.VolumeUp, "Ses", tint = Pal.Text, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(10.dp))
+        Slider(
+            value = dragging ?: vol.toFloat(),
+            valueRange = 0f..max.toFloat(),
+            onValueChange = { v ->
+                dragging = v
+                val n = kotlin.math.round(v).toInt()
+                if (n != vol) { vol = n; runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, n, 0) } }
+            },
+            onValueChangeFinished = { dragging = null },
+            colors = SliderDefaults.colors(thumbColor = Pal.Text, activeTrackColor = Pal.Blue, inactiveTrackColor = Pal.BtnPressed),
+            modifier = Modifier.weight(1f)
+        )
     }
 }

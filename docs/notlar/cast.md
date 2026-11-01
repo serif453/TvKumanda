@@ -70,3 +70,7 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   ekranın %15'inden fazlaysa kapanır, değilse geri yaylanır.
 - Müzik: şarkıya dokununca yalnızca mini kart çıkar (tam ekran kendiliğinden açılmaz). `MusicSheet` (0 açık … 1 kart):
   karta dokunma ya da yukarı sürükleme açar (%25'ten fazla çekilirse), tam ekranda aşağı sürükleme kapatır (%25'ten fazla).
+- (2 Kasım gece, sonra) Müzik oynatıcısından "TV'de çal" kaldırıldı: telefonda şarkı varken cihaz bağlanınca (adı null → dolu)
+  CastScreen kaldığı saniyeden TV'ye geçirir (foto görüntüleyici açıkken yapmaz). Oynatıcı mini kartın üst kenarından
+  (`MusicSheet.anchor`, positionInWindow) yükselir/iner, sonda kartın içinde solar. Önceki · 10 sn geri · oynat · 10 sn ileri
+  · sonraki; altta telefonun medya sesi çubuğu (Settings.System gözlenir, yan tuşlarla güncellenir).
