@@ -150,7 +150,7 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   - `IrRemote.kt`: TV seçimi penceresinde "IR KUMANDALAR" bölümü, ekleme (marka → kod seti deneme: sesi aç, gerekirse güç →
     ad), tam ekran IR kumanda. Kayıtlar `ayarlar` → `ir_kumandalar` (marka adı + kod seti sırası). Gönderim tek iş
     parçacığında; desteklenmeyen taşıyıcı frekansı en yakın desteklenene çekilir. Serif'in Honor telefonunda IR var;
-    gerçek TV'de henüz denenmedi.
+    **1 Kasım 2026: Serif'in Philips TV'sinde çalıştı** (v0.117). Tarama ve çevrimiçi arama ayrıca denenmedi.
   - **Marka aileleri** (`IrDb.FAMILIES`, `withFamilies`): Vestel ve Arçelik grupları. Seçilen markanın önce kendi setleri, sonra
     ailenin setleri (aynı güç+ses imzası bir kez). Veritabanında olmayan aile markaları (Vestel, Regal, Arçelik, Beko, Altus…)
     yalnızca aile kodlarıyla listeye eklenir. Aile üyeliği genel bilgiye dayanır, gerçek TV'lerde doğrulanmadı.
