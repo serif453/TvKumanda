@@ -332,7 +332,7 @@ fun GlassPadCard(
                         Box(Modifier.align(Alignment.TopCenter).size(w, h)) {
                             when (shownPad) {
                                 1 -> TouchPad(Modifier.fillMaxSize(), onKey)
-                                else -> TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse)
+                                else -> TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse) { if (padMode) onMode(0) }
                             }
                             // Sol üst: hangi modda olunduğu. Fare modunda "Fare ▾": dokununca hız ve şerit ayarı açılır
                             if (shownPad == 1) {
@@ -345,7 +345,11 @@ fun GlassPadCard(
                                     Text("Kaydırma", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 }
                             } else if (ui.method != ConnMethod.STANDARD && ui.fastMode) {
-                                MouseModeLabel(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 12.dp).graphicsLayer { alpha = exp })
+                                // Şerit soldaysa etiket sağ üste geçer, üst üste binmesinler
+                                MouseModeLabel(
+                                    Modifier.align(if (MouseSettings.stripLeft) Alignment.TopEnd else Alignment.TopStart)
+                                        .padding(start = 12.dp, end = 12.dp, top = 12.dp).graphicsLayer { alpha = exp }
+                                )
                             } else {
                                 Row(
                                     Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
@@ -356,16 +360,18 @@ fun GlassPadCard(
                                     Text("Fare", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 }
                             }
-                            // Sağ üst: ✕ ile normal kumandaya dönülür
-                            Box(
-                                Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                    .graphicsLayer { alpha = exp }
-                                    .size(36.dp).clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.28f))
-                                    .clickable(enabled = padMode) { onMode(0) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Filled.Close, "Moddan çık", tint = Glass.Text, modifier = Modifier.size(20.dp))
+                            // Sağ üst: ✕ ile normal kumandaya dönülür (çalışan fare modunda ✕ kaydırma şeridinin tepesinde)
+                            if (shownPad == 1 || ui.method == ConnMethod.STANDARD || !ui.fastMode) {
+                                Box(
+                                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
+                                        .graphicsLayer { alpha = exp }
+                                        .size(36.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.28f))
+                                        .clickable(enabled = padMode) { onMode(0) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.Close, "Moddan çık", tint = Glass.Text, modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }

@@ -738,7 +738,7 @@ fun TouchPad(modifier: Modifier, onKey: (Int) -> Unit) {
  * İmleç hızı ve şeridin kenarı `MouseSettings`'te (sol üstteki "Fare ▾").
  */
 @Composable
-fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit) {
+fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit, onClose: () -> Unit) {
     if (method == ConnMethod.STANDARD) {
         PadSurface(modifier, listOf("Bu özellik", "ADB bağlantısında çalışır"), Modifier)
         return
@@ -768,7 +768,7 @@ fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse:
     Box(modifier.glass(shape, strength = 0.75f).clip(shape)) {
         Box(
             Modifier.fillMaxSize()
-                .padding(start = if (left) 64.dp else 0.dp, end = if (left) 0.dp else 64.dp)
+                .padding(start = if (left) 66.dp else 0.dp, end = if (left) 0.dp else 66.dp)
                 .drawBehind {
                     if (ringAlpha > 0.01f) {
                         val r = 30.dp.toPx() * ringScale
@@ -857,9 +857,10 @@ fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse:
         )
         ScrollStrip(
             Modifier.align(if (left) Alignment.TopStart else Alignment.TopEnd)
-                .padding(top = 56.dp, bottom = 12.dp, start = if (left) 12.dp else 0.dp, end = if (left) 0.dp else 12.dp)
-                .width(52.dp).fillMaxHeight(),
-            onMouse
+                .padding(top = 10.dp, bottom = 10.dp, start = if (left) 10.dp else 0.dp, end = if (left) 0.dp else 10.dp)
+                .width(48.dp).fillMaxHeight(),
+            onMouse,
+            onClose
         )
     }
 }

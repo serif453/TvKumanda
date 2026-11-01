@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -89,13 +89,16 @@ fun MouseModeLabel(modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         Row(
-            Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+            Modifier.clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                .clickable { open = true }.padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Mouse, null, tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+            Icon(Icons.Outlined.Mouse, null, tint = Glass.Text.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(5.dp))
-            Text("Fare", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Icon(Icons.Filled.ArrowDropDown, "Fare ayarları", tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+            Text("Fare", color = Glass.Text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Icon(Icons.Filled.ArrowDropDown, "Fare ayarları", tint = Glass.Text.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Navy.Btn) {
             Column(Modifier.width(260.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -148,24 +151,33 @@ private fun SideChip(label: String, selected: Boolean, modifier: Modifier, onCli
 }
 
 /**
- * Fare yüzeyinin kenarındaki kaydırma şeridi: ▲ / ▼ bir adım kaydırır (basılı tutunca tekrarlar),
- * ortadaki çizgili alanda parmak yukarı-aşağı sürüklenince sayfa kayar, en alttaki ⇆ şeridi öbür kenara taşır.
- * Kaydırma yönü iki parmakla kaydırmayla aynıdır.
+ * Fare yüzeyinin kenarındaki kaydırma şeridi (Serif'in işaretlediği örnek gibi): en üstte ✕ (normal kumandaya döner),
+ * altında ▲, eşit aralıklı çizgili sürükleme alanı ve ▼. ▲ / ▼ bir adım kaydırır (basılı tutunca tekrarlar),
+ * çizgili alanda parmak yukarı-aşağı sürüklenince sayfa kayar. Kaydırma yönü iki parmakla kaydırmayla aynıdır.
+ * Şeridin hangi kenarda durduğu "Fare ▾" penceresinden seçilir.
  */
 @Composable
-fun ScrollStrip(modifier: Modifier, onMouse: (String) -> Unit) {
-    val context = LocalContext.current
+fun ScrollStrip(modifier: Modifier, onMouse: (String) -> Unit, onClose: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     val latest by rememberUpdatedState(onMouse)
     val step = with(LocalDensity.current) { 22.dp.toPx() }
     // Çizgiler parmakla birlikte kayar; dokunulduğu belli olsun
     var shift by remember { mutableFloatStateOf(0f) }
-    val shape = RoundedCornerShape(26.dp)
+    val shape = RoundedCornerShape(24.dp)
 
     Column(
-        modifier.clip(shape).background(Color.Black.copy(alpha = 0.22f)),
+        modifier.clip(shape).background(Color(0xFF16172A).copy(alpha = 0.85f)),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Box(
+            Modifier.padding(top = 6.dp).size(36.dp).clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.07f))
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Close, "Moddan çık", tint = Glass.Text, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.height(4.dp))
         StripArrow(up = true) { latest("w 1"); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
         Box(
             Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
@@ -191,32 +203,27 @@ fun ScrollStrip(modifier: Modifier, onMouse: (String) -> Unit) {
                 }
             }
         ) {
-            Canvas(Modifier.fillMaxSize().padding(vertical = 6.dp)) {
-                val gap = 18.dp.toPx()
-                val w = 12.dp.toPx()
+            // Eşit aralıklı çizgiler; sayısı şeridin boyuna göre kendiliğinden ayarlanır
+            Canvas(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
+                val gap = 26.dp.toPx()
+                val w = 13.dp.toPx()
                 val cx = size.width / 2
-                val off = ((shift % gap) + gap) % gap
-                var y = off
-                while (y <= size.height) {
-                    // Kenarlara yaklaştıkça soluklaşır
-                    val edge = (minOf(y, size.height - y) / (size.height * 0.25f)).coerceIn(0f, 1f)
+                val count = (size.height / gap).toInt().coerceAtLeast(1)
+                val space = size.height / count
+                val off = ((shift % space) + space) % space
+                for (i in 0..count) {
+                    val y = space / 2 + i * space + off - space
+                    if (y < 0f || y > size.height) continue
                     drawLine(
-                        Color.White.copy(alpha = 0.10f + 0.22f * edge),
+                        Color.White.copy(alpha = 0.28f),
                         Offset(cx - w, y), Offset(cx + w, y),
                         strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round
                     )
-                    y += gap
                 }
             }
         }
         StripArrow(up = false) { latest("w -1"); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
-        Box(
-            Modifier.padding(bottom = 6.dp).size(40.dp).clip(CircleShape)
-                .clickable { MouseSettings.updateStripLeft(context, !MouseSettings.stripLeft) },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Filled.SwapHoriz, "Şeridi öbür kenara taşı", tint = Glass.Text.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
-        }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -239,7 +246,7 @@ private fun StripArrow(up: Boolean, onStep: () -> Unit) {
         },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(18.dp, 12.dp)) {
+        Canvas(Modifier.size(20.dp, 13.dp)) {
             val p = Path().apply {
                 if (up) {
                     moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(0f, size.height)
@@ -248,7 +255,7 @@ private fun StripArrow(up: Boolean, onStep: () -> Unit) {
                 }
                 close()
             }
-            drawPath(p, Color.White.copy(alpha = 0.75f))
+            drawPath(p, Color(0xFFD6D6E6))
         }
     }
 }

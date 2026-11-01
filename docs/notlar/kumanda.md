@@ -40,3 +40,6 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Basılı tut (~0.4 sn kıpırdamadan) + hareket = sürükleme/seçme: TV'ye "d" (sol tuş basılı) … "u" (bırak) gider
   (`KeyServer.mouseButtons`); hareket ve tekerlek basılı tuşla gönderilir. TV'deki ok imlecinin görünümü değiştirilmedi
   (Android'in kendi imleci).
+  v0.135 (Serif'in onayladığı önizleme): şerit yüzeyin üstünden altına koyu tek parça (48 dp); en üstte ✕ (çalışan fare
+  modunda sağ üstteki ayrı ✕ yok), sonra ▲, eşit aralıklı çizgiler (sayı boya göre), ▼. ⇆ kaldırıldı (Sol/Sağ yalnızca
+  "Fare ▾" penceresinde; Serif üstünü çizdi). Ayraç çizgisi istenmedi. "Fare ▾" hafif kapsül; şerit soldayken sağ üste geçer.
