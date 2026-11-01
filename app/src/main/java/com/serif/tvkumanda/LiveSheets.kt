@@ -216,10 +216,16 @@ private fun saveVideoToGallery(context: Context, f: File) {
 internal object LiveSend {
     @Volatile private var lastDevice: DlnaDevice? = null
 
-    /** Yayın adresini TV'de açar: önce DLNA oynatıcısı, olmazsa TV'nin kendi oynatıcısı. Hangi yolun işlediğini söyler. */
+    /**
+     * Yayın adresini TV'de açar: ADB'de önce VLC (kuruluysa), sonra DLNA oynatıcısı, olmazsa TV'nin kendi oynatıcısı.
+     * Hangi yolun işlediğini söyler.
+     */
     fun toTv(context: Context, url: String, screen: Boolean): String {
         val ip = TvTools.currentIp()
         val mime = if (screen) "video/mp2t" else "audio/aac"
+        val vlc = runCatching { TvTools.openInVlc(url, mime) }
+            .onFailure { DiagLog.log("Canlı yayın: VLC'de açılamadı (${it.message.orEmpty()})") }.getOrDefault(false)
+        if (vlc) { lastDevice = null; return "TV'de VLC ile açıldı" }
         val title = if (screen) "Telefon ekranı" else "Telefonun sesi"
         val dlna = DlnaClient(context.applicationContext)
         val dev = runCatching { dlna.discover(2500) }.getOrDefault(emptyList()).firstOrNull { it.ip == ip }

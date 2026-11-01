@@ -81,7 +81,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
     information on how to contribute to the database, see https://github.com/probonopd/irdb*
 
 - **Deneysel (telefondan TV'ye canlı yayın):** ekran yansıtma (telefonun ekranı ve sesi TV'de görünür) ve telefonu TV
-  hoparlörüne bağlama (telefonda çalan ses TV'den gelir). İkisi de ADB gerektirmez. TV'de 2-5 saniye gecikme olur;
+  hoparlörüne bağlama (telefonda çalan ses TV'den gelir). İkisi de ADB gerektirmez; ADB ile bağlıyken yayın TV'deki VLC'de doğrudan açılır (en iyi bu çalışıyor). TV'de 2-3 saniye gecikme olur;
   slayt, fotoğraf, müzik ve podcast için uygundur, oyun ya da video izlerken ses senkronu için değil. Telefon sesini
   yakalamak Android 10 ve üstünü ister; bazı uygulamalar (ör. Spotify) sesinin yakalanmasına izin vermez
 

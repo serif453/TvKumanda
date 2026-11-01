@@ -211,6 +211,24 @@ object TvTools {
         if (out.contains("Error", true)) throw java.io.IOException("TV'de bu yayını açacak bir oynatıcı yok")
     }
 
+    /**
+     * Canlı yayını TV'deki VLC'de doğrudan açar (yalnızca ADB). DLNA alıcısı canlı yayını kendisi oynatamayıp
+     * "hangi uygulamayla açayım" diye soruyor ve orada takılıyordu (Serif'in Philips'i, 1 Kasım 2026); VLC açıyor.
+     * VLC kurulu değilse ya da açılamazsa false döner, eski yol (DLNA → TV'nin oynatıcısı) denenir.
+     */
+    fun openInVlc(url: String, mime: String): Boolean {
+        if (!isAdb()) return false
+        if (!sh("pm path $VLC 2>/dev/null").contains("package:")) return false
+        fun q(s: String) = "'" + s.replace("'", "'\\''") + "'"
+        val viaType = sh("am start -a android.intent.action.VIEW -d ${q(url)} -t ${q(mime)} -p $VLC 2>&1")
+        if (!viaType.contains("Error", true) && !viaType.contains("Exception", true)) return true
+        // Tür eşleşmezse VLC'nin giriş ekranına doğrudan
+        val direct = sh("am start -a android.intent.action.VIEW -d ${q(url)} -n $VLC/.StartActivity 2>&1")
+        return !direct.contains("Error", true) && !direct.contains("Exception", true)
+    }
+
+    private const val VLC = "org.videolan.vlc"
+
     /** Metindeki ilk web adresini bulur; şema yoksa https eklenir. */
     fun extractUrl(text: String): String? {
         Regex("""https?://\S+""").find(text)?.let { return it.value.trimEnd('.', ',', ')', '"', '\'') }
