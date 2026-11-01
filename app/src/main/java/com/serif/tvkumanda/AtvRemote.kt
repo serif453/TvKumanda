@@ -135,6 +135,10 @@ class AtvRemote(private val context: Context) : RemoteLink {
         if (e is EOFException) return true
         if (e !is SSLException) return false
         val msg = generateSequence<Throwable>(e) { it.cause }.joinToString(" ") { it.message.orEmpty() }.lowercase()
+        // TV'nin "sertifikanı tanımıyorum" uyarısı kesin bir rettir. Android bunu "Read error: … CERTIFICATE_UNKNOWN"
+        // diye verir; "read error" ağ hatası sanılıp ham hata gösteriliyordu (Serif, v0.145).
+        val tlsAlerts = listOf("certificate_unknown", "bad_certificate", "unknown_ca", "certificate_revoked", "certificate_expired", "access_denied")
+        if (tlsAlerts.any { it in msg }) return true
         val network = listOf("reset", "broken pipe", "timed out", "timeout", "connection abort", "connection closed by peer", "i/o error", "read error", "write error")
         return network.none { it in msg }
     }
