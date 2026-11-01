@@ -325,14 +325,14 @@ private const val KEY_GUIDE = 172  // KEYCODE_GUIDE
 private fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
     val shape = RoundedCornerShape(29.dp)
     Row(
-        // Sessiz tuşu soldan biraz içeride (Serif'in isteği); çubuk o kadar kısalır
-        modifier.glass(shape, strength = 0.8f).padding(start = 34.dp, end = 4.dp),
+        // Sessiz tuşu sol kenara yakın; kazanılan alanın yarısı çubuğa, yarısı çubuğun iki yanına boşluk (Serif'in isteği)
+        modifier.glass(shape, strength = 0.8f).padding(start = 0.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val isMuted = ui.muted == true
         PillButton(GlassIcons.Mute, if (isMuted) "Sesi aç" else "Sessiz", active = isMuted) { onKey(Keys.MUTE) }
         PillButton(Icons.Filled.Remove, "Ses kıs", repeat = true) { onKey(Keys.VOL_DOWN) }
-        GlassVolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), isMuted, Modifier.weight(1f).fillMaxHeight())
+        GlassVolumeTrack(ui.volume, ui.volumeMax.coerceAtLeast(1), isMuted, Modifier.weight(1f).fillMaxHeight().padding(horizontal = 8.5.dp))
         PillButton(Icons.Filled.Add, "Ses aç", repeat = true) { onKey(Keys.VOL_UP) }
     }
 }
