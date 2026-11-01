@@ -2,6 +2,14 @@ package com.serif.tvkumanda
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +22,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -186,35 +193,131 @@ private fun SmallAppTile(app: TvApp, onClick: () -> Unit) {
     }
 }
 
-/** Uygulama satırını düzenleme: satırdakiler (sırala, çıkar) ve eklenebilecekler. */
+/** Uygulama satırını düzenleme: satırdakiler (basılı tutup sürükleyerek sırala, çıkar) ve eklenebilecekler. */
 @Composable
 fun EditAppsSheet(apps: List<TvApp>, onChanged: () -> Unit) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
     var pinned by remember { mutableStateOf(AppRowPrefs.get(context).ifEmpty { apps.map { it.pkg } }.filter { p -> apps.any { it.pkg == p } }) }
     fun save(list: List<String>) { pinned = list; AppRowPrefs.set(context, list); onChanged() }
     val byPkg = apps.associateBy { it.pkg }
+
+    // Sürükleme durumu: hangi satır tutuluyor, parmak ne kadar kaydı.
+    val listState = rememberLazyListState()
+    var dragKey by remember { mutableStateOf<String?>(null) }
+    var dragStartOffset by remember { mutableIntStateOf(0) }
+    var dragDelta by remember { mutableFloatStateOf(0f) }
+    val edgePx = with(density) { 56.dp.toPx() }
+
+    fun dragged() = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == dragKey }
+
+    // Tutulan satırın ortası başka bir satırın üstüne gelince yer değiştirir.
+    fun swapIfNeeded() {
+        val cur = dragged() ?: return
+        val top = dragStartOffset + dragDelta
+        val mid = top + cur.size / 2f
+        val target = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+            it.key != dragKey && (it.key as? String)?.startsWith("p_") == true &&
+                mid > it.offset && mid < it.offset + it.size
+        } ?: return
+        val from = pinned.indexOf((cur.key as String).removePrefix("p_"))
+        val to = pinned.indexOf((target.key as String).removePrefix("p_"))
+        if (from < 0 || to < 0) return
+        pinned = pinned.toMutableList().apply { add(to, removeAt(from)) }
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    // Parmak listenin üst/alt kenarındayken liste kendiliğinden kayar.
+    LaunchedEffect(dragKey) {
+        if (dragKey == null) return@LaunchedEffect
+        while (dragKey != null) {
+            val cur = dragged()
+            if (cur != null) {
+                val info = listState.layoutInfo
+                val top = dragStartOffset + dragDelta
+                val bottom = top + cur.size
+                val speed = when {
+                    top < info.viewportStartOffset + edgePx -> -((info.viewportStartOffset + edgePx - top) / edgePx).coerceIn(0f, 1f) * 18f
+                    bottom > info.viewportEndOffset - edgePx -> ((bottom - (info.viewportEndOffset - edgePx)) / edgePx).coerceIn(0f, 1f) * 18f
+                    else -> 0f
+                }
+                if (speed != 0f) { listState.scrollBy(speed); swapIfNeeded() }
+            }
+            kotlinx.coroutines.delay(16)
+        }
+    }
+
+    fun endDrag() {
+        if (dragKey != null) save(pinned)
+        dragKey = null; dragDelta = 0f
+    }
+
     Column {
         Text("Uygulama satırını düzenle", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Okla sırala, × ile çıkar, + ile ekle", color = Pal.Sub, fontSize = 13.sp)
+        Text("Basılı tutup sürükle, × ile çıkar, + ile ekle", color = Pal.Sub, fontSize = 13.sp)
         Spacer(Modifier.height(12.dp))
-        LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            item { Text("Satırda (${pinned.size})", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp)) }
-            itemsIndexed(pinned, key = { _, p -> "p_$p" }) { i, p ->
-                val app = byPkg[p] ?: return@itemsIndexed
-                EditRow(app) {
-                    RowIcon(Icons.Filled.KeyboardArrowUp, i > 0) { save(pinned.toMutableList().apply { add(i - 1, removeAt(i)) }) }
-                    RowIcon(Icons.Filled.KeyboardArrowDown, i < pinned.lastIndex) { save(pinned.toMutableList().apply { add(i + 1, removeAt(i)) }) }
-                    RowIcon(Icons.Filled.Close, true) { save(pinned - p) }
+        LazyColumn(
+            Modifier.heightIn(max = 520.dp).pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { pos ->
+                        val hit = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                            (it.key as? String)?.startsWith("p_") == true && pos.y.toInt() in it.offset until it.offset + it.size
+                        }
+                        if (hit != null) {
+                            dragKey = hit.key as String
+                            dragStartOffset = hit.offset
+                            dragDelta = 0f
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                    },
+                    onDrag = { change, amount ->
+                        if (dragKey != null) {
+                            change.consume()
+                            dragDelta += amount.y
+                            swapIfNeeded()
+                        }
+                    },
+                    onDragEnd = { endDrag() },
+                    onDragCancel = { endDrag() }
+                )
+            },
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            item(key = "h_pinned") { Text("Satırda (${pinned.size})", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp)) }
+            items(pinned, key = { "p_$it" }) { p ->
+                val app = byPkg[p] ?: return@items
+                val isDragged = dragKey == "p_$p"
+                val lift by animateFloatAsState(if (isDragged) 1f else 0f, label = "lift")
+                val mod = if (isDragged) {
+                    Modifier.zIndex(1f).graphicsLayer {
+                        val cur = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == dragKey }
+                        translationY = if (cur != null) dragStartOffset + dragDelta - cur.offset else 0f
+                        scaleX = 1f + 0.03f * lift; scaleY = 1f + 0.03f * lift
+                        shadowElevation = 16f * lift
+                        shape = RoundedCornerShape(14.dp); clip = true
+                    }
+                } else Modifier.animateItem()
+                Box(mod) {
+                    EditRow(app, highlight = lift) {
+                        RowIcon(Icons.Filled.Close, true) { save(pinned - p) }
+                        Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.DragHandle, null, tint = Pal.Sub, modifier = Modifier.size(22.dp))
+                        }
+                    }
                 }
             }
             val rest = apps.filter { it.pkg !in pinned }
             if (rest.isNotEmpty()) {
-                item { Text("Eklenebilir", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+                item(key = "h_rest") { Text("Eklenebilir", color = Pal.Sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
                 items(rest, key = { "r_${it.pkg}" }) { app ->
-                    EditRow(app) { RowIcon(Icons.Filled.Add, true) { save(pinned + app.pkg) } }
+                    Box(Modifier.animateItem()) {
+                        EditRow(app) { RowIcon(Icons.Filled.Add, true) { save(pinned + app.pkg) } }
+                    }
                 }
             }
-            item {
+            item(key = "f_reset") {
                 Spacer(Modifier.height(12.dp))
                 Box(
                     Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).background(Pal.Btn)
@@ -227,9 +330,10 @@ fun EditAppsSheet(apps: List<TvApp>, onChanged: () -> Unit) {
 }
 
 @Composable
-private fun EditRow(app: TvApp, actions: @Composable RowScope.() -> Unit) {
+private fun EditRow(app: TvApp, highlight: Float = 0f, actions: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Pal.Btn).padding(8.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(androidx.compose.ui.graphics.lerp(Pal.Btn, Color(0xFF3A3A3E), highlight)).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val bmp = app.icon

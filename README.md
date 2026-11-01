@@ -36,7 +36,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - TV'ye yazma: telefonun klavyesiyle canlı yazma; Standart bağlantıda Türkçe harfler (ş, ğ, ı…) olduğu gibi gider
 - Sesli komut: telefonun mikrofonuyla TV'de arama
 - Telefonun ses tuşları TV'nin sesini açar/kısar
-- Uygulama satırı: TV'deki uygulamalar gerçek adları ve simgeleriyle, istediğin sırayla (ADB)
+- Uygulama satırı: TV'deki uygulamalar gerçek adları ve simgeleriyle, basılı tutup sürükleyerek istediğin sırayla (ADB)
 - Şu an çalan: TV'de oynayan medya için oynatıcı çubuğu (ADB)
 - Birden fazla TV kaydetme, ağda otomatik TV bulma, Wake-on-LAN ile uyandırma
 
