@@ -33,3 +33,4 @@ Telefonun kızılötesi vericisiyle kumanda ve IR kod veritabanları üzerinde �
     Mitsubishi (son beşi ham sinyal olarak kurulur; Panasonic Flipper'ın Kaseikyo'suyla birebir test edildi). Kalanlar (MCE, Aiwa,
     kablo/uydu biçimleri) atlanır. Lisans şartları: Serif 1 Kasım 2026'da irdb'de issue açtı; `IrdbCodes.NOTICE` listede ve
     README'de. **irdb verisi repoya da konmaz** (testler uydurma satırlarla).
+- **Kaldırma (1 Kasım 2026, Serif'in isteği):** TV seçimindeki IR kumanda kartına basılı tutunca menü: Yeniden adlandır · Kaldır (onay sorar). Kumanda sayfasındaki ⋮ menüsünde de "Unut" yerine "Kaldır".

@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -553,7 +554,7 @@ private fun IrRemotePage(r: IrSaved, onClose: () -> Unit) {
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Navy.Btn) {
                 DropdownMenuItem(text = { Text("Yeniden adlandır", color = Pal.Text) }, onClick = { menu = false; renaming = true })
-                DropdownMenuItem(text = { Text("Unut", color = Pal.Red) }, onClick = { menu = false; forgetAsk = true })
+                DropdownMenuItem(text = { Text("Kaldır", color = Pal.Red) }, onClick = { menu = false; forgetAsk = true })
             }
         }
     }) {
@@ -582,9 +583,9 @@ private fun IrRemotePage(r: IrSaved, onClose: () -> Unit) {
     }
     if (forgetAsk) AlertDialog(
         onDismissRequest = { forgetAsk = false }, containerColor = Navy.Card,
-        title = { Text("Kumanda unutulsun mu?", color = Pal.Text) },
-        text = { Text("\"${r.name}\" IR kumandalardan kaldırılır.", color = Navy.Sub) },
-        confirmButton = { TextButton(onClick = { forgetAsk = false; onClose(); IrUi.remove(context, r.id) }) { Text("Unut", color = Pal.Red) } },
+        title = { Text("\"${r.name}\" kaldırılsın mı?", color = Pal.Text) },
+        text = { Text("Kumanda IR kumandalar listesinden kaldırılır.", color = Navy.Sub) },
+        confirmButton = { TextButton(onClick = { forgetAsk = false; onClose(); IrUi.remove(context, r.id) }) { Text("Kaldır", color = Pal.Red) } },
         dismissButton = { TextButton(onClick = { forgetAsk = false }) { Text("Vazgeç", color = Navy.Sub) } }
     )
 }
@@ -769,21 +770,7 @@ fun IrSection(onOpen: (String) -> Unit) {
     Text("IR KUMANDALAR", color = Navy.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (r in IrUi.saved) {
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Navy.Btn)
-                    .border(1.dp, Navy.Border, RoundedCornerShape(18.dp)).clickable { onOpen(r.id) }
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.SettingsRemote, null, tint = Pal.Text, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(r.name, color = Pal.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("IR · ${r.brand} · Wi-Fi gerekmez", color = Navy.Sub, fontSize = 12.sp)
-                }
-            }
-        }
+        for (r in IrUi.saved) IrSavedCard(r) { onOpen(r.id) }
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Navy.AccentSoft).clickable { onOpen("") }
                 .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -794,4 +781,64 @@ fun IrSection(onOpen: (String) -> Unit) {
             Text("IR kumanda ekle", color = Navy.Accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
+}
+
+/**
+ * Kayıtlı IR kumanda kartı: dokununca kumanda açılır; basılı tutunca küçük menü (Yeniden adlandır · Kaldır).
+ * Kaldır yanlışlıkla olmasın diye onay sorar (Serif'in isteği, 1 Kasım 2026).
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun IrSavedCard(r: IrSaved, onOpen: () -> Unit) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var menu by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var removeAsk by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Navy.Btn)
+                .border(1.dp, Navy.Border, RoundedCornerShape(18.dp))
+                .combinedClickable(
+                    onClick = onOpen,
+                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); menu = true }
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.SettingsRemote, null, tint = Pal.Text, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(r.name, color = Pal.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("IR · ${r.brand} · Wi-Fi gerekmez", color = Navy.Sub, fontSize = 12.sp)
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Navy.Btn) {
+            DropdownMenuItem(text = { Text("Yeniden adlandır", color = Pal.Text) }, onClick = { menu = false; renaming = true })
+            DropdownMenuItem(text = { Text("Kaldır", color = Pal.Red) }, onClick = { menu = false; removeAsk = true })
+        }
+    }
+    if (renaming) {
+        var text by remember { mutableStateOf(r.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = false }, containerColor = Navy.Card,
+            title = { Text("Kumandanın adı", color = Pal.Text) },
+            text = {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it }, singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Pal.Text, unfocusedTextColor = Pal.Text,
+                        focusedBorderColor = Navy.Accent, unfocusedBorderColor = Navy.Border, cursorColor = Navy.Accent)
+                )
+            },
+            confirmButton = { TextButton(onClick = { if (text.isNotBlank()) IrUi.rename(context, r.id, text.trim()); renaming = false }) { Text("Kaydet", color = Navy.Accent) } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Vazgeç", color = Navy.Sub) } }
+        )
+    }
+    if (removeAsk) AlertDialog(
+        onDismissRequest = { removeAsk = false }, containerColor = Navy.Card,
+        title = { Text("\"${r.name}\" kaldırılsın mı?", color = Pal.Text) },
+        text = { Text("Kumanda IR kumandalar listesinden kaldırılır.", color = Navy.Sub) },
+        confirmButton = { TextButton(onClick = { removeAsk = false; IrUi.remove(context, r.id) }) { Text("Kaldır", color = Pal.Red) } },
+        dismissButton = { TextButton(onClick = { removeAsk = false }) { Text("Vazgeç", color = Navy.Sub) } }
+    )
 }
