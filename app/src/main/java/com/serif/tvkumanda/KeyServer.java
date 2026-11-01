@@ -78,6 +78,9 @@ public final class KeyServer {
                 } else if (line.startsWith("m ")) {
                     String[] p = line.split(" ");
                     mouseMove(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+                } else if (line.equals("M")) {
+                    // Fare modu açıldı: sanal fare önceden kurulur, ilk hareket kaybolmaz
+                    ensureMouse();
                 } else if (line.equals("c")) {
                     mouseClick();
                 } else if (line.startsWith("w ")) {

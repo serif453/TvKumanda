@@ -750,6 +750,8 @@ fun TrackPad(size: Dp, fastMode: Boolean, method: ConnMethod, onMouse: (String) 
     val slop = with(density) { 8.dp.toPx() }
     val wheelStep = with(density) { 28.dp.toPx() }
     val latest by rememberUpdatedState(onMouse)
+    // Fare modu açılır açılmaz TV'deki sanal fare kurulur; TV onu tanırken (1-2 sn) hareketler kaybolmaz
+    LaunchedEffect(Unit) { latest("M") }
 
     PadSurface(
         size,
