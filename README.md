@@ -70,6 +70,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - **IR kumanda** (telefonda kızılötesi verici varsa): TV seçimi penceresinden "IR kumanda ekle" → marka seç → kodu dene.
   100'den fazla marka; Wi-Fi ve bağlantı gerekmez, eski TV'lerde de çalışır. Yalnızca klasik tuşlar (güç, ses, kanal, yön,
   rakamlar, oynatma); yazı yazma ve araçlar IR'da yok. Kodlar [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB)'den (CC0)
+  ve [SmartIR](https://github.com/smartHomeHub/SmartIR)'dan (MIT; Xiaomi, Kivi, Noblex, OKI, TurboX, Andersson ve büyük markalara ek kodlar)
   - Aynı fabrikadan çıkan markalar birbirinin kodlarını da dener: Vestel ailesi (Vestel, Regal, Telefunken, Finlux,
     Toshiba, Hitachi, JVC…) ve Arçelik ailesi (Arçelik, Beko, Grundig, Altus)
   - "Markamı bilmiyorum": veritabanındaki tüm farklı güç kodlarını sırayla dener, TV kapanınca doğru kodu bulur

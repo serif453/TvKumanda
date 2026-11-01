@@ -159,7 +159,12 @@ Tek modül (`app`), Jetpack Compose. Paket: `com.serif.tvkumanda`.
   - **Dosyadan ekle** (`IrDb.parseFlipper`): Flipper .ir dosyası; tanınmayan tuş adları `x:` önekiyle "Diğer tuşlar"a.
   - Yeni kayıtlar tuş kodlarını kaydın içinde tutar (`IrSaved.keys`); eski kayıtlar marka + set sırasıyla bakılır. Bu yüzden
     bir markaya yeni kaynaktan set eklenirse **kendi setlerinin sonuna** eklenmeli (eski kayıtların sırası bozulmasın).
-  - Lisans: probonopd/irdb kullanılmaz (lisansı GPL ile çelişen ek şart koyuyor: ürün kopyası verme). SmartIR (MIT) sıradaki kaynak.
+  - **SmartIR** (MIT): `tools/ir_smartir_add.py`, `ir_db_build.py`'den **sonra** çalışır (smartHomeHub/SmartIR + litinoveweedle/SmartIR
+    klasörleri). Yalnızca TV dosyaları (elle liste), Broadlink/ESPHome/Pronto → süre; NEC/Samsung32/RC5/RC6 çözülebilenler P,
+    kalanlar W (38 kHz). Setler markanın sonuna, yeni markalar dosya sonuna. "off" = power, farklıysa "on" → `x:Aç`; kaynaklar
+    `x:HDMI…`. 14 set, 6 yeni marka (Xiaomi, Kivi, Noblex, OKI, TurboX, Andersson). Lisans metni `assets/ir/SMARTIR-LICENSE.txt`.
+  - Lisans: probonopd/irdb APK'ya gömülmez (lisansı GPL ile çelişen ek şart koyuyor: ürün kopyası verme). İleride "Çevrimiçi kod
+    ara" ile ağdan okunabilir (lisansı izin veriyor; önce irdb'ye issue ile bildirim, uygulamada not). Serif şimdilik bekletti.
 
 ### Cast
 - Chromecast: `CastClient.kt` (Cast v2, Default Media Receiver `CC1AD845`), dosyalar `MediaServer.kt` (rastgele

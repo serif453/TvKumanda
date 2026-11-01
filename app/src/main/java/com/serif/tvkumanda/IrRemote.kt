@@ -475,7 +475,7 @@ private fun BrandPicker(
             }
         }
         item {
-            Text("Kodlar: Flipper-IRDB (serbest lisans). Aynı fabrikadan çıkan markalar (ör. Vestel, Telefunken, Finlux; " +
+            Text("Kodlar: Flipper-IRDB (serbest lisans) ve SmartIR (MIT). Aynı fabrikadan çıkan markalar (ör. Vestel, Telefunken, Finlux; " +
                 "Arçelik, Beko, Grundig) birbirinin kodlarını da dener.",
                 color = Navy.Sub, fontSize = 11.sp, modifier = Modifier.padding(vertical = 10.dp))
         }
