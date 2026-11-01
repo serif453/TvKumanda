@@ -299,6 +299,16 @@ fun RemoteScreen(
     IrPageHost()
     // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini)
     if (tab == Tab.TOOLS) ToolPageHost()
+    // Paylaş menüsünden "TV'ye gönder" ile gelen dosyalar
+    ShareSend.job?.let { job ->
+        ShareSendSheet(job, ui.state,
+            onShowInBrowser = {
+                ShareSend.job = null
+                tab = Tab.TOOLS
+                ToolPages.startDir = TvFiles.TV_DOWNLOAD
+                ToolPages.page = ToolId.FILE_BROWSER
+            })
+    }
 
     // Tam ekran oynatıcı: alttan kayarak açılır, aşağı kaydırınca kapanır
     // Tam ekran oynatıcı: küçük karttan açılır, parmağı takip ederek açılıp kapanır

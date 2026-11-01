@@ -68,6 +68,19 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <!-- Paylaş menüsü: her türlü dosyayı "TV'ye gönder" (TV'nin Download klasörüne, ADB ile) -->
+        <activity-alias
+            android:name=".SendToTv"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="@string/send_label">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity-alias>
         <!-- Ekran görüntüsünü paylaşmak için -->
         <provider
             android:name="androidx.core.content.FileProvider"

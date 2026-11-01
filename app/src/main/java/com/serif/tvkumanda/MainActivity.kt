@@ -148,6 +148,13 @@ class MainActivity : ComponentActivity() {
         TvTools.sendText = { t -> runOnUiThread { sendText(t) } }
         TvTools.atvLink = { url -> atv.openLink(url) }
         TvTools.appIcons = { apps.associate { it.pkg to it.icon } }
+        ShareSend.useAdb = {
+            val ip = currentIp.ifBlank { prefs.getString("ip", "") ?: "" }
+            prefs.edit().putString("method", ConnMethod.ADB.name).apply()
+            ShareSend.job?.phase = SendPhase.WAITING
+            switchMethod(ConnMethod.ADB)
+            if (ip.isNotBlank()) connect(ip)
+        }
         TvTools.currentIp = { currentIp }
         TvTools.savedTvs = { savedTvs }
         TvTools.isPaired = { ip -> atv.isPaired(ip) }
@@ -334,6 +341,7 @@ class MainActivity : ComponentActivity() {
         refreshVolume(0)
         pendingShare?.let { list -> pendingShare = null; playShared(list) }
         pendingLink?.let { url -> pendingLink = null; openSharedLink(url) }
+        startShareSend()
     }
 
     /** Yeniden başlatılan TV açılana kadar bekler, sonra kendiliğinden yeniden bağlanır (en fazla ~3 dk). */
@@ -914,6 +922,14 @@ class MainActivity : ComponentActivity() {
             else @Suppress("DEPRECATION") intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)).orEmpty()
             else -> return
         }
+        // "TV'ye gönder": her türlü dosya TV'nin Download klasörüne (link paylaşılırsa aşağıda TV'de açılır)
+        if (intent.component?.className?.endsWith(".SendToTv") == true && uris.isNotEmpty()) {
+            intent.action = null
+            if (ShareSend.job?.busy == true) { toast("Önceki gönderim sürüyor; bitince tekrar paylaş"); return }
+            ShareSend.job = SendJob(uris)
+            startShareSend()
+            return
+        }
         // Link paylaşımı: TV'de açılır
         if (uris.isEmpty() && intent.action == Intent.ACTION_SEND) {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
@@ -948,6 +964,29 @@ class MainActivity : ComponentActivity() {
     }
 
     private var pendingLink: String? = null
+
+    /** Bekleyen "TV'ye gönder" işini başlatır: bağlı değilse bağlanınca, Standart bağlantıdaysa ADB ister. */
+    private fun startShareSend() {
+        val job = ShareSend.job ?: return
+        if (job.phase != SendPhase.WAITING && job.phase != SendPhase.NEED_ADB) return
+        if (state != ConnState.CONNECTED) { job.phase = SendPhase.WAITING; return }
+        if (method != ConnMethod.ADB) { job.phase = SendPhase.NEED_ADB; return }
+        job.phase = SendPhase.SENDING
+        job.progress = 0f
+        DiagLog.log("Paylaşımdan TV'ye gönderim: ${job.uris.size} dosya")
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching { TvFiles.sendFiles(applicationContext, job.uris, { s -> job.stage = s }, { v -> job.progress = v }, TvFiles.TV_DOWNLOAD, job.cancel) }
+            }
+            r.onFailure { DiagLog.log("Gönderim hatası: ${it.javaClass.simpleName}: ${it.message.orEmpty()}") }
+            job.message = when {
+                r.isSuccess -> if (job.uris.size > 1) "${job.uris.size} dosya TV'nin Download klasörüne gönderildi" else "Dosya TV'nin Download klasörüne gönderildi"
+                job.cancel.cancelled -> "Durduruldu"
+                else -> errorText(r.exceptionOrNull()!!)
+            }
+            job.phase = if (r.isSuccess) SendPhase.DONE else SendPhase.FAILED
+        }
+    }
 
     private fun openSharedLink(url: String) {
         scope.launch {

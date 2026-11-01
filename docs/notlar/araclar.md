@@ -64,3 +64,8 @@ Araçlar sekmesi (ağ ve test, zamanlama ve nöbetçi, teşhis kaydı, sistem bi
 **Zamanlama kararı:** TV'ye ayrı uygulama kurulmadı. Uyku zamanlayıcısı (ADB), ses sınırı ve ekran süresi sınırı TV'deki
 nöbetçide çalışır. Philips uyku modunda arka plan işlemlerini durduruyorsa ya da nöbetçi güvenilmez çıkarsa, TV'ye küçük
 bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, Serif'e ayrıca sorulacak.
+- **Paylaş → "TV'ye gönder"** (`ShareSend.kt`): manifestte `.SendToTv` activity-alias (`*/*`, SEND ve SEND_MULTIPLE), yani
+  her uygulamadan her dosya türü. "TV'de aç" (medya/link → Cast) ayrı kalır. `MainActivity.handleShare` alias'ı
+  `intent.component` ile ayırır; alttan pencere açılır, TV'ye bağlanınca `TvFiles.sendFiles` ile Download'a gönderir.
+  Standart bağlantıda dosya taşınamaz: pencere "ADB ile bağlan" sunar (türü değiştirip aynı TV'ye yeniden bağlanır).
+  Gönderim sürerken pencere kaydırılarak kapanmaz; "Durdur" yarım dosyayı siler.
