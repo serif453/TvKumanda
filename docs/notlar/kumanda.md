@@ -23,13 +23,16 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     (`GlassMediaBar(header = NowPlayingContent, leading = NowPlayingIcon)`): üstte tek satır başlık ("…", üst boşluk kısa),
     altında en soldan sarma çubuğu + sağda "6:57 / 18:23", en altta uygulama simgesi (32 dp, ⏮'nin solunda; Serif'in isteği) +
     medya tuşları. Kanal adı yok; başlık yoksa uygulama adı. Video açıkken kumanda kartıyla arası 10 dp (kart uzar).
-- TV seçimi: `TvSheet.kt`; bağlıyken açılınca ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
+- TV seçimi: `TvPicker.kt` (panel) + `TvSheet.kt` (`TvManageSections`, büyük hâlin bölümleri); bağlıyken büyüyünce ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
 - **TV paneli (1 Kasım 2026, Serif'in isteği ve onayı):** TV adı kutusuna (pil) dokununca alttan pencere değil, pilin hemen
   altından aşağı açılan küçük cam panel (`TvPicker.kt`, `TvPickerPanel`). Genişlik ayarlar ve güç düğmelerinin iç kenarları
   arası (yan boşluk 68 dp), boy içeriğe göre (en fazla ekranın %55'i), arkası kararır; dışarı dokununca ya da geri tuşuyla kapanır.
   İçerik: kayıtlı TV'ler (dokununca kendi kayıtlı bağlantı türüyle geçer; kapalıysa "Uyandır"), bağlı TV'de ADB | Standart
-  seçici, IR kumandalar, en altta "TV ekle / yönet" → büyük `TvSheet`. Kayıtlı TV yoksa pil doğrudan büyük pencereyi açar;
-  bağlantı hatasında da büyük pencere açılır (eskisi gibi). Büyük pencere ve IR kartları da cam renklere geçti (`GlassSheet`, Inter).
+  seçici, IR kumandalar, en altta "TV ekle / yönet". Büyük pencere ve IR kartları da cam renklere geçti (`GlassSheet`, Inter).
+  **v0.147 (Serif'in isteği):** alttan açılan "TV'ler" penceresi kaldırıldı. "TV ekle / yönet" aynı paneli aşağı (alt menünün
+  12 dp üstüne kadar) ve yanlara (16 dp) büyütür: TV satırlarına ⋮ (adlandır, bağlantıyı kes, unut), altında IR kumandalar,
+  ağda bulunanlar, IP ile ekleme, durum, yardım. Satır "Daralt" olur; geri tuşu önce küçültür. Kayıtlı TV yokken, ilk açılışta,
+  bağlantı hatasında ve Ayarlar'daki "TV'ler" satırından panel doğrudan büyük açılır. Büyükken bağlanınca panel kapanır.
 - Fare: TV'deki sanal fare (`KeyServer.ensureMouse`, /dev/uhid) fare modu açılınca "M" komutuyla önceden kurulur; eskiden ilk harekette kuruluyordu ve TV tanıyana kadar 1-2 sn hareket kayboluyordu (Serif: "fare moduna ilk geçince geç bağlanıyor").
 - **Geniş yüzey (1 Kasım 2026, Serif'in seçimi "B"):** Kaydırma ya da Fare modunda üstteki 8 yan tuş (Kaynak, Bilgi, Kaydırma, fn ·
   123, Rehber, Fare, Medya) ~250 ms'de solar, yüzey kartın iki kenarına kadar genişler (yükseklik = 4 yan tuşun alanı); kartın

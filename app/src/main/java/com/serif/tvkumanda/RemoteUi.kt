@@ -134,7 +134,7 @@ fun RemoteTheme(content: @Composable () -> Unit) {
     )
 }
 
-private enum class Sheet { NONE, CONNECT, KEYBOARD, NUMPAD, EDIT_APPS }
+private enum class Sheet { NONE, KEYBOARD, NUMPAD, EDIT_APPS }
 
 // ---------- Ana ekran ----------
 @OptIn(ExperimentalMaterial3Api::class)
@@ -187,12 +187,16 @@ fun RemoteScreen(
     onCcPick: (FoundTv?) -> Unit = {},
     onCcSearch: () -> Unit = {}
 ) {
-    var sheet by remember { mutableStateOf(if (initialIp.isBlank()) Sheet.CONNECT else Sheet.NONE) }
+    var sheet by remember { mutableStateOf(Sheet.NONE) }
     var tab by remember { mutableStateOf(AppSettings.initialTab()) }
     // Sol üstteki ⚙️ ile açılan tam ekran Ayarlar sayfası
     var settingsOpen by remember { mutableStateOf(false) }
     // TV adı kutusunun altından açılan küçük TV paneli ve onun ekrandaki yeri (üst şeridin alt kenarı)
-    var pickerOpen by remember { mutableStateOf(false) }
+    // İlk açılışta TV yoksa panel doğrudan büyük açılır (eski alttan pencerenin yerine)
+    var pickerOpen by remember { mutableStateOf(initialIp.isBlank()) }
+    var pickerExpanded by remember { mutableStateOf(initialIp.isBlank()) }
+    var navTop by remember { mutableFloatStateOf(0f) }
+    val openTvs = { pickerExpanded = true; pickerOpen = true }
     var rootTop by remember { mutableFloatStateOf(0f) }
     var barBottom by remember { mutableFloatStateOf(0f) }
     // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
@@ -228,8 +232,8 @@ fun RemoteScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
-        if (ui.state == ConnState.ERROR) { pickerOpen = false; sheet = Sheet.CONNECT }
-        if (ui.state == ConnState.CONNECTED && sheet == Sheet.CONNECT) sheet = Sheet.NONE
+        if (ui.state == ConnState.ERROR) openTvs()
+        if (ui.state == ConnState.CONNECTED && pickerOpen && pickerExpanded) pickerOpen = false
     }
 
     val hazeState = remember { HazeState() }
@@ -259,7 +263,10 @@ fun RemoteScreen(
                 ui, navy = tab == Tab.REMOTE,
                 onSettings = { settingsOpen = true },
                 // Kayıtlı TV yoksa seçilecek bir şey yok: doğrudan büyük "TV'ler" penceresi
-                onPicker = { if (ui.savedTvs.isEmpty()) sheet = Sheet.CONNECT else pickerOpen = !pickerOpen },
+                onPicker = {
+                    if (pickerOpen) pickerOpen = false
+                    else { pickerExpanded = ui.savedTvs.isEmpty(); pickerOpen = true }
+                },
                 onPower = { onKey(Keys.POWER) }
             )
         }
@@ -318,6 +325,7 @@ fun RemoteScreen(
     BottomNav(
         tab, hazeState,
         Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp).padding(bottom = 10.dp)
+            .onGloballyPositioned { navTop = it.positionInRoot().y }
     ) { tab = it }
 
     // Tam ekran DLNA Sunucu sayfası (Cast sekmesindeki karttan açılır)
@@ -356,15 +364,22 @@ fun RemoteScreen(
 
     val density = LocalDensity.current
     TvPickerPanel(
-        open = pickerOpen,
+        // Üst şeridin yeri ölçülmeden açılmaz (ilk karede yanlış yerde görünmesin)
+        open = pickerOpen && barBottom > 0f,
+        expanded = pickerExpanded,
         topOffset = with(density) { (barBottom - rootTop).coerceAtLeast(0f).toDp() } + 8.dp,
+        // Büyükken alt menünün 12 dp üstüne kadar
+        maxExpandedHeight = with(density) { (navTop - barBottom).coerceAtLeast(0f).toDp() } - 20.dp,
+        initialIp = initialIp,
         ui = ui,
         onPickSaved = onPickSaved, onWake = onWake,
-        onManage = { sheet = Sheet.CONNECT },
+        onConnect = onConnect, onMethod = onMethod,
+        onRename = onRenameSaved, onForget = onForgetSaved, onDisconnect = onDisconnect,
+        onExpand = { pickerExpanded = it },
         onClose = { pickerOpen = false }
     )
 
-    if (settingsOpen) SettingsPage(ui, onOpenTvs = { sheet = Sheet.CONNECT }) { settingsOpen = false }
+    if (settingsOpen) SettingsPage(ui, onOpenTvs = { settingsOpen = false; openTvs() }) { settingsOpen = false }
 
     if (typingOpen) {
         TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
@@ -375,11 +390,10 @@ fun RemoteScreen(
         ModalBottomSheet(
             onDismissRequest = { sheet = Sheet.NONE },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = if (sheet == Sheet.CONNECT) GlassSheet.Bg else Color(0xFF242426)
+            containerColor = Color(0xFF242426)
         ) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 when (sheet) {
-                    Sheet.CONNECT -> GlassText { TvSheet(initialIp, ui, onConnect, onMethod, onPickSaved, onForgetSaved, onRenameSaved, onDisconnect, onWake) { sheet = Sheet.NONE } }
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }

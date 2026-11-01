@@ -54,7 +54,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
   (akış denetimli kopya); hızlı mod `KeyServer.java` TV'de `app_process` ile (ProGuard'da korunur); ADB'de Türkçe harf sadeleşir.
   `TvDiscovery.kt` mDNS, `TvPing`, Wake-on-LAN `MainActivity.WakeOnLan`.
 - **Ekranlar:** `MainActivity.kt` (durum, bağlantı, Cast akışı), alt menü `BottomNav.kt`: Kumanda / Cast / Araçlar / Kısayollar.
-  - Kumanda: `RemoteUi.kt` (iskelet, tema), `RemoteControls.kt` (yön tuşları, dokunmatik yüzeyler, yazma/klavye pencereleri), `RemoteLayout.kt`, cam tasarım `GlassUi.kt` + `GlassRemote.kt`; TV seçimi `TvSheet.kt`
+  - Kumanda: `RemoteUi.kt` (iskelet, tema), `RemoteControls.kt` (yön tuşları, dokunmatik yüzeyler, yazma/klavye pencereleri), `RemoteLayout.kt`, cam tasarım `GlassUi.kt` + `GlassRemote.kt`; TV seçimi `TvPicker.kt` (pilin altından açılan, büyüyebilen cam panel) + `TvSheet.kt`
     (`docs/notlar/kumanda.md`).
   - Cast: `CastScreen.kt`, `MediaLibrary.kt`, `FullPlayer.kt`, Chromecast/DLNA (`docs/notlar/cast.md`).
   - Araçlar: `ToolsScreen.kt` + pencereler; ağ ve test, zamanlama ve nöbetçi (`Watcher.java`), teşhis kaydı, sistem bilgisi,

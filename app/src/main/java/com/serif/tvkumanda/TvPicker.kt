@@ -2,6 +2,8 @@ package com.serif.tvkumanda
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.Icon
@@ -57,24 +60,34 @@ object GlassSheet {
 }
 
 /**
- * TV adı kutusuna (üstteki "pil") dokununca hemen altından açılan küçük cam panel (Serif'in isteği, 1 Kasım 2026).
- * Her gün yapılanlar burada: kayıtlı TV'ler arasında geçiş, bağlı TV'nin ADB / Standart seçimi, IR kumandalar.
- * Ağda arama, IP ile ekleme, yeniden adlandırma, unutma ve yardım en alttaki "TV ekle / yönet" satırının açtığı
- * büyük pencerede ([TvSheet]).
- * Genişlik: ayarlar ve güç düğmelerinin iç kenarları arası (pilden biraz geniş, yazılar sıkışmasın diye).
- * Boy içeriğe göre; en fazla ekranın yarısı kadar, fazlası kaydırılır.
+ * TV adı kutusuna (üstteki "pil") dokununca hemen altından açılan cam panel (Serif'in isteği, 1 Kasım 2026).
+ * Küçük hâl: kayıtlı TV'ler arasında geçiş, bağlı TV'nin ADB / Standart seçimi, IR kumandalar ve "TV ekle / yönet".
+ * "TV ekle / yönet"e basınca aynı panel aşağı ve yanlara doğru büyür ([TvManageSections]: IR ekle, ağda arama,
+ * IP ile ekleme, yardım; TV satırlarına ⋮ gelir). Alttan açılan ayrı pencere artık yok: kayıtlı TV yokken ve
+ * bağlantı hatasında da panel doğrudan büyük açılır.
+ * Küçükken genişlik ayarlar ve güç düğmelerinin iç kenarları arası (yan boşluk 68 dp), büyükken ekran genişliği
+ * (16 dp); büyükken alt menünün üstüne kadar uzanır, fazlası kaydırılır.
  */
 @Composable
 fun TvPickerPanel(
     open: Boolean,
+    expanded: Boolean,
     topOffset: Dp,
+    maxExpandedHeight: Dp,
+    initialIp: String,
     ui: UiState,
     onPickSaved: (SavedTv) -> Unit,
     onWake: (SavedTv) -> Unit,
-    onManage: () -> Unit,
+    onConnect: (String) -> Unit,
+    onMethod: (ConnMethod) -> Unit,
+    onRename: (SavedTv, String) -> Unit,
+    onForget: (SavedTv) -> Unit,
+    onDisconnect: () -> Unit,
+    onExpand: (Boolean) -> Unit,
     onClose: () -> Unit
 ) {
-    BackHandler(enabled = open, onBack = onClose)
+    // Geri tuşu: büyükse önce küçültür (kayıtlı TV varsa), sonra kapatır
+    BackHandler(enabled = open) { if (expanded && ui.savedTvs.isNotEmpty()) onExpand(false) else onClose() }
     // Arkadaki kumanda hafifçe kararır; dokununca panel kapanır
     AnimatedVisibility(open, enter = fadeIn(tween(160)), exit = fadeOut(tween(140))) {
         Box(
@@ -82,29 +95,41 @@ fun TvPickerPanel(
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose)
         )
     }
+    val side by animateDpAsState(if (expanded) 16.dp else 68.dp, tween(240), label = "panelSide")
     // Panel pilin altından aşağı doğru açılır
     AnimatedVisibility(
         open,
-        modifier = Modifier.fillMaxWidth().padding(top = topOffset, start = 68.dp, end = 68.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = topOffset, start = side, end = side),
         enter = expandVertically(tween(220), expandFrom = Alignment.Top) + fadeIn(tween(160)),
         exit = shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(140))
     ) {
-        PanelBody(ui, onPickSaved, onWake, onManage, onClose)
+        PanelBody(
+            expanded, maxExpandedHeight, initialIp, ui, onPickSaved, onWake, onConnect, onMethod,
+            onRename, onForget, onDisconnect, onExpand, onClose
+        )
     }
 }
 
 @Composable
 private fun PanelBody(
+    expanded: Boolean,
+    maxExpandedHeight: Dp,
+    initialIp: String,
     ui: UiState,
     onPickSaved: (SavedTv) -> Unit,
     onWake: (SavedTv) -> Unit,
-    onManage: () -> Unit,
+    onConnect: (String) -> Unit,
+    onMethod: (ConnMethod) -> Unit,
+    onRename: (SavedTv, String) -> Unit,
+    onForget: (SavedTv) -> Unit,
+    onDisconnect: () -> Unit,
+    onExpand: (Boolean) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val irOk = remember { IrSender.available(context) }
     LaunchedEffect(Unit) { if (irOk) IrUi.load(context) }
-    // Kayıtlı TV'ler açık mı: panel açılınca kısa bir deneme (büyük penceredekiyle aynı)
+    // Kayıtlı TV'ler açık mı: panel açılınca kısa bir deneme
     var reachable by remember { mutableStateOf<Set<String>?>(null) }
     LaunchedEffect(ui.savedTvs.map { it.ip }) {
         val ips = ui.savedTvs.map { it.ip }
@@ -112,44 +137,81 @@ private fun PanelBody(
             ips.map { ip -> async(Dispatchers.IO) { if (TvPing.isOnline(ip)) ip else null } }.mapNotNull { it.await() }.toSet()
         }
     }
-    val maxH = (LocalConfiguration.current.screenHeightDp * 0.55f).dp
+    val compactMax = (LocalConfiguration.current.screenHeightDp * 0.55f).dp
+    val maxH = if (expanded) maxExpandedHeight.coerceAtLeast(compactMax) else compactMax
     val shape = RoundedCornerShape(24.dp)
+    val scroll = rememberScrollState()
+    // Küçülünce liste başa döner
+    LaunchedEffect(expanded) { if (!expanded) scroll.scrollTo(0) }
     GlassText {
         Column(
             Modifier.fillMaxWidth().shadow(18.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
                 // Altındaki tuşlar görünmesin diye önce koyu, dolu bir zemin; üstüne kumandadaki cam katman
                 .background(Brush.verticalGradient(listOf(Color(0xFF2A2656), Color(0xFF1C1B40))))
                 .glass(shape, strength = 0.8f)
+                .animateContentSize(tween(240))
                 .heightIn(max = maxH)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(8.dp)
         ) {
             for (tv in ui.savedTvs) {
                 val online = reachable?.contains(tv.ip)
                 TvRow(
-                    tv, ui, online,
-                    onPick = { m -> onClose(); onPickSaved(tv.copy(method = m)) },
-                    onWake = { onClose(); onWake(tv) }
+                    tv, ui, online, expanded,
+                    onPick = { m ->
+                        if (!expanded) onClose()
+                        onPickSaved(tv.copy(method = m))
+                    },
+                    onWake = { onWake(tv) },
+                    menu = { here ->
+                        TvRowMenu(tv, here, onRename = { onRename(tv, it) }, onForget = { onForget(tv) }, onDisconnect = onDisconnect)
+                    }
                 )
             }
-            if (irOk) for (r in IrUi.saved) IrRow(r) { onClose(); IrUi.page = r.id }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).height(1.dp).background(Color.White.copy(alpha = 0.08f)))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onClose(); onManage() }
-                    .padding(horizontal = 10.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Add, null, tint = Glass.Lavender, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("TV ekle / yönet", color = Glass.Lavender, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Icon(Icons.Filled.KeyboardArrowRight, null, tint = Glass.Sub, modifier = Modifier.size(20.dp))
+            // Küçükken IR kumandalar satır olarak; büyükken aşağıdaki IR bölümünde (adlandır / kaldır menüsüyle)
+            if (irOk && !expanded) for (r in IrUi.saved) IrRow(r) { onClose(); IrUi.page = r.id }
+            if (ui.savedTvs.isNotEmpty() || !expanded) {
+                if (ui.savedTvs.isNotEmpty() || (irOk && IrUi.saved.isNotEmpty())) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                }
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onExpand(!expanded) }
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!expanded) {
+                        Icon(Icons.Filled.Add, null, tint = Glass.Lavender, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(
+                        if (expanded) "Daralt" else "TV ekle / yönet",
+                        color = Glass.Lavender, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowRight, null,
+                        tint = Glass.Sub, modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (expanded) {
+                // Hiç kayıtlı TV yokken başlık: ne yapılacağı belli olsun
+                if (ui.savedTvs.isEmpty()) {
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text("TV ekle", color = Glass.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("TV ve telefon aynı Wi-Fi ağında olmalı.", color = Glass.Sub, fontSize = 13.sp)
+                    }
+                }
+                TvManageSections(initialIp, ui, onConnect, onMethod, onClose)
             }
         }
     }
 }
 
 @Composable
-private fun TvRow(tv: SavedTv, ui: UiState, online: Boolean?, onPick: (ConnMethod) -> Unit, onWake: () -> Unit) {
+private fun TvRow(
+    tv: SavedTv, ui: UiState, online: Boolean?, expanded: Boolean,
+    onPick: (ConnMethod) -> Unit, onWake: () -> Unit, menu: @Composable (Boolean) -> Unit
+) {
     val here = ui.state == ConnState.CONNECTED && ui.message == tv.ip
     val busy = ui.state == ConnState.CONNECTING
     val shape = RoundedCornerShape(16.dp)
@@ -179,6 +241,7 @@ private fun TvRow(tv: SavedTv, ui: UiState, online: Boolean?, onPick: (ConnMetho
             }
             if (here) {
                 Icon(Icons.Filled.Check, "Bağlı", tint = Glass.Lavender, modifier = Modifier.size(20.dp))
+                if (expanded) Spacer(Modifier.width(4.dp))
             } else if (online == false && tv.mac.isNotBlank()) {
                 Row(
                     Modifier.clip(RoundedCornerShape(12.dp)).background(GlassSheet.AccentSoft).clickable(onClick = onWake)
@@ -190,6 +253,7 @@ private fun TvRow(tv: SavedTv, ui: UiState, online: Boolean?, onPick: (ConnMetho
                     Text("Uyandır", color = Glass.Lavender, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+            if (expanded) menu(here)
         }
         // Bağlı TV'de bağlantı türü: ADB | Standart
         if (here) {

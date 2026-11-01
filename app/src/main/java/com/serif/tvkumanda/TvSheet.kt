@@ -36,27 +36,23 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 
 /**
- * "TV'ler" penceresi: kayıtlı TV'ler (her TV tek kart, ADB / Standart düğmeleriyle),
- * ağda bulunanlar (pencere açılınca aranır), IP ile ekleme ve yardım.
+ * TV panelinin büyük hâlindeki "yönet" bölümleri (Serif'in isteği, 1 Kasım 2026: alttan ayrı pencere yerine
+ * panel aşağı ve yanlara doğru büyür): IR kumanda ekle, ağda bulunanlar (TV'ye bağlı değilken açılınca aranır),
+ * IP ile ekleme, bağlantı durumu ve yardım. Kayıtlı TV'ler panelin üstündeki satırlarda ([TvPickerPanel]).
  */
 @Composable
-fun TvSheet(
+fun TvManageSections(
     initialIp: String,
     ui: UiState,
     onConnect: (String) -> Unit,
     onMethod: (ConnMethod) -> Unit,
-    onPickSaved: (SavedTv) -> Unit,
-    onForget: (SavedTv) -> Unit,
-    onRename: (SavedTv, String) -> Unit,
-    onDisconnect: () -> Unit,
-    onWake: (SavedTv) -> Unit,
-    onClose: () -> Unit = {}
+    onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val discovery = remember { TvDiscovery(context) }
     var found by remember { mutableStateOf<List<FoundTv>>(emptyList()) }
     var scanTick by remember { mutableIntStateOf(0) }
-    // Bir TV'ye bağlıyken pencere açılınca aranmaz; "Tekrar ara" elle arar (Serif'in isteği)
+    // Bir TV'ye bağlıyken açılınca aranmaz; "Tekrar ara" elle arar (Serif'in isteği)
     val autoScan = remember { ui.state != ConnState.CONNECTED }
     var scanned by remember { mutableStateOf(autoScan) }
     var scanning by remember { mutableStateOf(autoScan) }
@@ -70,43 +66,10 @@ fun TvSheet(
         scanning = false
     }
     DisposableEffect(Unit) { onDispose { discovery.stop() } }
-    // Kayıtlı TV'ler açık mı (kısa bağlantı denemesi)
-    var reachable by remember { mutableStateOf<Set<String>?>(null) }
-    LaunchedEffect(ui.savedTvs.map { it.ip }, scanTick) {
-        val ips = ui.savedTvs.map { it.ip }
-        reachable = coroutineScope { ips.map { ip -> async(Dispatchers.IO) { if (TvPing.isOnline(ip)) ip else null } }.mapNotNull { it.await() }.toSet() }
-    }
-    val online = (reachable ?: emptySet()) + found.map { it.ip }
     var help by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(ui.savedTvs.isEmpty() && initialIp.isBlank()) }
 
-    Column(Modifier.verticalScroll(rememberScrollState())) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("TV'ler", color = Glass.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("TV ve telefon aynı Wi-Fi ağında olmalı.", color = Glass.Sub, fontSize = 13.sp)
-            }
-            Box(Modifier.size(44.dp).clip(CircleShape).clickable { help = true }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.HelpOutline, "Yardım", tint = Glass.Sub, modifier = Modifier.size(24.dp))
-            }
-        }
-
-        // ---- Kayıtlı TV'ler ----
-        if (ui.savedTvs.isNotEmpty()) {
-            SectionLabel("KAYITLI TV'LER")
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (tv in ui.savedTvs) {
-                    SavedTvCard(
-                        tv, ui,
-                        online = when { reachable == null && tv.ip !in online -> null; else -> tv.ip in online },
-                        onConnectWith = { m -> onPickSaved(tv.copy(method = m)) },
-                        onRename = { onRename(tv, it) }, onForget = { onForget(tv) },
-                        onDisconnect = onDisconnect, onWake = { onWake(tv) }
-                    )
-                }
-            }
-        }
-
+    Column(Modifier.padding(horizontal = 10.dp)) {
         // ---- IR kumandalar (telefonda IR verici varsa) ----
         IrSection { id -> onClose(); IrUi.page = id }
 
@@ -164,7 +127,7 @@ fun TvSheet(
         }
 
         // ---- Yardım satırı ----
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         Text(
             "ADB ve Standart nedir? TV'de ADB nasıl açılır?",
             color = Glass.Lavender, fontSize = 13.sp, fontWeight = FontWeight.Medium,
@@ -172,85 +135,28 @@ fun TvSheet(
         )
         val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
         if (version != null) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Text("TV Kumanda · Sürüm $version", color = Glass.Sub, fontSize = 12.sp)
         }
+        Spacer(Modifier.height(8.dp))
     }
     if (help) HelpDialog { help = false }
 }
 
+/** Kayıtlı TV satırının ⋮ düğmesi: Yeniden adlandır · Bağlantıyı kes · Unut (unutmak onay ister). */
 @Composable
-private fun SectionLabel(text: String) {
-    Spacer(Modifier.height(18.dp))
-    Text(text, color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(8.dp))
-}
-
-@Composable
-private fun SavedTvCard(
-    tv: SavedTv, ui: UiState, online: Boolean?,
-    onConnectWith: (ConnMethod) -> Unit, onRename: (String) -> Unit, onForget: () -> Unit,
-    onDisconnect: () -> Unit, onWake: () -> Unit
-) {
-    val connectedHere = ui.state == ConnState.CONNECTED && ui.message == tv.ip
+fun TvRowMenu(tv: SavedTv, connectedHere: Boolean, onRename: (String) -> Unit, onForget: () -> Unit, onDisconnect: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var forgetAsk by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(18.dp)
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card)
-            .border(1.dp, if (connectedHere) Glass.Lavender else GlassSheet.Border, shape)
-            .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Tv, null, tint = if (connectedHere) Glass.Lavender else Glass.Text, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(tv.display, color = Glass.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    if (tv.nick.isNotBlank()) "${tv.name.removePrefix("TPV ")} · ${tv.ip}" else tv.ip,
-                    color = Glass.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val (color, text) = when {
-                        connectedHere -> Pal.Green to "Bağlı · ${if (ui.method == ConnMethod.ADB) "ADB" else "Standart"}"
-                        online == true -> Glass.Sub to "Ağda açık"
-                        online == false -> Pal.Red.copy(alpha = 0.8f) to "Kapalı ya da bulunamadı"
-                        else -> Glass.Sub to "Kontrol ediliyor…"
-                    }
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-                    Spacer(Modifier.width(6.dp))
-                    Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-            Box {
-                Box(Modifier.size(40.dp).clip(CircleShape).clickable { menu = true }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.MoreVert, "Diğer", tint = Glass.Sub)
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = GlassSheet.Menu) {
-                    DropdownMenuItem(text = { Text("Yeniden adlandır", color = Glass.Text) }, onClick = { menu = false; renaming = true })
-                    if (connectedHere) DropdownMenuItem(text = { Text("Bağlantıyı kes", color = Glass.Text) }, onClick = { menu = false; onDisconnect() })
-                    DropdownMenuItem(text = { Text("Unut", color = Pal.Red) }, onClick = { menu = false; forgetAsk = true })
-                }
-            }
+    Box {
+        Box(Modifier.size(36.dp).clip(CircleShape).clickable { menu = true }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.MoreVert, "Diğer", tint = Glass.Sub)
         }
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.padding(end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((m, label) in listOf(ConnMethod.ADB to "ADB", ConnMethod.STANDARD to "Standart")) {
-                val active = connectedHere && ui.method == m
-                MethodChip(label, active, Modifier.weight(1f), enabled = ui.state != ConnState.CONNECTING && !active) { onConnectWith(m) }
-            }
-            if (online == false && tv.mac.isNotBlank()) {
-                Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassSheet.AccentSoft).clickable(onClick = onWake).padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Outlined.PowerSettingsNew, null, tint = Glass.Lavender, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Uyandır", color = Glass.Lavender, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = GlassSheet.Menu) {
+            DropdownMenuItem(text = { Text("Yeniden adlandır", color = Glass.Text) }, onClick = { menu = false; renaming = true })
+            if (connectedHere) DropdownMenuItem(text = { Text("Bağlantıyı kes", color = Glass.Text) }, onClick = { menu = false; onDisconnect() })
+            DropdownMenuItem(text = { Text("Unut", color = Pal.Red) }, onClick = { menu = false; forgetAsk = true })
         }
     }
     if (renaming) RenameDialog(tv.display, tv.name.removePrefix("TPV ")) { n -> renaming = false; if (n != null) onRename(n) }
@@ -262,6 +168,13 @@ private fun SavedTvCard(
         confirmButton = { TextButton(onClick = { forgetAsk = false; onForget() }) { Text("Unut", color = Pal.Red) } },
         dismissButton = { TextButton(onClick = { forgetAsk = false }) { Text("Vazgeç", color = Glass.Sub) } }
     )
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Spacer(Modifier.height(18.dp))
+    Text(text, color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(8.dp))
 }
 
 @Composable
