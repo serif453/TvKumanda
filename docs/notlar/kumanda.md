@@ -30,3 +30,5 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   boyu değişmez, alt sıra (Klavye · Geri · Ana Sayfa · Mikrofon · Ayarlar) yerinde kalır. Sol üstte mod etiketi, sağ üstte ✕
   (normal kumandaya döner). Üstte "Yön · Kaydırma · Fare" anahtarı (seçenek A) Serif tarafından seçilmedi. Fare modundaki
   "ekran + el" simgesi kaldırıldı (Kaydırma tuşununkine benziyordu). Yüzeyde kenar şeridi yok (`EdgeZone = 0`).
+  v0.133 düzeltmesi (Serif): yüzey alt sıranın altına giriyordu; artık Klavye tuşunun ölçülen yerinden 14 dp önce biter
+  (ses çubuğu ile yüzey arası da 14 dp). Genişlik yan tuşların dış kenarlarıyla hizalı. Fare yüzeyi bilerek boş (Serif'in isteği).

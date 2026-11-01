@@ -52,6 +52,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -276,8 +279,13 @@ fun GlassPadCard(
                 if (padMode) lastPad[0] = mode
                 val shownPad = lastPad[0]
                 val exp by animateFloatAsState(if (padMode) 1f else 0f, tween(250), label = "padExpand")
-                val sideGap = (bodyH - key * 5) / 4
-                val wideH = bodyH - key - sideGap
+                // Yüzey alt sıradaki Klavye tuşunun ölçülen gerçek yerinden 14 dp önce biter (ses çubuğu ile aynı boşluk);
+                // hesapla bulunan yükseklik bazı ekranlarda alt sıranın altına giriyordu (Serif'in v0.132 ekran görüntüsü)
+                val density = LocalDensity.current
+                var bottomRowTop by remember { mutableStateOf(-1f) }
+                val wideH = if (bottomRowTop > 0f) with(density) { bottomRowTop.toDp() } - 14.dp
+                            else bodyH - key - 14.dp
+                val wideW = inner - (col - key)                          // tuşların dış kenarlarıyla aynı hiza
                 val sideAlpha = Modifier.graphicsLayer { alpha = 1f - exp }
                 Box(Modifier.fillMaxWidth().height(bodyH)) {
                     Row(Modifier.fillMaxSize()) {
@@ -292,7 +300,7 @@ fun GlassPadCard(
                             GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onSystemKeys) {
                                 Text("fn", color = Glass.Text, fontSize = 22.sp, fontWeight = FontWeight.Medium)
                             }
-                            GlassSquare(Modifier.size(key), onClick = onKeyboard) { SideIcon(Icons.Filled.Keyboard, "Klavye") }
+                            GlassSquare(Modifier.size(key).onGloballyPositioned { bottomRowTop = it.positionInParent().y }, onClick = onKeyboard) { SideIcon(Icons.Filled.Keyboard, "Klavye") }
                         }
                         Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.size(circle), contentAlignment = Alignment.Center) {
@@ -319,7 +327,7 @@ fun GlassPadCard(
                     }
                     // Geniş yüzey: yan tuşların üstüne biner (gizli tuşlara dokunulamaz). Çıkarken küçülüp kaybolur.
                     if (exp > 0.001f) {
-                        val w = circle + (inner - circle) * exp
+                        val w = circle + (wideW - circle) * exp
                         val h = circle + (wideH - circle) * exp
                         Box(Modifier.align(Alignment.TopCenter).size(w, h)) {
                             when (shownPad) {
