@@ -326,7 +326,7 @@ private fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifie
     val shape = RoundedCornerShape(29.dp)
     Row(
         // Sessiz tuşu soldan biraz içeride (Serif'in isteği); çubuk o kadar kısalır
-        modifier.glass(shape, strength = 0.8f).padding(start = 14.dp, end = 4.dp),
+        modifier.glass(shape, strength = 0.8f).padding(start = 34.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val isMuted = ui.muted == true

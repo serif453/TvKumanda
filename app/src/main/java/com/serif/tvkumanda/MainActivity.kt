@@ -508,7 +508,10 @@ class MainActivity : ComponentActivity() {
             val link = remote
             val v = withContext(Dispatchers.IO) { runCatching { link.volume() }.getOrNull() }
             if (v != null) { volume = v.first; volumeMax = v.second }
-            muted = withContext(Dispatchers.IO) { runCatching { link.muted() }.getOrNull() }
+            // Standart'ta TV'nin bildirdiği kesin; ADB'de yalnızca "sessiz" doğrulaması alınır
+            // (Philips "sessiz değil" diyebiliyor), tuşa basınca yapılan değişiklik bozulmaz.
+            val m = withContext(Dispatchers.IO) { runCatching { link.muted() }.getOrNull() }
+            if (link === atv) { if (m != null) muted = m } else if (m == true) muted = true
         }
     }
 
@@ -540,6 +543,8 @@ class MainActivity : ComponentActivity() {
                     else -> v
                 }
             }
+            // Sessiz tuşu anında yanar/söner; ses tuşları TV'nin sessizini kaldırır
+            muted = if (code == Keys.MUTE) muted != true else false
             volumeTick++
             refreshVolume()
         }
