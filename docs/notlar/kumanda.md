@@ -32,3 +32,11 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   "ekran + el" simgesi kaldırıldı (Kaydırma tuşununkine benziyordu). Yüzeyde kenar şeridi yok (`EdgeZone = 0`).
   v0.133 düzeltmesi (Serif): yüzey alt sıranın altına giriyordu; artık Klavye tuşunun ölçülen yerinden 14 dp önce biter
   (ses çubuğu ile yüzey arası da 14 dp). Genişlik yan tuşların dış kenarlarıyla hizalı. Fare yüzeyi bilerek boş (Serif'in isteği).
+- **Fare yüzeyi (1 Kasım 2026, Serif'in isteği; örnek: başka bir kumanda uygulamasının Air Mouse ekranı):**
+  `TrackPad` (`RemoteUi.kt`) + `MousePad.kt`. Kenarda kaydırma şeridi (`ScrollStrip`: ▲ / çizgili sürükleme alanı / ▼ / ⇆),
+  ▲▼ basılı tutunca tekrarlar, yön iki parmakla kaydırmayla aynı. Şerit varsayılan sağda, ⇆ ya da ayar penceresiyle sola alınır.
+  Sol üstte "Fare ▾" → ayar penceresi: imleç hızı 5 kademe (3 = eski hız, çarpanlar 0.5/0.75/1/1.4/1.9) + şerit Sol/Sağ;
+  "ayarlar" tercihlerinde `fare_hiz`, `fare_serit_sol`. Parmağın altında yarı saydam mavi halka (Glass.Blue); sürüklerken büyür.
+  Basılı tut (~0.4 sn kıpırdamadan) + hareket = sürükleme/seçme: TV'ye "d" (sol tuş basılı) … "u" (bırak) gider
+  (`KeyServer.mouseButtons`); hareket ve tekerlek basılı tuşla gönderilir. TV'deki ok imlecinin görünümü değiştirilmedi
+  (Android'in kendi imleci).

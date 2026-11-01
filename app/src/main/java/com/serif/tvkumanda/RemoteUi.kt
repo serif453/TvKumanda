@@ -732,7 +732,11 @@ fun TouchPad(modifier: Modifier, onKey: (Int) -> Unit) {
     )
 }
 
-/** Fare modu: TV'de imleç. Tek parmak imleç, dokunma tık, iki parmak sayfa kaydırma. */
+/**
+ * Fare modu: TV'de imleç. Tek parmak imleç, dokunma tık, basılı tutup hareket = sürükleme / seçme,
+ * iki parmak ya da kenardaki şerit sayfa kaydırma. Parmağın altında yarı saydam mavi halka belirir.
+ * İmleç hızı ve şeridin kenarı `MouseSettings`'te (sol üstteki "Fare ▾").
+ */
 @Composable
 fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse: (String) -> Unit) {
     if (method == ConnMethod.STANDARD) {
@@ -743,74 +747,121 @@ fun TrackPad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMouse:
         PadSurface(modifier, listOf("Fare modu için", "⚡ Hızlı mod gerekli", "Bağlantıyı yenilemeyi dene"), Modifier)
         return
     }
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val edge = with(density) { EdgeZone.toPx() }
     val slop = with(density) { 8.dp.toPx() }
     val wheelStep = with(density) { 28.dp.toPx() }
     val latest by rememberUpdatedState(onMouse)
     // Fare modu açılır açılmaz TV'deki sanal fare kurulur; TV onu tanırken (1-2 sn) hareketler kaybolmaz
-    LaunchedEffect(Unit) { latest("M") }
+    LaunchedEffect(Unit) { latest("M"); MouseSettings.load(context) }
 
-    PadSurface(
-        modifier,
-        emptyList(),
-        Modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                if (inEdge(down.position.x, this.size.width, edge)) return@awaitEachGesture
-                down.consume()
-                var travelled = 0f
-                var multi = false
-                var rx = 0f
-                var ry = 0f
-                var wheelAcc = 0f
-                while (true) {
-                    val ev = awaitPointerEvent()
-                    val pressed = ev.changes.filter { it.pressed }
-                    if (pressed.isEmpty()) {
-                        if (!multi && travelled < slop) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            latest("c")
-                        }
-                        break
+    // Parmak halkası: yeri ve görünürlüğü
+    var touch by remember { mutableStateOf(Offset.Zero) }
+    var touching by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    val ringAlpha by animateFloatAsState(if (touching) 1f else 0f, tween(if (touching) 90 else 260), label = "halka")
+    val ringScale by animateFloatAsState(if (dragging) 1.25f else 1f, tween(160), label = "halkaBoy")
+
+    val shape = RoundedCornerShape(36.dp)
+    val left = MouseSettings.stripLeft
+    Box(modifier.glass(shape, strength = 0.75f).clip(shape)) {
+        Box(
+            Modifier.fillMaxSize()
+                .padding(start = if (left) 64.dp else 0.dp, end = if (left) 0.dp else 64.dp)
+                .drawBehind {
+                    if (ringAlpha > 0.01f) {
+                        val r = 30.dp.toPx() * ringScale
+                        drawCircle(Glass.Blue.copy(alpha = 0.22f * ringAlpha), r, touch)
+                        drawCircle(Glass.Blue.copy(alpha = 0.85f * ringAlpha), r, touch, style = Stroke(2.5.dp.toPx()))
+                        drawCircle(Glass.Blue.copy(alpha = 0.35f * ringAlpha), 7.dp.toPx(), touch)
                     }
-                    if (pressed.size >= 2) multi = true
+                }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        touch = down.position
+                        touching = true
+                        dragging = false
+                        val start = System.currentTimeMillis()
+                        var travelled = 0f
+                        var multi = false
+                        var rx = 0f
+                        var ry = 0f
+                        var wheelAcc = 0f
+                        try {
+                            while (true) {
+                                // Parmak ~0.4 sn kıpırdamadan durursa sürükleme başlar (TV'de sol tuş basılı kalır)
+                                val waitHold = !dragging && !multi && travelled < slop
+                                val ev = if (waitHold) {
+                                    val left0 = 400L - (System.currentTimeMillis() - start)
+                                    if (left0 <= 0) null else withTimeoutOrNull(left0) { awaitPointerEvent() }
+                                } else awaitPointerEvent()
+                                if (ev == null) {
+                                    dragging = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    latest("d")
+                                    continue
+                                }
+                                val pressed = ev.changes.filter { it.pressed }
+                                if (pressed.isEmpty()) {
+                                    if (!dragging && !multi && travelled < slop) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        latest("c")
+                                    }
+                                    break
+                                }
+                                if (pressed.size >= 2 && !dragging) multi = true
 
-                    // Ortalama hareket
-                    var dx = 0f
-                    var dy = 0f
-                    pressed.forEach { val d = it.positionChange(); dx += d.x; dy += d.y }
-                    dx /= pressed.size
-                    dy /= pressed.size
-                    ev.changes.forEach { it.consume() }
-                    travelled += kotlin.math.sqrt(dx * dx + dy * dy)
+                                // Ortalama hareket
+                                var dx = 0f
+                                var dy = 0f
+                                pressed.forEach { val d = it.positionChange(); dx += d.x; dy += d.y }
+                                dx /= pressed.size
+                                dy /= pressed.size
+                                ev.changes.forEach { it.consume() }
+                                travelled += kotlin.math.sqrt(dx * dx + dy * dy)
+                                (pressed.firstOrNull { it.id == down.id } ?: pressed.first()).let { touch = it.position }
 
-                    if (multi) {
-                        wheelAcc += dy
-                        val notches = (wheelAcc / wheelStep).toInt()
-                        if (notches != 0) {
-                            latest("w $notches")
-                            wheelAcc -= notches * wheelStep
-                        }
-                    } else {
-                        // Hafif hızlanma: hızlı hareket daha uzağa gider
-                        val speed = kotlin.math.sqrt(dx * dx + dy * dy)
-                        val gain = 0.9f + (speed / 40f).coerceAtMost(1.6f)
-                        rx += dx * gain
-                        ry += dy * gain
-                        val ix = rx.toInt()
-                        val iy = ry.toInt()
-                        if (ix != 0 || iy != 0) {
-                            latest("m $ix $iy")
-                            rx -= ix
-                            ry -= iy
+                                if (multi) {
+                                    wheelAcc += dy
+                                    val notches = (wheelAcc / wheelStep).toInt()
+                                    if (notches != 0) {
+                                        latest("w $notches")
+                                        wheelAcc -= notches * wheelStep
+                                    }
+                                } else {
+                                    // Hafif hızlanma: hızlı hareket daha uzağa gider; çarpan kullanıcının hız ayarından
+                                    val speed = kotlin.math.sqrt(dx * dx + dy * dy)
+                                    val gain = (0.9f + (speed / 40f).coerceAtMost(1.6f)) * MouseSettings.gain()
+                                    rx += dx * gain
+                                    ry += dy * gain
+                                    val ix = rx.toInt()
+                                    val iy = ry.toInt()
+                                    if (ix != 0 || iy != 0) {
+                                        latest("m $ix $iy")
+                                        rx -= ix
+                                        ry -= iy
+                                    }
+                                }
+                            }
+                        } finally {
+                            // Sürükleme biterken (ya da mod kapanırken) TV'de tuş bırakılır, takılı kalmaz
+                            if (dragging) latest("u")
+                            dragging = false
+                            touching = false
                         }
                     }
                 }
-            }
-        }
-    )
+        )
+        ScrollStrip(
+            Modifier.align(if (left) Alignment.TopStart else Alignment.TopEnd)
+                .padding(top = 56.dp, bottom = 12.dp, start = if (left) 12.dp else 0.dp, end = if (left) 0.dp else 12.dp)
+                .width(52.dp).fillMaxHeight(),
+            onMouse
+        )
+    }
 }
 
 

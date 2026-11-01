@@ -83,6 +83,13 @@ public final class KeyServer {
                     ensureMouse();
                 } else if (line.equals("c")) {
                     mouseClick();
+                } else if (line.equals("d")) {
+                    // Basılı tutup sürükleme: sol tuş basılı kalır
+                    mouseButtons = 1;
+                    mouseReport(mouseButtons, 0, 0, 0);
+                } else if (line.equals("u")) {
+                    mouseButtons = 0;
+                    mouseReport(0, 0, 0, 0);
                 } else if (line.startsWith("w ")) {
                     mouseWheel(Integer.parseInt(line.substring(2).trim()));
                 } else if (line.equals("a")) {
@@ -143,6 +150,8 @@ public final class KeyServer {
     private static final int UHID_CREATE2 = 11;
     private static final int UHID_INPUT2 = 12;
     private static FileOutputStream uhid;
+    // Basılı tutulan fare tuşları (sürükleme sırasında 1)
+    private static int mouseButtons = 0;
 
     // 3 düğmeli, X/Y/tekerlek göreceli fare
     private static final byte[] MOUSE_DESCRIPTOR = {
@@ -195,20 +204,21 @@ public final class KeyServer {
         // Büyük hareketleri 127'lik parçalara böl
         while (dx != 0 || dy != 0) {
             int sx = clamp(dx), sy = clamp(dy);
-            mouseReport(0, sx, sy, 0);
+            mouseReport(mouseButtons, sx, sy, 0);
             dx -= sx;
             dy -= sy;
         }
     }
 
     private static void mouseClick() throws Exception {
+        mouseButtons = 0;
         mouseReport(1, 0, 0, 0);
         Thread.sleep(25);
         mouseReport(0, 0, 0, 0);
     }
 
     private static void mouseWheel(int n) throws Exception {
-        mouseReport(0, 0, 0, clamp(n));
+        mouseReport(mouseButtons, 0, 0, clamp(n));
     }
 
     // ---------------- Uygulama listesi (ad + simge) ----------------

@@ -334,20 +334,27 @@ fun GlassPadCard(
                                 1 -> TouchPad(Modifier.fillMaxSize(), onKey)
                                 else -> TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse)
                             }
-                            // Sol üst: hangi modda olunduğu
-                            Row(
-                                Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    if (shownPad == 1) Icons.Outlined.TouchApp else Icons.Outlined.Mouse, null,
-                                    tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(5.dp))
-                                Text(
-                                    if (shownPad == 1) "Kaydırma" else "Fare",
-                                    color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium
-                                )
+                            // Sol üst: hangi modda olunduğu. Fare modunda "Fare ▾": dokununca hız ve şerit ayarı açılır
+                            if (shownPad == 1) {
+                                Row(
+                                    Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.TouchApp, null, tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Kaydırma", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            } else if (ui.method != ConnMethod.STANDARD && ui.fastMode) {
+                                MouseModeLabel(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 12.dp).graphicsLayer { alpha = exp })
+                            } else {
+                                Row(
+                                    Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.Mouse, null, tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Fare", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
                             }
                             // Sağ üst: ✕ ile normal kumandaya dönülür
                             Box(

@@ -33,6 +33,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - Yön tuşları, OK, Geri, Ana ekran, Güç, ses açma/kısma ve sessiz; büyük ses çubuğu (dokun ya da sürükle)
 - Bilgi ve Rehber tuşları; "fn" ile sistem kısayolları, 🎵 ile medya tuşları penceresi
 - Üç kontrol modu: yön tuşları, kaydırma ve fare (fare yalnızca ADB)
+- Fare: ayarlanabilir imleç hızı, sola ya da sağa alınabilen kaydırma şeridi, basılı tutup sürükleme / seçme, parmak altında halka
 - TV'ye yazma: telefonun klavyesiyle canlı yazma; Standart bağlantıda Türkçe harfler (ş, ğ, ı…) olduğu gibi gider
 - Sesli komut: telefonun mikrofonuyla TV'de arama
 - Telefonun ses tuşları TV'nin sesini açar/kısar
