@@ -26,6 +26,11 @@ class MediaServer(private val context: Context) {
     private class Entry(val uri: Uri?, val mime: String, val bytes: ByteArray? = null)
 
     private val entries = ConcurrentHashMap<String, Entry>()
+    private class TsEntry(val uri: Uri, val index: TsHls.Index)
+    private val tsEntries = ConcurrentHashMap<String, TsEntry>()
+    // Altyazı ya da devam etme yüzünden aynı dosya yeniden açılınca baştan taranmasın
+    private var lastTsKey: String? = null
+    private var lastTsIndex: TsHls.Index? = null
     @Volatile private var server: ServerSocket? = null
 
     /** [uri]'yi sunar ve TV'nin [tvIp] üzerinden erişeceği adresi döndürür. */
@@ -38,11 +43,86 @@ class MediaServer(private val context: Context) {
         }
         // Her yeni yayında eski dosyaların erişimi kapatılır
         entries.clear()
+        tsEntries.clear()
         val token = UUID.randomUUID().toString().replace("-", "")
         entries[token] = Entry(uri, mime)
         // Bazı DLNA cihazları biçimi adresin uzantısından anlar
         val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)?.let { ".$it" } ?: ""
         return "http://$host:${s.localPort}/m/$token$ext"
+    }
+
+    /**
+     * TS dosyasını parçalara ayırıp HLS adresi olarak sunar. Oynatılamayacak dosyada [TsUnsupportedException] atar.
+     * [onProgress] tarama yüzdesini (0-100) alır.
+     */
+    fun publishTs(uri: Uri, tvIp: String, onProgress: (Int) -> Unit): String {
+        val host = localAddressFor(tvIp) ?: throw java.io.IOException("Telefonun Wi-Fi adresi bulunamadı")
+        val index = tsIndex(uri, onProgress)
+        synchronized(this) {
+            val s = server ?: ServerSocket(0).also { srv ->
+                server = srv
+                Thread({ acceptLoop(srv) }, "media-server").apply { isDaemon = true }.start()
+            }
+            entries.clear()
+            tsEntries.clear()
+            val token = UUID.randomUUID().toString().replace("-", "")
+            tsEntries[token] = TsEntry(uri, index)
+            return "http://$host:${s.localPort}/h/$token/index.m3u8"
+        }
+    }
+
+    private fun tsIndex(uri: Uri, onProgress: (Int) -> Unit): TsHls.Index {
+        val total = openFile(uri).use { it.length.takeIf { n -> n >= 0 } ?: it.parcelFileDescriptor.statSize }
+        val key = "$uri|$total"
+        synchronized(this) { if (key == lastTsKey) lastTsIndex?.let { return it } }
+        val head = ByteArray(64 * 1024)
+        val headSize = openStream(uri, 0).use { s ->
+            var n = 0
+            while (n < head.size) { val r = s.read(head, n, head.size - n); if (r < 0) break; n += r }
+            n
+        }
+        val layout = TsHls.detectLayout(head, headSize)
+            ?: throw TsUnsupportedException("Bu dosya geçerli bir TS videosu gibi görünmüyor.")
+        val tracks = openStream(uri, 0).use { TsHls.analyze(it, layout) }
+        val index = openStream(uri, 0).use { s ->
+            TsHls.buildIndex(s, layout, tracks) { read -> if (total > 0) onProgress((read * 100 / total).toInt()) }
+        }
+        synchronized(this) { lastTsKey = key; lastTsIndex = index }
+        return index
+    }
+
+    private fun openFile(uri: Uri) = context.contentResolver.openAssetFileDescriptor(uri, "r")
+        ?: throw java.io.IOException("Dosya açılamadı")
+
+    /** Dosyanın [offset] baytından başlayan, tamponlu okuma akışı; kapatılınca dosya da kapanır. */
+    private fun openStream(uri: Uri, offset: Long): java.io.InputStream {
+        val afd = openFile(uri)
+        val fin = afd.createInputStream()
+        fin.channel.position(afd.startOffset + offset)
+        return java.io.BufferedInputStream(fin, 256 * 1024)
+    }
+
+    private fun serveTs(path: String, method: String, out: OutputStream) {
+        val parts = path.substringBefore('?').removePrefix("/h/").split('/')
+        val entry = parts.getOrNull(0)?.let { tsEntries[it] }
+        val name = parts.getOrNull(1).orEmpty()
+        if (entry == null || (method != "GET" && method != "HEAD")) {
+            writeHead(out, "404 Not Found", mapOf("Content-Length" to "0"))
+            return
+        }
+        if (name == "index.m3u8") {
+            val b = entry.index.playlist().toByteArray(Charsets.UTF_8)
+            writeHead(out, "200 OK", mapOf("Content-Type" to TsHls.MIME, "Content-Length" to b.size.toString()))
+            if (method == "GET") { out.write(b); out.flush() }
+            return
+        }
+        val segment = name.removeSuffix(".ts").toIntOrNull()?.let { entry.index.segments.getOrNull(it) }
+        if (segment == null) {
+            writeHead(out, "404 Not Found", mapOf("Content-Length" to "0"))
+            return
+        }
+        writeHead(out, "200 OK", mapOf("Content-Type" to "video/mp2t", "Content-Length" to segment.bytes.toString()))
+        if (method == "GET") openStream(entry.uri, segment.start).use { TsHls.writeSegment(it, entry.index, segment, out) }
     }
 
     /** Bellekteki küçük bir dosyayı (ör. altyazı) son yayının yanında sunar. */
@@ -58,6 +138,7 @@ class MediaServer(private val context: Context) {
     @Synchronized
     fun stop() {
         entries.clear()
+        tsEntries.clear()
         runCatching { server?.close() }
         server = null
     }
@@ -86,6 +167,7 @@ class MediaServer(private val context: Context) {
         val out = c.getOutputStream()
 
         if (method == "OPTIONS") { writeHead(out, "204 No Content", emptyMap()); return }
+        if (path.startsWith("/h/")) { serveTs(path, method, out); return }
         val entry = path.removePrefix("/m/").takeIf { path.startsWith("/m/") }
             ?.substringBefore('.')?.substringBefore('?')?.let { entries[it] }
         if (entry == null || (method != "GET" && method != "HEAD")) {

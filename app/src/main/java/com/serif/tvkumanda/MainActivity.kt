@@ -749,8 +749,11 @@ class MainActivity : ComponentActivity() {
         // TV'nin büyük ihtimalle açamayacağı biçim: önce uyar (otomatik geçişte sormadan dener)
         val skipCheck = skipFormatCheck
         skipFormatCheck = false
+        // Telefondaki TS dosyası Chromecast'e parçalanarak gider; uyarı yerine içeriğine bakılır
+        val localTs = route == CastRoute.CHROMECAST && !isWebUri(uri) && kind == MediaKind.VIDEO &&
+            TsHls.isTs(knownTitle ?: displayName(uri), knownMime ?: contentResolver.getType(uri))
         // DLNA cihazları genelde bu biçimleri de oynatır; uyarı yalnızca Chromecast'te
-        if (route == CastRoute.CHROMECAST && askResume && !auto && !skipCheck && likelyUnsupported(knownMime, knownTitle ?: displayName(uri))) {
+        if (route == CastRoute.CHROMECAST && !localTs && askResume && !auto && !skipCheck && likelyUnsupported(knownMime, knownTitle ?: displayName(uri))) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Bu dosya TV'de açılmayabilir")
                 .setMessage("TV'nin Chromecast oynatıcısı bu biçimi (MKV, AVI, WMV gibi) genellikle desteklemez.")
@@ -822,7 +825,14 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
                 withContext(castIo) {
-                    val url = castSource(uri, mime, ip)
+                    val url = if (localTs) {
+                        castStage("Video hazırlanıyor…")
+                        var shown = -1
+                        mediaServer.publishTs(uri, ip) { percent ->
+                            val step = percent / 10 * 10
+                            if (step != shown) { shown = step; castStage("Video hazırlanıyor… %$step") }
+                        }
+                    } else castSource(uri, mime, ip)
                     // Altyazı: SRT → WebVTT, telefondaki sunucudan
                     val subUrl = subUri?.let { su ->
                         runCatching {
@@ -840,14 +850,19 @@ class MainActivity : ComponentActivity() {
                         castClient.prepareReceiver()
                     }
                     castStage("Dosya yükleniyor…")
-                    castClient.load(url, mime, title, startAt, subUrl)
+                    castClient.load(url, if (localTs) TsHls.MIME else mime, title, startAt, subUrl)
                 }
                 startCastPolling()
             } catch (e: Exception) {
                 val webFailed = isWebUri(uri) && e.message.orEmpty().contains("açamadı")
                 cast = cast.copy(
                     phase = CastPhase.ERROR,
-                    error = if (webFailed) "TV bu adresi açamadı (video adresi değil, izin gerekiyor ya da biçim desteklenmiyor)" else castError(e)
+                    error = when {
+                        webFailed -> "TV bu adresi açamadı (video adresi değil, izin gerekiyor ya da biçim desteklenmiyor)"
+                        localTs && e !is TsUnsupportedException && e.message.orEmpty().contains("açamadı") ->
+                            "TV bu TS videosunu açamadı. DLNA Sunucu ile TV'nin kendi oynatıcısında açabilirsin."
+                        else -> castError(e)
+                    }
                 )
                 DiagLog.log("Cast başlatılamadı (${route.name}, $mime): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }

@@ -60,6 +60,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
 - URL'den oynatma: videonun doğrudan adresi (.mp4, .webm, .m3u8…) yazılır ya da panodan gelir, TV kendisi çeker; son adresler listelenir. Paylaşılan doğrudan video linkleri de böyle oynar
 - Son cihazı hatırlama Ayarlar'dan: hiç, listede başta ya da otomatik bağlan
+- TS / M2TS videoları (deneysel, telefondaki dosyalar, Chromecast): H.264 görüntü + AAC ya da MP3 ses içerenler yeniden işlenmeden, parçalanarak oynar; kalite düşmez. Oynatılamayanlarda (MPEG-2, HEVC, şifreli kayıt ya da AC-3, MP2 gibi ses) nedeni söylenir ve DLNA önerilir
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam
 - SRT altyazı (Türkçe karakter kodlaması otomatik düzeltilir)
 - Telefon ekranı kapalıyken de devam eder; bildirimde ve kilit ekranında oynatıcı kontrolleri
@@ -137,6 +138,7 @@ Menü adları markaya göre biraz farklı olabilir.
 | ADB onay sorusu kayboldu | Uygulamada yeniden bağlan; soru TV'de tekrar çıkar |
 | Netflix vb. ekran görüntüsünde siyah | Korumalı videolar görüntülenemez; bu bir hata değil |
 | MKV, AVI gibi videolar Cast'te açılmıyor | TV'nin Chromecast oynatıcısı bu biçimleri genelde desteklemez. DLNA Sunucu ile TV'nin kendi oynatıcısını dene |
+| TS videosu Cast'te açılmıyor | Uygulama nedenini yazar; görüntü ya da ses biçimi uygun değilse DLNA Sunucu ile TV'nin kendi oynatıcısını dene |
 
 ## Sorun bildirme
 

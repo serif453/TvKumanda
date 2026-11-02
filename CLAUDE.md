@@ -85,7 +85,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
   çökme kalkanı, anlaşılır hata mesajları, tüm araçların tek tek denenmesi) → cila. MKV/TS dönüştürme 1.0 sonrasına.
 - Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
 - Kısayollar sekmesinin çalışır hâli.
-- Cast: MKV/TS gibi biçimleri anında dönüştürerek oynatma (Windows'taki Airflow benzeri).
+- Cast: TS temel yolu eklendi (`docs/notlar/cast.md`); sırada ses çevirme, sonra MKV (Windows'taki Airflow benzeri).
 - İleride: uygulamanın adı "TV Everything" gibi bir şey olabilir.
 
 ### Sonra bakılacak fikirler (HoangTran0410/tv-remote, MIT)

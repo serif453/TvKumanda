@@ -7,7 +7,7 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
 - DLNA oynatıcıya gönderme: `DlnaClient.kt`. Telefonu DLNA sunucusu yapma: `DlnaMediaServer.kt`, `DlnaServerService.kt`.
 - `CastService.kt`: ekran kapalıyken devam, bildirim ve kilit ekranı kontrolleri.
 - `Subtitles.kt`: SRT → WebVTT; geçersiz UTF-8 ise Windows-1254 okunur.
-- Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır.
+- Chromecast MKV/AVI'yi genelde oynatamaz; kullanıcı uyarılır. Telefondaki TS ayrı yoldan gider (aşağıda).
 - **Cihaz seçimi (1 Kasım 2026, Serif'in isteği):** Cast sekmesi açılınca **kendiliğinden arama ya da bağlantı yok**
   (`castWarmup` boş). Chromecast ve DLNA seçicileri başta "Cihaz seç"; seçicide "Ara" → bulunanlar listelenir → dokununca
   seçilir (Chromecast'te hemen bağlanır). Seçim hatırlanır, bağlanmadan geri yüklenir; ilk gönderimde bağlanılır.
@@ -84,3 +84,11 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
 ## Cast'te üst çubuk (2 Kasım 2026, Serif'in onayı)
 - Cast'te TV Seç + güç yok; başlık sırası ⚙️ · "TV'de aç" · Bağlan. Kumanda bağlantı hatası Cast'teyken TV panelini kendiliğinden açmaz.
   Araçlar ve Kısayollar'da güç yok, TV kutusu genişler (`showPower`). Kapatma yalnızca Kumanda'da.
+
+## TS videoları (2 Kasım 2026, Serif'in onayıyla, önce TS, MKV sonra)
+- `TsHls.kt` (saf, test `TsHlsTest`) + `MediaServer.publishTs`: telefondaki .ts/.m2ts/.mts dosyası Chromecast'e **HLS** olarak gider (`/h/<rastgele>/index.m3u8`, `<n>.ts`). Düz TS tarayıcı oynatıcısında açılmaz; HLS parçalarında TS beklenen biçimdir. Bu yüzden MP4'e çevrilmez, yük ve kayıp yoktur.
+- Akış: başlangıçta PAT/PMT'den görüntü + ses seçilir (`analyze`, en fazla 64 MB; Türkçe ses önce, AAC önce); dosya bir kez taranır (`buildIndex`) ve anahtar karelerden ~6 sn'lik parçalara bölünür; her parçaya yeni PAT/PMT eklenir, yalnızca seçilen paketler gider (altyazı, teletekst, ek sesler atılır). 192 (M2TS) ve 204 baytlık paketler 188'e indirilir. Kayıttaki zaman sıçraması `#EXT-X-DISCONTINUITY` olur. Son dosyanın dizini bellekte tutulur.
+- Oynatılmaz, nedeni söylenir (`TsUnsupportedException`): MPEG-2/HEVC görüntü, şifreli kayıt, yalnızca AC-3/E-AC-3/DTS/MP2/LPCM/LATM ses.
+- **Sonraki adım (onaylandı, gerçek cihaz denemesini bekliyor):** H.264 + AC-3/MP2 için sesi AAC'ye çevirme. Önce temel HLS yolunun Philips'te çalıştığı görülmeli. Telefonda çözücü yoksa yapılamaz.
+- Denenecek: Default Media Receiver'ın telefondaki `http` adresinden HLS çekmesi (HTTPS alıcı sayfasından karışık içerik engeli olmadığı), MP3 sesli TS, ileri sarma, altyazı. ffmpeg ile çözme denendi; gerçek Chromecast denenmedi.
+- URL'den oynatmada ve DLNA'da eski davranış sürer.
