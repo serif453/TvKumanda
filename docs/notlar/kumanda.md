@@ -97,3 +97,4 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - **Ekran kararmasın** `ekran_kararma` (OFF/REMOTE/ALL); eski `ekran_acik` açıksa REMOTE olarak taşınır.
 - **Titreşim gücü** `titresim_guc` (LOW/MID/HIGH): hazır efekt yerine süre + güç (15/25/45 ms); fark her telefonda hissedilsin diye.
 - **Lisans sayfası** (`LicensePage.kt`): Türkçe özet, açık kaynak listesi (README ile uyumlu tut), tam metin `assets/LICENSE.txt` (kök `LICENSE`in kopyası).
+- **Tanıtım sayfası** (`AboutPage.kt`): Ayarlar → Hakkında → TV Kumanda; içerik Serif'in onayıyla, geliştiricinin ağzından. Özellik ya da gizlilik durumu değişirse metin de güncellenir.

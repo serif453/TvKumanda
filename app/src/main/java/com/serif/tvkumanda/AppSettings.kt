@@ -202,14 +202,18 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
     LaunchedEffect(Unit) { MouseSettings.load(context) }
     // Hakkında → Sıkça sorulan sorular (tam sayfa, Ayarlar'ın üstünde açılır)
     var faqOpen by remember { mutableStateOf(false) }
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
     var licenseOpen by remember { mutableStateOf(false) }
+    var aboutOpen by remember { mutableStateOf(false) }
     var crashOpen by remember { mutableStateOf(false) }
     var crashes by remember { mutableStateOf(CrashLog.entries()) }
     // Güncelleme denetimi: yalnızca dokununca çalışır
     val scope = rememberCoroutineScope()
     var updateBusy by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<UpdateCheck.Result?>(null) }
-    BackHandler(enabled = !faqOpen && !licenseOpen, onBack = onClose)
+    BackHandler(enabled = !faqOpen && !licenseOpen && !aboutOpen, onBack = onClose)
 
     Box(
         Modifier.fillMaxSize().background(Pal.Bg)
@@ -385,11 +389,10 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
 
             // ---- Hakkında ----
             SettingsHeader("Hakkında")
-            val version = remember {
-                runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
-            }
             SettingsGroup {
-                SettingsRow(Icons.Outlined.Info, "TV Kumanda", "Sürüm $version") {}
+                SettingsRow(Icons.Outlined.Info, "TV Kumanda", "Sürüm $version", onClick = { aboutOpen = true }) {
+                    Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp))
+                }
                 val update = updateResult
                 SettingsRow(
                     Icons.Outlined.SystemUpdate,
@@ -447,6 +450,8 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
         }
 
         if (faqOpen) FaqPage { faqOpen = false }
+        // Lisans, Hakkında sayfasından da açılır: üstte çizilir ve geri tuşu önce onu kapatır
+        if (aboutOpen) AboutPage(version, onOpenLicense = { licenseOpen = true }, onClose = { aboutOpen = false })
         if (licenseOpen) LicensePage { licenseOpen = false }
         if (crashOpen) CrashLogDialog(
             crashes,

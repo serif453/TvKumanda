@@ -50,7 +50,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
 - Arka plan teması: Mor, Lacivert, Gece (tam siyah), Orman, Bordo
 - Alt menü: istemediğin sekmeleri gizleme (en az biri açık kalır; tek sekme kalınca alt menü gizlenir)
-- Hakkında: sürüm, güncelleme denetimi (yalnızca dokununca GitHub'a bakar), sıkça sorulan sorular, çökme kaydı (son 5 çökme, telefonda kalır, kopyalanabilir), lisans sayfası ve GitHub sayfası
+- Hakkında: uygulamayı anlatan tanıtım sayfası, sürüm, güncelleme denetimi (yalnızca dokununca GitHub'a bakar), sıkça sorulan sorular, çökme kaydı (son 5 çökme, telefonda kalır, kopyalanabilir), lisans sayfası ve GitHub sayfası
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
