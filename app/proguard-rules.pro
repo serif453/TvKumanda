@@ -5,6 +5,9 @@
 # TV'de arka planda çalışan nöbetçi (uyku zamanlayıcısı, ses ve ekran süresi sınırı): adı ve main() değişmemeli
 -keep class com.serif.tvkumanda.Watcher { public static void main(java.lang.String[]); }
 
+# Çökme kaydındaki satır numaraları korunsun; adlar derlemenin mapping.txt dosyasıyla çözülür
+-keepattributes SourceFile,LineNumberTable
+
 # ADB istemcisi (dadb) olduğu gibi kalsın
 -keep class dadb.** { *; }
 

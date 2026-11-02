@@ -227,8 +227,8 @@ fun RemoteScreen(
     LaunchedEffect(tab) { LiveUi.remoteTabOpen = tab == Tab.REMOTE }
     val tabContext = LocalContext.current
     LaunchedEffect(tab) { AppSettings.rememberTab(tabContext, tab) }
-    // Ayar açıksa Kumanda sekmesindeyken telefon ekranı kararmaz
-    val keepOn = AppSettings.keepScreenOn && tab == Tab.REMOTE
+    // Ayara göre telefon ekranı kararmaz: yalnızca Kumanda sekmesinde ya da tüm sekmelerde
+    val keepOn = AppSettings.keepScreen == "ALL" || (AppSettings.keepScreen == "REMOTE" && tab == Tab.REMOTE)
     DisposableEffect(keepOn) {
         val window = (tabContext as? android.app.Activity)?.window
         if (keepOn) window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

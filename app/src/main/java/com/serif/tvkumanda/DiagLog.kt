@@ -35,6 +35,7 @@ object DiagLog {
         trim()
         file = f
         rewrite()
+        CrashLog.init(dir)
         installCrashHandler()
     }
 
@@ -113,6 +114,7 @@ object DiagLog {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching { crash(e) }
+            runCatching { CrashLog.save(e) }
             previous?.uncaughtException(t, e)
         }
     }

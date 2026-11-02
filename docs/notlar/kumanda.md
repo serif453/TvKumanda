@@ -89,3 +89,11 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   temadan okunur. Tuşlar, mor vurgular ve yazılar sabit. Alt sayfalar da temanın koyu tonunu alır (Serif'in seçimi); bu yüzden Mor'da
   eskiden gri olan alt sayfalar artık koyu mor. Açık tema yok: tasarım koyu zemine göre.
 - Yeni zemin rengi yazarken sabit renk değil bu değerler kullanılmalı.
+
+## Ayarlar eklemeleri (2 Kasım 2026, Serif'in onayıyla)
+- **Çökme kaydı** (`CrashLog.kt`, `cokme.txt`): son 5 çökme tam hata metniyle, IP'ler gizli; sürüm ve cihaz başlıkta. Teşhis kaydındaki kısa çökme satırı da durur. Ayarlar → Hakkında'dan kopyalanır, kendiliğinden hiçbir yere gitmez.
+- Release derlemesi kod adlarını kısaltır (R8): satır numaraları `-keepattributes` ile korunur, adlar derleme sayfasındaki artifact'te gelen `mapping.txt` ile çözülür (`retrace`). Artifact 90 gün durur.
+- **Güncelleme denetimi** (`UpdateCheck.kt`): yalnızca dokununca GitHub'ın son sürüm adresine sorar; yeni sürüm varsa sürüm sayfasını tarayıcıda açar. Otomatik denetim ve uygulama içi kurulum yok.
+- **Ekran kararmasın** `ekran_kararma` (OFF/REMOTE/ALL); eski `ekran_acik` açıksa REMOTE olarak taşınır.
+- **Titreşim gücü** `titresim_guc` (LOW/MID/HIGH): hazır efekt yerine süre + güç (15/25/45 ms); fark her telefonda hissedilsin diye.
+- **Lisans sayfası** (`LicensePage.kt`): Türkçe özet, açık kaynak listesi (README ile uyumlu tut), tam metin `assets/LICENSE.txt` (kök `LICENSE`in kopyası).

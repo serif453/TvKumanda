@@ -27,12 +27,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Arka plan temaları (Serif'in isteği, 2 Kasım 2026): yalnızca zemin renklerini değiştirir; tuşlar, mor vurgular ve yazılar
@@ -75,11 +81,14 @@ object AppSettings {
     /** Kumanda tuşlarına basınca kısa titreşim (varsayılan kapalı). */
     var haptic by mutableStateOf(false)
         private set
+    /** Titreşim gücü: LOW, MID (varsayılan) ya da HIGH. */
+    var hapticLevel by mutableStateOf("MID")
+        private set
     /** Telefonun ses tuşları TV'nin sesini değiştirir (varsayılan açık, eski davranış). */
     var volumeKeys by mutableStateOf(true)
         private set
-    /** Kumanda sekmesi açıkken telefon ekranı kararmaz (varsayılan kapalı). */
-    var keepScreenOn by mutableStateOf(false)
+    /** Telefon ekranı kararmasın: OFF (varsayılan), REMOTE (yalnızca Kumanda sekmesinde) ya da ALL (tüm sekmelerde). */
+    var keepScreen by mutableStateOf("OFF")
         private set
     /** Uygulama açılınca son TV'ye kendiliğinden bağlanır (varsayılan açık, eski davranış). */
     var autoConnect by mutableStateOf(true)
@@ -109,8 +118,10 @@ object AppSettings {
         loaded = true
         val p = prefs(c)
         haptic = p.getBoolean("titresim", false)
+        hapticLevel = p.getString("titresim_guc", "MID") ?: "MID"
         volumeKeys = p.getBoolean("ses_tuslari", true)
-        keepScreenOn = p.getBoolean("ekran_acik", false)
+        // Eski açık/kapalı ayarı yeni seçeneğe taşınır: açıksa "yalnızca Kumanda" olarak devam eder
+        keepScreen = p.getString("ekran_kararma", null) ?: if (p.getBoolean("ekran_acik", false)) "REMOTE" else "OFF"
         autoConnect = p.getBoolean("oto_baglan", true)
         startTab = p.getString("acilis_sekme", "REMOTE") ?: "REMOTE"
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
@@ -122,7 +133,8 @@ object AppSettings {
 
     fun setHaptic(c: Context, v: Boolean) { haptic = v; prefs(c).edit().putBoolean("titresim", v).apply(); if (v) tap(c) }
     fun setVolumeKeys(c: Context, v: Boolean) { volumeKeys = v; prefs(c).edit().putBoolean("ses_tuslari", v).apply() }
-    fun setKeepScreenOn(c: Context, v: Boolean) { keepScreenOn = v; prefs(c).edit().putBoolean("ekran_acik", v).apply() }
+    fun setKeepScreen(c: Context, v: String) { keepScreen = v; prefs(c).edit().putString("ekran_kararma", v).apply() }
+    fun setHapticLevel(c: Context, v: String) { hapticLevel = v; prefs(c).edit().putString("titresim_guc", v).apply(); tap(c) }
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
     fun setCastRemember(c: Context, v: String) { castRemember = v; prefs(c).edit().putString("cast_hatirla", v).apply() }
     fun addCastUrl(c: Context, url: String) = saveCastUrls(c, CastUrl.remember(castUrls, url))
@@ -172,8 +184,13 @@ object AppSettings {
                 (c.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
             else @Suppress("DEPRECATION") (c.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)).also { vibrator = it }
             if (!v.hasVibrator()) return
-            if (Build.VERSION.SDK_INT >= 29) v.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
-            else v.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+            // Hazır tık efektleri bazı telefonlarda birbirine çok benzer; süre ve güç elle verilince fark her telefonda hissedilir
+            val (ms, strength) = when (hapticLevel) {
+                "LOW" -> 15L to 70
+                "HIGH" -> 45L to 255
+                else -> 25L to 150
+            }
+            v.vibrate(VibrationEffect.createOneShot(ms, if (v.hasAmplitudeControl()) strength else VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 }
@@ -185,7 +202,14 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
     LaunchedEffect(Unit) { MouseSettings.load(context) }
     // Hakkında → Sıkça sorulan sorular (tam sayfa, Ayarlar'ın üstünde açılır)
     var faqOpen by remember { mutableStateOf(false) }
-    BackHandler(enabled = !faqOpen, onBack = onClose)
+    var licenseOpen by remember { mutableStateOf(false) }
+    var crashOpen by remember { mutableStateOf(false) }
+    var crashes by remember { mutableStateOf(CrashLog.entries()) }
+    // Güncelleme denetimi: yalnızca dokununca çalışır
+    val scope = rememberCoroutineScope()
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateResult by remember { mutableStateOf<UpdateCheck.Result?>(null) }
+    BackHandler(enabled = !faqOpen && !licenseOpen, onBack = onClose)
 
     Box(
         Modifier.fillMaxSize().background(Pal.Bg)
@@ -211,11 +235,26 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
                 SettingsRow(Icons.Outlined.Vibration, "Tuş titreşimi", "Kumanda tuşlarına basınca telefon hafifçe titrer") {
                     SettingsSwitch(AppSettings.haptic) { AppSettings.setHaptic(context, it) }
                 }
+                if (AppSettings.haptic) {
+                    Box(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+                        Segmented(
+                            listOf("LOW" to "Hafif", "MID" to "Orta", "HIGH" to "Güçlü"), AppSettings.hapticLevel
+                        ) { AppSettings.setHapticLevel(context, it) }
+                    }
+                }
                 SettingsRow(Icons.Outlined.VolumeUp, "Ses tuşları TV'yi kontrol etsin", "Kapalıyken telefonun kendi sesi değişir") {
                     SettingsSwitch(AppSettings.volumeKeys) { AppSettings.setVolumeKeys(context, it) }
                 }
-                SettingsRow(Icons.Outlined.LightMode, "Ekran kararmasın", "Kumanda açıkken telefon ekranı kendiliğinden kapanmaz") {
-                    SettingsSwitch(AppSettings.keepScreenOn) { AppSettings.setKeepScreenOn(context, it) }
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.LightMode, null, tint = Pal.Text, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Text("Ekran kararmasın", color = Pal.Text, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Segmented(
+                        listOf("OFF" to "Kapalı", "REMOTE" to "Kumanda", "ALL" to "Tüm sekmeler"), AppSettings.keepScreen
+                    ) { AppSettings.setKeepScreen(context, it) }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -351,10 +390,49 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
             }
             SettingsGroup {
                 SettingsRow(Icons.Outlined.Info, "TV Kumanda", "Sürüm $version") {}
+                val update = updateResult
+                SettingsRow(
+                    Icons.Outlined.SystemUpdate,
+                    if (update is UpdateCheck.Result.Available) "Yeni sürüm var: ${update.version}" else "Güncellemeleri denetle",
+                    when {
+                        updateBusy -> "Denetleniyor…"
+                        update is UpdateCheck.Result.Available -> "İndirme sayfasını açmak için dokun"
+                        update is UpdateCheck.Result.UpToDate -> "En son sürümü kullanıyorsun"
+                        update is UpdateCheck.Result.Failed -> update.message
+                        else -> "GitHub'daki son sürüme bakar"
+                    },
+                    onClick = {
+                        if (update is UpdateCheck.Result.Available) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(UpdateCheck.RELEASES_PAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        } else if (!updateBusy) {
+                            updateBusy = true
+                            scope.launch {
+                                updateResult = withContext(Dispatchers.IO) { UpdateCheck.check(version) }
+                                updateBusy = false
+                            }
+                        }
+                    }
+                ) {
+                    if (update is UpdateCheck.Result.Available) {
+                        Icon(Icons.Outlined.OpenInNew, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp).size(20.dp))
+                    }
+                }
                 SettingsRow(Icons.Outlined.HelpOutline, "Sıkça sorulan sorular", "Bağlantı, kumanda, Cast ve daha fazlası", onClick = { faqOpen = true }) {
                     Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp))
                 }
-                SettingsRow(Icons.Outlined.Gavel, "Lisans", "GPL-3.0 (özgür yazılım)") {}
+                SettingsRow(Icons.Outlined.BugReport, "Çökme kaydı",
+                    if (crashes.isEmpty()) "Kayıtlı çökme yok" else "${crashes.size} kayıt · son: ${CrashLog.timeOf(crashes.first())}",
+                    onClick = if (crashes.isEmpty()) null else ({ crashOpen = true })
+                ) {
+                    if (crashes.isNotEmpty()) Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp))
+                }
+                SettingsRow(Icons.Outlined.Gavel, "Lisans", "GPL-3.0 (özgür yazılım)", onClick = { licenseOpen = true }) {
+                    Icon(Icons.Outlined.ChevronRight, null, tint = Pal.Sub, modifier = Modifier.padding(end = 8.dp))
+                }
                 SettingsRow(Icons.Outlined.Code, "GitHub sayfası", "github.com/serif453/TvKumanda", onClick = {
                     runCatching {
                         context.startActivity(
@@ -369,7 +447,43 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
         }
 
         if (faqOpen) FaqPage { faqOpen = false }
+        if (licenseOpen) LicensePage { licenseOpen = false }
+        if (crashOpen) CrashLogDialog(
+            crashes,
+            onClear = { CrashLog.clear(); crashes = emptyList(); crashOpen = false },
+            onClose = { crashOpen = false }
+        )
     }
+}
+
+/** Çökme kaydı penceresi: metni gösterir, tek dokunuşla kopyalar. */
+@Composable
+private fun CrashLogDialog(entries: List<String>, onClear: () -> Unit, onClose: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    val text = remember(entries) { CrashLog.export(entries) }
+    var copied by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = AppSettings.theme.panel,
+        title = { Text("Çökme kaydı", color = Pal.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Text(
+                text, color = Pal.Sub, fontSize = 11.sp, lineHeight = 15.sp, fontFamily = FontFamily.Monospace,
+                modifier = Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { clipboard.setText(AnnotatedString(text)); copied = true }) {
+                Text(if (copied) "Kopyalandı" else "Kopyala", color = Pal.Blue)
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onClear) { Text("Sil", color = Pal.Sub) }
+                TextButton(onClick = onClose) { Text("Kapat", color = Pal.Text) }
+            }
+        }
+    )
 }
 
 @Composable

@@ -44,13 +44,13 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 
 ### Ayarlar
 Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
-- Kumanda tuşlarında titreşim, telefonun ses tuşlarının TV'yi kontrol edip etmeyeceği, kumanda açıkken ekranın kararmaması
+- Kumanda tuşlarında titreşim (Hafif, Orta, Güçlü), telefonun ses tuşlarının TV'yi kontrol edip etmeyeceği, ekranın kararmaması (kapalı, yalnızca Kumanda'da ya da tüm sekmelerde)
 - Fare imleç hızı ve kaydırma şeridinin tarafı
 - Açılışta son TV'ye kendiliğinden bağlanma; kayıtlı TV'ler ve bağlantı türü
 - Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
 - Arka plan teması: Mor, Lacivert, Gece (tam siyah), Orman, Bordo
 - Alt menü: istemediğin sekmeleri gizleme (en az biri açık kalır; tek sekme kalınca alt menü gizlenir)
-- Hakkında: sürüm, sıkça sorulan sorular, lisans ve GitHub sayfası
+- Hakkında: sürüm, güncelleme denetimi (yalnızca dokununca GitHub'a bakar), sıkça sorulan sorular, çökme kaydı (son 5 çökme, telefonda kalır, kopyalanabilir), lisans sayfası ve GitHub sayfası
 
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
@@ -147,6 +147,7 @@ Bir şey çalışmadıysa [Issues](../../issues) sayfasından bildir ve şunlar�
 - Bağlantı türü: Standart mı, ADB mi
 - Ne yaptın, ne bekledin, ne oldu
 - Mümkünse teşhis kaydı: **Araçlar → Teşhis kaydını paylaş → Paylaş** (IP adresleri gizlenir)
+- Uygulama kapandıysa çökme kaydı: **Ayarlar → Hakkında → Çökme kaydı → Kopyala**
 
 Bir şey **çalıştıysa** da yaz: farklı TV'lerde çalıştığı bildirilen modeller burada listelenecek.
 

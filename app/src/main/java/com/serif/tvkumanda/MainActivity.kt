@@ -153,6 +153,9 @@ class MainActivity : ComponentActivity() {
             if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) PhonePlayer.pause()
         })
         DiagLog.init(filesDir)
+        CrashLog.header = runCatching {
+            "TV Kumanda ${packageManager.getPackageInfo(packageName, 0).versionName} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        }.getOrDefault("")
         adb = TvRemote(applicationContext)
         atv = AtvRemote(applicationContext)
         TvTools.adb = adb
