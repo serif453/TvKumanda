@@ -173,6 +173,7 @@ fun RemoteScreen(
     onCastNext: () -> Unit = {},
     onCastSkip: (Double) -> Unit = {},
     onCastWarmup: () -> Unit = {},
+    onCastUrl: (String) -> Unit = {},
     onCastVolume: (Float) -> Unit = {},
     onCastPlayAt: (Int) -> Unit = {},
     onCastRepeat: () -> Unit = {},
@@ -248,8 +249,8 @@ fun RemoteScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(ui.state) {
-        // Paylaşılan dosya Cast ekranında cihaz seçimini bekliyorsa TV paneli üstüne açılmaz
-        if (ui.state == ConnState.ERROR && !(tab == Tab.CAST && CastPanel.open)) openTvs()
+        // Cast kendi cihazını seçer, kumanda bağlantısına bağlı değil: orada TV paneli kendiliğinden açılmaz
+        if (ui.state == ConnState.ERROR && tab != Tab.CAST) openTvs()
         if (ui.state == ConnState.CONNECTED && pickerOpen && pickerExpanded) pickerOpen = false
     }
 
@@ -277,7 +278,8 @@ fun RemoteScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.onGloballyPositioned { barBottom = it.positionInRoot().y + it.size.height }) {
-            TopBarV2(
+            // Cast'te üst çubuk yok: ⚙️ kendi başlığında. Kutu boş kalsa da TV panelinin yeri için ölçülür.
+            if (tab != Tab.CAST) TopBarV2(
                 ui, navy = true,
                 onSettings = { settingsOpen = true },
                 // Kayıtlı TV yoksa seçilecek bir şey yok: doğrudan büyük "TV'ler" penceresi
@@ -285,7 +287,8 @@ fun RemoteScreen(
                     if (pickerOpen) pickerOpen = false
                     else { pickerExpanded = ui.savedTvs.isEmpty(); pickerOpen = true }
                 },
-                onPower = { onKey(Keys.POWER) }
+                onPower = { onKey(Keys.POWER) },
+                showPower = tab == Tab.REMOTE
             )
         }
 
@@ -297,6 +300,8 @@ fun RemoteScreen(
                 mediaLibrary, showInFolderTick, playerSheet, onCastSlideshow, onCastSlideSec,
                 dlna, onCastRoute, onDlnaPick, onDlnaSearch,
                 cc, onCcPick, onCcSearch,
+                onSettings = { settingsOpen = true },
+                onCastUrl = onCastUrl,
                 modifier = Modifier.weight(1f)
             )
         } else if (tab == Tab.TOOLS) {

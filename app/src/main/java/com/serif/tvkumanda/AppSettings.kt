@@ -97,6 +97,9 @@ object AppSettings {
     /** Arka plan teması (varsayılan Mor, eski görünüm). */
     var theme by mutableStateOf(AppTheme.MOR)
         private set
+    /** Cast'te son kullanılan internet adresleri. */
+    var castUrls by mutableStateOf<List<String>>(emptyList())
+        private set
     private var loaded = false
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
@@ -113,6 +116,7 @@ object AppSettings {
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
         hiddenTabs = p.getStringSet("gizli_sekmeler", emptySet())?.toSet().orEmpty()
         castRemember = p.getString("cast_hatirla", "TOP") ?: "TOP"
+        castUrls = p.getString("cast_url_gecmis", "").orEmpty().split('\n').filter { it.isNotBlank() }
         theme = runCatching { AppTheme.valueOf(p.getString("tema", null) ?: "MOR") }.getOrDefault(AppTheme.MOR)
     }
 
@@ -121,6 +125,12 @@ object AppSettings {
     fun setKeepScreenOn(c: Context, v: Boolean) { keepScreenOn = v; prefs(c).edit().putBoolean("ekran_acik", v).apply() }
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
     fun setCastRemember(c: Context, v: String) { castRemember = v; prefs(c).edit().putString("cast_hatirla", v).apply() }
+    fun addCastUrl(c: Context, url: String) = saveCastUrls(c, CastUrl.remember(castUrls, url))
+    fun removeCastUrl(c: Context, url: String) = saveCastUrls(c, castUrls - url)
+    private fun saveCastUrls(c: Context, list: List<String>) {
+        castUrls = list
+        prefs(c).edit().putString("cast_url_gecmis", list.joinToString("\n")).apply()
+    }
     fun setTheme(c: Context, v: AppTheme) { theme = v; prefs(c).edit().putString("tema", v.name).apply() }
     fun setStartTab(c: Context, v: String) { startTab = v; prefs(c).edit().putString("acilis_sekme", v).apply() }
 

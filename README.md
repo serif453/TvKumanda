@@ -58,6 +58,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Fotoğraflar telefonda galeri gibi açılır (kaydırma, yakınlaştırma, altta küçük resim şeridi). Bir cihaza bağlıyken baktığın foto TV'de de açılır ve telefonda kaydırdıkça TV takip eder; üstteki "Takip" ile bu kapatılabilir. Aşağı çekince kapanır
 - Müzikler telefonda da çalınabilir: bağlı değilken şarkıya dokununca telefonda çalar ve altta küçük kart çıkar; karta dokununca ya da yukarı sürükleyince tam ekran oynatıcı açılır (10 sn ileri/geri, telefonun ses düzeyi), aşağı çekince yine karta küçülür. Çalarken üstten bir cihaza bağlanınca şarkı kaldığı saniyeden TV'de devam eder. Yalnızca uygulama açıkken çalar
 - Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
+- URL'den oynatma: videonun doğrudan adresi (.mp4, .webm, .m3u8…) yazılır ya da panodan gelir, TV kendisi çeker; son adresler listelenir. Paylaşılan doğrudan video linkleri de böyle oynar
 - Son cihazı hatırlama Ayarlar'dan: hiç, listede başta ya da otomatik bağlan
 - Klasör sırasıyla oynatma, müzikte tekrar modu, videoda kaldığın yerden devam
 - SRT altyazı (Türkçe karakter kodlaması otomatik düzeltilir)

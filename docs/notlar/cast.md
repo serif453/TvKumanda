@@ -74,3 +74,13 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
   CastScreen kaldığı saniyeden TV'ye geçirir (foto görüntüleyici açıkken yapmaz). Oynatıcı mini kartın üst kenarından
   (`MusicSheet.anchor`, positionInWindow) yükselir/iner, sonda kartın içinde solar. Önceki · 10 sn geri · oynat · 10 sn ileri
   · sonraki; altta telefonun medya sesi çubuğu (Settings.System gözlenir, yan tuşlarla güncellenir).
+
+## URL'den oynatma (2 Kasım 2026, Serif'in isteği ve onayı)
+- Cast ekranında "URL'den oynat" → `CastUrlDialog`; saf mantık `CastUrl.kt` (test: `CastUrlTest`). Geçmiş `AppSettings.castUrls` ("cast_url_gecmis", en fazla 5).
+- `MainActivity.playUrl`: cihaz yoksa önce cihaz paneli; uzantı tanınmıyorsa HEAD ile tür sorulur, HTML ise uyarıp durur, cevap yoksa yine denenir.
+  `castSource`: http(s) adresi `mediaServer`'dan geçmeden doğrudan Chromecast/DLNA'ya verilir (telefon kapansa da oynamaya devam edebilir). DLNA'da .m3u8 alıcıya bağlı.
+- YouTube gibi bilinen sayfa adresleri pencerede engellenir. Paylaşılan link doğrudan medya uzantılıysa Cast ile oynar, değilse eskisi gibi TV'de açılır.
+
+## Cast'te üst çubuk (2 Kasım 2026, Serif'in onayı)
+- Cast'te TV Seç + güç yok; başlık sırası ⚙️ · "TV'de aç" · Bağlan. Kumanda bağlantı hatası Cast'teyken TV panelini kendiliğinden açmaz.
+  Araçlar ve Kısayollar'da güç yok, TV kutusu genişler (`showPower`). Kapatma yalnızca Kumanda'da.

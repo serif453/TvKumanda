@@ -32,6 +32,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -152,8 +154,11 @@ fun CastScreen(
     cc: CcUi,
     onCcPick: (FoundTv?) -> Unit,
     onCcSearch: () -> Unit,
+    onSettings: () -> Unit = {},
+    onCastUrl: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var urlOpen by remember { mutableStateOf(false) }
     // Sekme açılınca: Ayarlar → Cast "Kendiliğinden bağlan" ise son cihaz sessizce aranır (MainActivity.castWarmup)
     LaunchedEffect(Unit) { onWarmup() }
     var browse by remember { mutableStateOf<MediaKind?>(null) }
@@ -206,10 +211,15 @@ fun CastScreen(
         if (album != null) album = null else browse = null
     }
 
-    Column(modifier.fillMaxWidth().padding(top = 12.dp)) {
+    Column(modifier.fillMaxWidth()) {
         val kind = browse
         if (kind == null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Üst çubuk Cast'te yok; ⚙️ öbür sekmelerle aynı yerde
+            Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassSquare(Modifier.size(52.dp), RoundedCornerShape(18.dp), onClick = onSettings) {
+                    Icon(androidx.compose.material.icons.Icons.Outlined.Settings, "Ayarlar", tint = Pal.Text, modifier = Modifier.size(26.dp))
+                }
+                Spacer(Modifier.width(12.dp))
                 Text("TV'de aç", color = Pal.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 CastButton(cc, dlna)
             }
@@ -218,6 +228,16 @@ fun CastScreen(
             KindRow(true) { k ->
                 browse = k; album = null
                 if (!library.hasPermission(k)) { library.markAsked(k); permLauncher.launch(library.permissionsFor(k)) }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().height(56.dp).glass(RoundedCornerShape(18.dp))
+                    .clickable { urlOpen = true }.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Outlined.Link, null, tint = Pal.Text, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("URL'den oynat", color = Pal.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(24.dp))
 
@@ -236,7 +256,7 @@ fun CastScreen(
             Spacer(Modifier.weight(1f))
         } else {
             // Başlık: geri + albüm/tür adı
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(44.dp).clip(CircleShape).clickable { if (album != null) album = null else browse = null },
                     contentAlignment = Alignment.Center
@@ -314,6 +334,7 @@ fun CastScreen(
             Spacer(Modifier.height(BarSpace))
         }
     }
+    if (urlOpen) CastUrlDialog(onPlay = onCastUrl, onDismiss = { urlOpen = false })
     val v = viewer
     if (v != null) {
         PhotoViewer(

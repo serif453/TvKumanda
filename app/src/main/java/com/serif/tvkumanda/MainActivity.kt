@@ -291,6 +291,7 @@ class MainActivity : ComponentActivity() {
                     onCastNext = { castStep(1) },
                     onCastSkip = ::castSkip,
                     onCastWarmup = ::castWarmup,
+                    onCastUrl = ::playUrl,
                     onCastVolume = ::castVolume,
                     onCastPlayAt = { i -> castStepTick++; playFromList(playlist, i) },
                     onCastRepeat = ::cycleRepeat,
@@ -688,6 +689,45 @@ class MainActivity : ComponentActivity() {
         runCatching { pickMedia.launch(kind.mimeFilter) }.onFailure { toast("Dosya seçici açılamadı") }
     }
 
+    private fun isWebUri(uri: android.net.Uri) = uri.scheme.equals("http", true) || uri.scheme.equals("https", true)
+
+    /** TV'nin medyayı çekeceği adres: internet adresi olduğu gibi, telefondaki dosya yerel sunucudan. */
+    private fun castSource(uri: android.net.Uri, mime: String, ip: String): String =
+        if (isWebUri(uri)) uri.toString() else mediaServer.publish(uri, mime, ip)
+
+    /** "URL'den oynat" ve paylaşılan doğrudan video linkleri: adres TV'ye verilir, TV kendisi çeker. */
+    private fun playUrl(raw: String) {
+        val url = CastUrl.parse(raw) ?: run { toast("Geçerli bir adres değil"); return }
+        val title = CastUrl.title(url)
+        if (!castTargetReady()) { openCastPanel(title) { playUrl(url) }; return }
+        AppSettings.addCastUrl(this, url)
+        scope.launch {
+            // Uzantı yoksa ne olduğu sunucuya sorulur; cevap gelmezse yine de denenir
+            var mime = CastUrl.mimeOf(url)
+            if (mime == null) {
+                val type = withContext(kotlinx.coroutines.Dispatchers.IO) { probeContentType(url) }
+                if (CastUrl.isPageType(type)) {
+                    toast("Bu adres bir internet sayfası, video değil. Videonun doğrudan adresi gerekiyor.")
+                    return@launch
+                }
+                mime = type?.takeIf { CastUrl.isMediaType(it) }?.substringBefore(';')?.trim()
+            }
+            playlist = emptyList(); playIndex = -1; playAlbumId = null
+            val finalMime = mime ?: "video/mp4"
+            castMedia(android.net.Uri.parse(url), CastUrl.kindOf(finalMime), title, finalMime)
+        }
+    }
+
+    private fun probeContentType(url: String): String? = runCatching {
+        val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        try {
+            c.requestMethod = "HEAD"
+            c.connectTimeout = 4000
+            c.readTimeout = 4000
+            if (c.responseCode in 200..299) c.contentType else null
+        } finally { c.disconnect() }
+    }.getOrNull()
+
     /** Seçilen dosyayı telefondaki sunucudan yayınlar ve TV'nin Chromecast'ine oynatır. */
     private fun castMedia(
         uri: android.net.Uri, kind: MediaKind, knownTitle: String? = null, knownMime: String? = null,
@@ -764,7 +804,7 @@ class MainActivity : ComponentActivity() {
             try {
                 if (route == CastRoute.DLNA) {
                     withContext(castIo) {
-                        val url = mediaServer.publish(uri, mime, ip)
+                        val url = castSource(uri, mime, ip)
                         // Bağlı olduğumuz TV ise ve uykudaysa önce uyandırılır
                         if (dev!!.ip == currentIp && state == ConnState.CONNECTED) wakeTvIfAsleep(ip, waitForCast = false)
                         castStage("DLNA cihazına gönderiliyor…")
@@ -778,7 +818,7 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
                 withContext(castIo) {
-                    val url = mediaServer.publish(uri, mime, ip)
+                    val url = castSource(uri, mime, ip)
                     // Altyazı: SRT → WebVTT, telefondaki sunucudan
                     val subUrl = subUri?.let { su ->
                         runCatching {
@@ -800,7 +840,11 @@ class MainActivity : ComponentActivity() {
                 }
                 startCastPolling()
             } catch (e: Exception) {
-                cast = cast.copy(phase = CastPhase.ERROR, error = castError(e))
+                val webFailed = isWebUri(uri) && e.message.orEmpty().contains("açamadı")
+                cast = cast.copy(
+                    phase = CastPhase.ERROR,
+                    error = if (webFailed) "TV bu adresi açamadı (video adresi değil, izin gerekiyor ya da biçim desteklenmiyor)" else castError(e)
+                )
                 DiagLog.log("Cast başlatılamadı (${route.name}, $mime): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
@@ -967,6 +1011,8 @@ class MainActivity : ComponentActivity() {
             intent.action = null
             val url = TvTools.extractUrl(text)
             if (url == null) { if (text.isNotBlank()) toast("Paylaşılan metinde link bulunamadı"); return }
+            // Doğrudan video adresi Cast ile oynar; YouTube gibi sayfa linkleri eskisi gibi TV'de açılır
+            if (CastUrl.isDirect(url)) { castTabTick++; playUrl(url); return }
             if (state == ConnState.CONNECTED) openSharedLink(url)
             else {
                 pendingLink = url

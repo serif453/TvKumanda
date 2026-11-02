@@ -71,7 +71,7 @@ fun GlassText(content: @Composable () -> Unit) {
 // ---------------- Üst şerit ----------------
 
 @Composable
-fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit) {
+fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit, showPower: Boolean = true) {
     GlassText {
         Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
             GlassSquare(Modifier.size(52.dp), RoundedCornerShape(18.dp), onClick = onSettings) {
@@ -119,8 +119,9 @@ fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPow
                     )
                 }
             }
+            // Güç: kırmızı cam (yalnızca Kumanda sekmesinde; diğerlerinde TV kutusu o alana uzanır)
+            if (showPower) {
             Spacer(Modifier.width(12.dp))
-            // Güç: kırmızı cam
             val on = ui.state == ConnState.CONNECTED
             val pInter = remember { MutableInteractionSource() }
             val pScale = pressScale(pInter)
@@ -136,6 +137,7 @@ fun GlassTopBar(ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPow
                 contentAlignment = Alignment.Center
             ) {
                 Icon(AppIcons.Power, "Güç", tint = if (on) Color(0xFFFF8A95) else Glass.Red, modifier = Modifier.size(26.dp))
+            }
             }
         }
     }
