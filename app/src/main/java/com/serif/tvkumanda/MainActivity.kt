@@ -697,7 +697,8 @@ class MainActivity : ComponentActivity() {
 
     /** "URL'den oynat" ve paylaşılan doğrudan video linkleri: adres TV'ye verilir, TV kendisi çeker. */
     private fun playUrl(raw: String) {
-        val url = CastUrl.parse(raw) ?: run { toast("Geçerli bir adres değil"); return }
+        val url = CastUrl.parse(raw)
+        if (url == null) { toast("Geçerli bir adres değil"); return }
         val title = CastUrl.title(url)
         if (!castTargetReady()) { openCastPanel(title) { playUrl(url) }; return }
         AppSettings.addCastUrl(this, url)
