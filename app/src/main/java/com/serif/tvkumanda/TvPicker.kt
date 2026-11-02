@@ -47,9 +47,9 @@ import kotlinx.coroutines.coroutineScope
 /** "TV'ler" penceresinin ve TV panelinin cam renkleri (kumandadaki tasarımla aynı aile). */
 object GlassSheet {
     /** Büyük pencerenin zemini: arka planın orta tonu. */
-    val Bg = Color(0xFF1C1B40)
-    val Dialog = Color(0xFF1E1C42)
-    val Menu = Color(0xFF29265A)
+    val Bg: Color get() = AppSettings.theme.panel
+    val Dialog: Color get() = AppSettings.theme.panel
+    val Menu: Color get() = AppSettings.theme.panelTop
     /** Pencere içindeki kartlar: yarı saydam beyaz, kumandadaki cam tuşlar gibi. */
     val Card = Color.White.copy(alpha = 0.07f)
     val Border = Color.White.copy(alpha = 0.12f)
@@ -147,7 +147,7 @@ private fun PanelBody(
         Column(
             Modifier.fillMaxWidth().shadow(18.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
                 // Altındaki tuşlar görünmesin diye önce koyu, dolu bir zemin; üstüne kumandadaki cam katman
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A2656), Color(0xFF1C1B40))))
+                .background(Brush.verticalGradient(listOf(AppSettings.theme.panelTop, AppSettings.theme.panel)))
                 .glass(shape, strength = 0.8f)
                 .animateContentSize(tween(240))
                 .heightIn(max = maxH)

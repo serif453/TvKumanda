@@ -9,6 +9,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -31,6 +33,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * Arka plan temaları (Serif'in isteği, 2 Kasım 2026): yalnızca zemin renklerini değiştirir; tuşlar, mor vurgular ve yazılar
+ * aynı kalır. Hepsi koyu, çünkü yazılar ve cam kartlar koyu zemine göre tasarlandı.
+ * bgTop/bgMid/bgBottom/glow: ana sekmelerin arka planı; page/card/cardPressed: alt sayfalar; panel/panelTop: TV paneli, pencereler.
+ */
+enum class AppTheme(
+    val label: String,
+    val bgTop: Color, val bgMid: Color, val bgBottom: Color, val glow: Color,
+    val page: Color, val card: Color, val cardPressed: Color,
+    val panel: Color, val panelTop: Color
+) {
+    MOR("Mor",
+        Color(0xFF1B1A3C), Color(0xFF15162F), Color(0xFF111226), Color(0xFF6A4FE0),
+        Color(0xFF15162F), Color(0xFF23244A), Color(0xFF2E2F5C),
+        Color(0xFF1C1B40), Color(0xFF2A2656)),
+    LACIVERT("Lacivert",
+        Color(0xFF0F2140), Color(0xFF0B1A33), Color(0xFF081326), Color(0xFF2F6BE0),
+        Color(0xFF0B1A33), Color(0xFF172A4A), Color(0xFF20365C),
+        Color(0xFF13274A), Color(0xFF1E3662)),
+    GECE("Gece",
+        Color.Black, Color.Black, Color.Black, Color.Transparent,
+        Color.Black, Color(0xFF1A1A1C), Color(0xFF2A2A2D),
+        Color(0xFF141416), Color(0xFF222226)),
+    ORMAN("Orman",
+        Color(0xFF12301F), Color(0xFF0E2619), Color(0xFF0A1C13), Color(0xFF2FA866),
+        Color(0xFF0E2619), Color(0xFF1B3A29), Color(0xFF254A36),
+        Color(0xFF143424), Color(0xFF20462F)),
+    BORDO("Bordo",
+        Color(0xFF3A1420), Color(0xFF2E1019), Color(0xFF220C13), Color(0xFFC93A5A),
+        Color(0xFF2E1019), Color(0xFF46202C), Color(0xFF572A38),
+        Color(0xFF3D1623), Color(0xFF542232))
+}
 
 /**
  * Uygulama ayarları (sol üstteki ⚙️ düğmesiyle açılan sayfa). Telefonda "ayarlar" tercihlerinde saklanır.
@@ -59,6 +94,9 @@ object AppSettings {
     /** Cast'te son cihaz: NONE hatırlama, TOP listede başta göster (varsayılan), AUTO Cast'e girince kendiliğinden bağlan. */
     var castRemember by mutableStateOf("TOP")
         private set
+    /** Arka plan teması (varsayılan Mor, eski görünüm). */
+    var theme by mutableStateOf(AppTheme.MOR)
+        private set
     private var loaded = false
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
@@ -75,6 +113,7 @@ object AppSettings {
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
         hiddenTabs = p.getStringSet("gizli_sekmeler", emptySet())?.toSet().orEmpty()
         castRemember = p.getString("cast_hatirla", "TOP") ?: "TOP"
+        theme = runCatching { AppTheme.valueOf(p.getString("tema", null) ?: "MOR") }.getOrDefault(AppTheme.MOR)
     }
 
     fun setHaptic(c: Context, v: Boolean) { haptic = v; prefs(c).edit().putBoolean("titresim", v).apply(); if (v) tap(c) }
@@ -82,6 +121,7 @@ object AppSettings {
     fun setKeepScreenOn(c: Context, v: Boolean) { keepScreenOn = v; prefs(c).edit().putBoolean("ekran_acik", v).apply() }
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
     fun setCastRemember(c: Context, v: String) { castRemember = v; prefs(c).edit().putString("cast_hatirla", v).apply() }
+    fun setTheme(c: Context, v: AppTheme) { theme = v; prefs(c).edit().putString("tema", v.name).apply() }
     fun setStartTab(c: Context, v: String) { startTab = v; prefs(c).edit().putString("acilis_sekme", v).apply() }
 
     /** Alt menüde görünen sekmeler, sırasıyla (hiçbiri kalmazsa Kumanda). */
@@ -225,6 +265,14 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
                         .filter { (k, _) -> AppSettings.isTabVisible(Tab.valueOf(k)) } + ("LAST" to "Son kalınan")
                     val shownStart = AppSettings.startTab.takeIf { s -> startOptions.any { it.first == s } } ?: AppSettings.initialTab().name
                     Segmented(startOptions, shownStart) { AppSettings.setStartTab(context, it) }
+                    Spacer(Modifier.height(18.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Palette, null, tint = Pal.Text, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Text("Arka plan teması", color = Pal.Text, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    ThemePicker(AppSettings.theme) { AppSettings.setTheme(context, it) }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -354,6 +402,31 @@ private fun SettingsSwitch(checked: Boolean, enabled: Boolean = true, onChange: 
             uncheckedThumbColor = Pal.Sub, uncheckedTrackColor = Pal.Bg, uncheckedBorderColor = Pal.Sub.copy(alpha = 0.5f)
         )
     )
+}
+
+/** Temalar yan yana: renginden küçük bir daire ve adı; seçili olanın çevresi mavi, içinde tik. */
+@Composable
+private fun ThemePicker(selected: AppTheme, onSelect: (AppTheme) -> Unit) {
+    Row(Modifier.fillMaxWidth()) {
+        for (t in AppTheme.values()) {
+            val sel = t == selected
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onSelect(t) }.padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(42.dp).clip(CircleShape)
+                        .background(Brush.verticalGradient(listOf(t.panelTop, t.bgBottom)))
+                        .border(if (sel) 2.dp else 1.dp, if (sel) Pal.Blue else Color.White.copy(alpha = 0.25f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (sel) Icon(Icons.Outlined.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(t.label, color = if (sel) Pal.Text else Pal.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
 }
 
 /** Yan yana seçenekler; seçili olan mavi. */

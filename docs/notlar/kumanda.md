@@ -82,3 +82,10 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Yeni tam ekran sayfa eklerken aynısı yapılmalı. `themes.xml`'deki şerit renkleri artık etkisiz.
 - Tüm sekmeler Kumanda'nın arka planını (`glassBackdrop`) ve üst şeridini (navy) kullanır; Cast / Araçlar / Kısayollar
   kartları `Modifier.glass`. Alt sayfalar (Ayarlar, araç sayfaları, DLNA sayfası) şimdilik düz koyu (Pal.Bg).
+
+## Arka plan teması (2 Kasım 2026, Serif'in isteği ve onayı, seçenek A)
+- Ayarlar → Uygulama → "Arka plan teması" (`AppTheme`, `AppSettings.theme`, tercih `tema`): Mor (varsayılan), Lacivert, Gece, Orman, Bordo.
+- Yalnızca zeminler değişir: `Glass.BgTop/BgMid/BgBottom/Glow`, `Pal.Bg/Btn/BtnPressed/Pad`, `Navy.Bg/Card/Btn/BtnPressed`, `GlassSheet.Bg/Dialog/Menu`
+  temadan okunur. Tuşlar, mor vurgular ve yazılar sabit. Alt sayfalar da temanın koyu tonunu alır (Serif'in seçimi); bu yüzden Mor'da
+  eskiden gri olan alt sayfalar artık koyu mor. Açık tema yok: tasarım koyu zemine göre.
+- Yeni zemin rengi yazarken sabit renk değil bu değerler kullanılmalı.

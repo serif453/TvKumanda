@@ -90,10 +90,11 @@ import kotlin.math.sign
 
 // ---------- Renkler ----------
 object Pal {
-    val Bg = Color(0xFF1C1C1E)
-    val Btn = Color(0xFF2C2C2E)
-    val BtnPressed = Color(0xFF3A3A3D)
-    val Pad = Color(0xFF2A2A2D)
+    // Alt sayfaların zemini ve kartları seçili temadan gelir
+    val Bg: Color get() = AppSettings.theme.page
+    val Btn: Color get() = AppSettings.theme.card
+    val BtnPressed: Color get() = AppSettings.theme.cardPressed
+    val Pad: Color get() = AppSettings.theme.card
     val Text = Color(0xFFF5F5F7)
     val Sub = Color(0xFF9A9AA2)
     val Purple = Color(0xFF8E5CF7)
@@ -108,11 +109,11 @@ val RingBrush = Brush.linearGradient(listOf(Pal.Purple, Pal.Blue))
 
 /** Kumanda sekmesinin lacivert teması (şimdilik yalnızca Kumanda'da). */
 object Navy {
-    val Bg = Color(0xFF0A0E1A)
-    val Card = Color(0xFF0F1526)
-    val Btn = Color(0xFF161D31)
-    val BtnPressed = Color(0xFF1F2842)
-    val Border = Color(0xFF232C47)
+    val Bg: Color get() = AppSettings.theme.page
+    val Card: Color get() = AppSettings.theme.panel
+    val Btn: Color get() = AppSettings.theme.card
+    val BtnPressed: Color get() = AppSettings.theme.cardPressed
+    val Border = Color.White.copy(alpha = 0.10f)
     val Accent = Color(0xFF5B7CFF)
     val AccentSoft = Color(0xFF1C2A5C)
     val Sub = Color(0xFF9AA3BF)
@@ -126,7 +127,7 @@ fun RemoteTheme(content: @Composable () -> Unit) {
             primary = Pal.Blue,
             background = Pal.Bg,
             surface = Pal.Bg,
-            surfaceContainerLow = Color(0xFF242426),
+            surfaceContainerLow = AppSettings.theme.panel,
             onSurface = Pal.Text,
             onBackground = Pal.Text
         ),

@@ -30,10 +30,11 @@ import androidx.compose.ui.unit.dp
  * yarı saydam katman aynı görünümü verir ve her Android sürümünde çalışır.
  */
 object Glass {
-    val BgTop = Color(0xFF1B1A3C)
-    val BgMid = Color(0xFF15162F)
-    val BgBottom = Color(0xFF111226)
-    val Glow = Color(0xFF6A4FE0)
+    // Arka plan renkleri seçili temadan gelir (Ayarlar → Arka plan teması)
+    val BgTop: Color get() = AppSettings.theme.bgTop
+    val BgMid: Color get() = AppSettings.theme.bgMid
+    val BgBottom: Color get() = AppSettings.theme.bgBottom
+    val Glow: Color get() = AppSettings.theme.glow
     val Text = Color(0xFFF3F3FB)
     val Sub = Color(0xFFAEB0CC)
     val Lavender = Color(0xFFB9A2FF)

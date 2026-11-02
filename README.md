@@ -48,6 +48,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 - Fare imleç hızı ve kaydırma şeridinin tarafı
 - Açılışta son TV'ye kendiliğinden bağlanma; kayıtlı TV'ler ve bağlantı türü
 - Açılış sekmesi (Kumanda, Cast, Araçlar ya da son kalınan)
+- Arka plan teması: Mor, Lacivert, Gece (tam siyah), Orman, Bordo
 - Alt menü: istemediğin sekmeleri gizleme (en az biri açık kalır; tek sekme kalınca alt menü gizlenir)
 - Hakkında: sürüm, sıkça sorulan sorular, lisans ve GitHub sayfası
 
