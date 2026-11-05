@@ -376,7 +376,8 @@ fun RemoteScreen(
     // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini); Kumanda'daki kutulardan da açılır
     if (tab == Tab.TOOLS || tab == Tab.REMOTE) ToolPageHost()
     LaunchedEffect(adbReady) {
-        if (!adbReady && tab == Tab.REMOTE) {
+        // Bağlantı yenilenirken süren bir aktarım varsa pencere açık kalır (aktarım kendini toparlar)
+        if (!adbReady && tab == Tab.REMOTE && !TvFiles.transferring) {
             ToolPages.page = null
             if (remoteTool == ToolId.APK_INSTALL || remoteTool == ToolId.SEND_FILES) remoteTool = null
         }

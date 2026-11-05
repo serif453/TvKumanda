@@ -148,7 +148,23 @@ object TvFiles {
      * [open] her denemede akışı baştan açar (yedek yola geçerken dosya yeniden okunur).
      */
     private fun pushStream(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int = 1) =
-        transfer { pushStreamInner(open, size, remote, progress, cancel, roomFactor) }
+        transfer { retryOnLinkLoss(cancel, progress) { pushStreamInner(open, size, remote, progress, cancel, roomFactor) } }
+
+    /** Bağlantı koptuğu için yarıda kalan aktarımı, bağlantıyı toparlayıp bir kez baştan dener. */
+    private inline fun <T> retryOnLinkLoss(cancel: Cancel?, progress: (Float) -> Unit, block: () -> T): T =
+        try { block() } catch (e: Exception) {
+            if (cancel?.cancelled == true || !isLinkLoss(e)) throw e
+            DiagLog.log("Aktarımda bağlantı koptu (${e.javaClass.simpleName}: ${e.message.orEmpty()}), yeniden bağlanıp baştan deneniyor")
+            adb().reviveForTransfer()
+            progress(0f)
+            block()
+        }
+
+    private fun isLinkLoss(e: Throwable): Boolean {
+        val m = e.message.orEmpty().lowercase()
+        return e is java.net.SocketException || e is java.io.EOFException || e is java.net.SocketTimeoutException ||
+            "closed" in m || "broken pipe" in m || "reset" in m
+    }
 
     private fun pushStreamInner(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int) {
         val tv = adb()
@@ -567,7 +583,7 @@ object TvFiles {
     fun preview(context: Context, f: TvFile): File {
         if (f.size > 25L * 1024 * 1024) throw IOException("Fotoğraf önizleme için çok büyük; telefona indirebilirsin")
         val dst = File(context.cacheDir, "onizleme").apply { mkdirs(); listFiles()?.forEach { it.delete() } }.let { File(it, "p_" + f.name) }
-        transfer { adb().dadbOrThrow().pull(dst, f.path) }
+        transfer { retryOnLinkLoss(null, {}) { adb().dadbOrThrow().pull(dst, f.path) } }
         return dst
     }
 
@@ -577,9 +593,9 @@ object TvFiles {
 
     /** TV'deki dosyayı telefonun İndirilenler/TV Kumanda klasörüne indirir. */
     fun download(context: Context, f: TvFile, progress: (Float) -> Unit, cancel: Cancel? = null): Uri {
-        val d = adb().dadbOrThrow()
         val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.name.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
-        return transfer { saveToDownloads(context, f.name, mime) { out -> d.pull(CountingSink(out.sink(), f.size, progress, cancel), f.path) } }
+        // Yazılmaya başlanmış telefondaki dosyaya baştan yazılamayacağı için burada otomatik yeniden deneme yok
+        return transfer { saveToDownloads(context, f.name, mime) { out -> adb().dadbOrThrow().pull(CountingSink(out.sink(), f.size, progress, cancel), f.path) } }
     }
 }

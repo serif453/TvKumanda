@@ -262,15 +262,25 @@ class TvRemote(private val context: Context) : RemoteLink {
      */
     fun ping(timeoutSec: Long = 4): Boolean {
         val d = dadb ?: return false
-        if (fast != null) {
+        val stale = fast
+        if (stale != null) {
             val ok = synchronized(serverLock) {
                 val s = fast ?: return@synchronized null
                 if (!sendFast("h")) return@synchronized false
                 val task = waiter.submit<Boolean> { s.source.readUtf8Line() == "END" }
                 try { task.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { task.cancel(true); false }
             }
-            if (ok != null) return ok
+            if (ok == true) return true
+            // Yalnızca tuş sunucusu cevapsız kaldıysa bağlantı kopmuş sayılmaz: asıl ADB yolundan da sorulur.
+            // ADB canlıysa tuş sunucusu arkada yeniden başlatılır (uygulamaya dönüşte cevap karışabiliyordu).
+            val alive = shellPing(d, timeoutSec)
+            if (alive) waiter.submit { runCatching { restartFastMode(stale) } }
+            return alive
         }
+        return shellPing(d, timeoutSec)
+    }
+
+    private fun shellPing(d: Dadb, timeoutSec: Long): Boolean {
         val task = waiter.submit<Boolean> { d.shell("echo h").output.trim() == "h" }
         return try { task.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { task.cancel(true); false }
     }
@@ -446,6 +456,17 @@ class TvRemote(private val context: Context) : RemoteLink {
         runCatching { stale.close() }
         fast = null
         dadb?.let { startFastMode(it, exists = true) }
+    }
+
+    /**
+     * Dosya aktarımı bağlantı hatasıyla yarıda kaldı: bağlantı hâlâ canlıysa dokunulmaz (başka yer yenilemiş olabilir),
+     * değilse yeniden kurulur. Ardından aktarım baştan bir kez daha denenir.
+     */
+    @Synchronized
+    fun reviveForTransfer() {
+        val d = dadb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
+        if (shellPing(d, 4)) return
+        reconnect()
     }
 
     private fun reconnect() {

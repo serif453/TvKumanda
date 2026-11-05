@@ -582,7 +582,11 @@ class MainActivity : ComponentActivity() {
         pulseRunning = true
         val gen = connGen
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { adb.ping() }.getOrDefault(false) }
+            // Tek cevapsızlık kopma sayılmaz (uygulamaya dönüşte Wi-Fi bir an geç uyanabiliyor): 2 sn sonra bir daha sorulur
+            val ok = withContext(Dispatchers.IO) {
+                if (runCatching { adb.ping() }.getOrDefault(false) || TvFiles.transferring) true
+                else { Thread.sleep(2000); runCatching { adb.ping() }.getOrDefault(false) }
+            }
             pulseRunning = false
             if (ok || TvFiles.transferring || gen != connGen || state != ConnState.CONNECTED || method != ConnMethod.ADB) return@launch
             onLinkLost("ADB nabzı cevapsız")

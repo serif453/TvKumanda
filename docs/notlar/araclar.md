@@ -73,6 +73,12 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
   nabza (`ping`, 4 sn) geç cevap veriyor, uygulama "koptu" sanıp bağlantıyı yeniliyor, aktarımın kullandığı dadb kapanıyordu.
   Artık `TvFiles.transferring` (gönderme ve çekme) sürerken `checkPulse` sorulmaz ve `TvRemote.shell` hata olsa da yeniden
   bağlanmaz. Hızlı yolun (nc) soketi de `TvSocket.create` ile Wi-Fi'a bağlanır. Kopan bağlantı mesajı `errorText`'te Türkçe.
+- **İkinci adım (5 Kasım 2026, v0.172 sonrası Serif'in videosu):** Dosya seçiciden dönünce `onResume` nabzı tuş sunucusundan
+  tek cevapsızlıkla "koptu" deyip bağlantıyı yeniliyor, Dosya gönder penceresi kapanıp gönderim ölüyordu. Artık `ping`
+  tuş sunucusu cevapsızsa ADB kabuğundan da sorar (canlıysa tuş sunucusunu arkada yeniden başlatır), `checkPulse` 2 sn
+  sonra bir kez daha dener. Aktarım sürerken bağlantı yenilense de pencere kapanmaz. Bağlantı hatasıyla yarıda kalan
+  gönderim (`pushStream`, önizleme) `reviveForTransfer` ile bağlantıyı toparlayıp bir kez baştan dener. Telefona indirme
+  (`download`) yeniden denenmez: yazılmaya başlanmış dosyaya baştan yazılamaz.
 - **Hız (1 Kasım 2026, Serif'in onayıyla):** Performans ve Çalışan uygulamalar'daki sürekli ölçümler uygulama arkadayken
   duraklar (`rememberForeground` + `awaitForeground`, ToolSheets.kt); dönünce önceki ölçüm bayat sayılır. Ekran kaydı yoklaması
   bilerek hariç. "ADB gecikmesi" = `TvRemote.shellTimed` (kilit alındıktan sonraki süre; süreç ölçümünü bekleme sayılmaz).
