@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -109,11 +110,16 @@ fun AirMousePad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMou
     val glow by animateFloatAsState(if (holding) 1f else 0f, tween(if (holding) 90 else 260), label = "air")
     val shape = RoundedCornerShape(36.dp)
     val left = MouseSettings.stripLeft
-    Box(modifier.glass(shape, strength = 0.75f).clip(shape)) {
+    BoxWithConstraints(modifier.glass(shape, strength = 0.75f).clip(shape)) {
+        // Dar alanda (küçük ekran, uzun üst kısım) Tıkla alçalır, boşluklar azalır; hareket alanı büyük kalsın
+        val tight = maxHeight < 260.dp
         Column(
             Modifier.fillMaxSize()
-                .padding(start = if (left) 72.dp else 12.dp, end = if (left) 12.dp else 72.dp, top = 52.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(
+                    start = if (left) 72.dp else 12.dp, end = if (left) 12.dp else 72.dp,
+                    top = if (tight) 48.dp else 52.dp, bottom = if (tight) 10.dp else 12.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 10.dp)
         ) {
             // Basılı tut ve telefonu oynat
             val holdShape = RoundedCornerShape(26.dp)
@@ -142,27 +148,40 @@ fun AirMousePad(modifier: Modifier, fastMode: Boolean, method: ConnMethod, onMou
                     .described("Air Mouse hareket alanı"),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Outlined.ScreenRotation, null,
-                        tint = Glass.Text.copy(alpha = 0.55f + 0.45f * glow), modifier = Modifier.size(46.dp)
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        if (holding) "Telefonu oynat" else "Basılı tut ve telefonu oynat",
-                        color = Glass.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Kısa dokunma = tıkla",
-                        color = Glass.Text.copy(alpha = 0.55f), fontSize = 13.sp, textAlign = TextAlign.Center
-                    )
+                val iconTint = Glass.Text.copy(alpha = 0.55f + 0.45f * glow)
+                val label = if (holding) "Telefonu oynat" else "Basılı tut, telefonu oynat"
+                BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (maxHeight < 130.dp) {
+                        // Dar: simge ve yazı yan yana tek satır, alt yazı gizli
+                        Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.ScreenRotation, null, tint = iconTint, modifier = Modifier.size(26.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                label, color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Column(Modifier.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Outlined.ScreenRotation, null, tint = iconTint, modifier = Modifier.size(46.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                label, color = Glass.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Kısa dokunma = tıkla",
+                                color = Glass.Text.copy(alpha = 0.55f), fontSize = 13.sp, textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                 }
             }
             // Tıkla: dokununca tık, basılı tutup alanla birlikte oynatınca sürükler
             val btnShape = RoundedCornerShape(22.dp)
             Box(
-                Modifier.fillMaxWidth().height(58.dp).clip(btnShape)
+                Modifier.fillMaxWidth().height(if (tight) 46.dp else 58.dp).clip(btnShape)
                     .background(Color.White.copy(alpha = if (buttonDown) 0.18f else 0.08f))
                     .pointerInput(Unit) {
                         detectTapGestures(onPress = {

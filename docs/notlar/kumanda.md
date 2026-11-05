@@ -165,3 +165,5 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Hesap `AirMotion.kt` (saf, `AirMotionTest`): sağa-sola = yerçekimi yönündeki dönüş (telefon düz ya da dik tutulsa da doğru),
   yukarı-aşağı = cihaz X ekseni; 0.025 rad/sn ölü bölge, yumuşatma, hafif hızlanma, 1300 px/rad × hız ayarı.
   Philips'te denenecek: yönler, hız, titreme.
+  Dar alan (v0.170'te yazı kesiliyordu, Serif): yüzey <260 dp ise Tıkla 46 dp, boşluklar azalır; hareket alanı <130 dp ise
+  simge + "Basılı tut, telefonu oynat" tek satır, "Kısa dokunma = tıkla" gizli.
