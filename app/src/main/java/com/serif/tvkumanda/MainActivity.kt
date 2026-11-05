@@ -81,6 +81,15 @@ class MainActivity : ComponentActivity() {
     private var volumeJob: Job? = null
     private var volumeTick by mutableStateOf(0)
 
+    // ---- Bağlantı kararlılığı (5 Kasım 2026, Serif) ----
+    /** Her bağlanma denemesinin numarası: eski bir denemenin geç gelen sonucu yenisinin durumunu ezmez. */
+    private var connGen = 0
+    /** Bağlantı ağ yüzünden koptu: Wi-Fi geri gelince ya da uygulama öne gelince kendiliğinden yeniden bağlanılır. */
+    private var lostByNetwork = false
+    /** Son başarılı gönderim (ms); yakın zamanda tuş gittiyse nabız atlanır (bağlantının canlı olduğu zaten belli). */
+    @Volatile private var lastSendAt = 0L
+    private var pulseRunning = false
+
     // Standart moddaki tam ekran yazma ekranı
     private var typing by mutableStateOf(false)
     private var typingSeed by mutableStateOf("")
@@ -153,6 +162,9 @@ class MainActivity : ComponentActivity() {
             if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) PhonePlayer.pause()
         })
         DiagLog.init(filesDir)
+        // TV'ye her zaman Wi-Fi'dan gidilir; Wi-Fi gidip gelince kumanda durumu anında güncellenir
+        WifiNet.init(applicationContext)
+        WifiNet.onChange = { on -> runOnUiThread { onWifiChange(on) } }
         CrashLog.header = runCatching {
             "TV Kumanda ${packageManager.getPackageInfo(packageName, 0).versionName} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
         }.getOrDefault("")
@@ -209,6 +221,17 @@ class MainActivity : ComponentActivity() {
                 if (!visible || !LiveUi.remoteTabOpen) continue      // gösterilmiyorsa sorulmaz; son bilgi kalır
                 val np = withContext(Dispatchers.IO) { runCatching { adb.nowPlaying() }.getOrNull() }
                 if (np == null || !np.sameAs(nowPlaying)) nowPlaying = np
+            }
+        }
+        // ADB nabzı: uygulama ekrandayken ~10 sn'de bir (hızlı mod yoksa 20 sn) bağlantı canlı mı diye sorulur.
+        // Standart'ta gerek yok: TV zaten 5 sn'de bir kendisi soruyor.
+        scope.launch {
+            while (isActive) {
+                delay(if (fastMode) 10_000 else 20_000)
+                val visible = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                if (!visible || state != ConnState.CONNECTED || method != ConnMethod.ADB) continue
+                if (android.os.SystemClock.elapsedRealtime() - lastSendAt < 5_000) continue
+                checkPulse()
             }
         }
         TvTools.onRebooting = { runOnUiThread { reconnectAfterReboot() } }
@@ -328,6 +351,8 @@ class MainActivity : ComponentActivity() {
 
     private fun connect(ip: String) {
         if (ip.isBlank()) { state = ConnState.ERROR; message = "IP adresi gir"; return }
+        val gen = ++connGen
+        lostByNetwork = false
         currentIp = ip
         state = ConnState.CONNECTING
         message = if (method == ConnMethod.ADB) "Bağlanıyor… TV'de izin isterse onayla" else "Bağlanıyor…"
@@ -336,13 +361,17 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             try {
                 val model = withContext(io) { link.connectTo(ip) }
+                if (gen != connGen) { closeIfStale(link); return@launch }
                 onConnected(model, ip)
             } catch (e: AtvRemote.PairingRequired) {
+                if (gen != connGen) return@launch
                 DiagLog.log("Eşleştirme gerekli: $ip")
                 startPairing(ip)
             } catch (e: Exception) {
+                if (gen != connGen) return@launch
                 state = ConnState.ERROR
-                message = "Bağlanamadı: ${e.message ?: e.javaClass.simpleName}"
+                if (e is TvSocket.NoWifi) lostByNetwork = true
+                message = "Bağlanamadı: ${connError(e)}"
                 DiagLog.log("Bağlanamadı: $ip (${methodLabel()}) — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
@@ -416,6 +445,8 @@ class MainActivity : ComponentActivity() {
     /** Bağlantıyı kapatır (kayıt durur). */
     private fun disconnect() {
         val old = remote
+        connGen++
+        lostByNetwork = false
         pairing = false
         closeTyping()
         Thread { runCatching { old.close() } }.start()
@@ -445,6 +476,8 @@ class MainActivity : ComponentActivity() {
     /** Yöntem değişince açık bağlantı kapatılır; diğer yönteme otomatik geçiş yapılmaz. */
     private fun switchMethod(m: ConnMethod) {
         val old = remote
+        connGen++
+        lostByNetwork = false
         method = m
         DiagLog.log("Bağlantı türü değişti: ${methodLabel()}")
         pairing = false
@@ -508,22 +541,105 @@ class MainActivity : ComponentActivity() {
     /** TV bağlantıyı kapattıysa (ör. uyku sonrası) bir kez sessizce yeniden bağlanmayı dener. */
     private fun onStandardDisconnected() {
         if (method != ConnMethod.STANDARD || state != ConnState.CONNECTED) return
+        onLinkLost("Standart bağlantıyı TV kapattı")
+    }
+
+    /**
+     * Bağlantı koptu (TV kapattı ya da nabız cevapsız kaldı): ekranda "Bağlı" kalmaz, bir kez sessizce
+     * yeniden bağlanılır. Olmazsa hata gösterilir; Wi-Fi geri gelince ya da uygulama öne gelince yeniden denenir.
+     */
+    private fun onLinkLost(why: String) {
         val ip = currentIp
-        DiagLog.log("Standart bağlantıyı TV kapattı, yeniden bağlanılıyor: $ip")
+        if (!WifiNet.available && TvSocket.isLocal(ip)) { onWifiChange(false); return }
+        val link = remote
+        val gen = ++connGen
+        DiagLog.log("$why, yeniden bağlanılıyor: $ip")
+        state = ConnState.CONNECTING
+        message = "Bağlantı koptu, yeniden bağlanılıyor…"
+        fastMode = false
         scope.launch {
             delay(1000)
             try {
-                val model = withContext(io) { atv.connectTo(ip) }
-                if (method == ConnMethod.STANDARD) tvName = savedTvs.firstOrNull { it.ip == ip }?.display ?: model
+                val model = withContext(io) { link.connectTo(ip) }
+                if (gen != connGen) { closeIfStale(link); return@launch }
+                onConnected(model, ip)
                 DiagLog.log("Yeniden bağlandı: $ip")
             } catch (e: Exception) {
-                if (method == ConnMethod.STANDARD) {
-                    state = ConnState.ERROR
-                    message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
-                    DiagLog.log("Bağlantı koptu: $ip — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
-                }
+                if (gen != connGen) return@launch
+                state = ConnState.ERROR
+                lostByNetwork = true
+                message = "Bağlantı koptu: ${connError(e)}"
+                DiagLog.log("Bağlantı koptu: $ip — ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
         }
+    }
+
+    /** ADB nabzı: cevap gelmezse bağlantı kopmuş sayılır. */
+    private fun checkPulse() {
+        if (pulseRunning) return
+        pulseRunning = true
+        val gen = connGen
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { runCatching { adb.ping() }.getOrDefault(false) }
+            pulseRunning = false
+            if (ok || gen != connGen || state != ConnState.CONNECTED || method != ConnMethod.ADB) return@launch
+            onLinkLost("ADB nabzı cevapsız")
+        }
+    }
+
+    /** Wi-Fi gitti: bağlantı hemen kapatılır (mobil veride "Bağlı" görünmez). Geldi: kopan bağlantı yeniden kurulur. */
+    private fun onWifiChange(on: Boolean) {
+        if (!on) {
+            if (state != ConnState.CONNECTED && state != ConnState.CONNECTING) return
+            if (!TvSocket.isLocal(currentIp)) return       // uzaktan (VPN) bağlantıya dokunulmaz
+            val old = remote
+            connGen++
+            pairing = false
+            closeTyping()
+            Thread { runCatching { old.close() } }.start()
+            state = ConnState.ERROR
+            fastMode = false
+            apps = emptyList()
+            volume = null
+            muted = null
+            lostByNetwork = true
+            message = "Wi-Fi bağlantısı gitti; geri gelince yeniden bağlanılacak"
+            DiagLog.log("Wi-Fi gitti, TV bağlantısı kapatıldı")
+        } else {
+            if (!lostByNetwork || currentIp.isBlank()) return
+            if (state == ConnState.CONNECTED || state == ConnState.CONNECTING) return
+            scope.launch {
+                delay(1500)   // Wi-Fi'ın adres alması için kısa bekleme
+                if (!lostByNetwork || state == ConnState.CONNECTED || state == ConnState.CONNECTING || !WifiNet.available) return@launch
+                DiagLog.log("Wi-Fi geri geldi, yeniden bağlanılıyor: $currentIp")
+                connect(currentIp)
+            }
+        }
+    }
+
+    /** Eski bir denemenin geç gelen başarısı: o bağlantı artık kullanılmıyorsa kapatılır. */
+    private fun closeIfStale(link: RemoteLink) {
+        if (remote !== link || (state != ConnState.CONNECTING && state != ConnState.CONNECTED))
+            Thread { runCatching { link.close() } }.start()
+    }
+
+    /** Bağlantı hatasını sade cümleye çevirir. */
+    private fun connError(e: Exception): String = when (e) {
+        is TvSocket.NoWifi -> e.message.orEmpty()
+        is java.net.SocketTimeoutException -> "TV yanıt vermedi (kapalı ya da başka ağda olabilir)"
+        is java.net.NoRouteToHostException -> "TV'ye ulaşılamadı (kapalı ya da IP değişmiş olabilir)"
+        is java.net.ConnectException ->
+            if (e.message.orEmpty().contains("refused", ignoreCase = true)) "TV bağlantıyı kabul etmedi (bu bağlantı türü TV'de kapalı olabilir)"
+            else "TV'ye ulaşılamadı (kapalı ya da IP değişmiş olabilir)"
+        else -> e.message ?: e.javaClass.simpleName
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Uygulama öne gelince: ADB bağlıysa hemen nabız; ağ yüzünden koptuysa yeniden bağlan
+        if (state == ConnState.CONNECTED && method == ConnMethod.ADB) checkPulse()
+        else if (lostByNetwork && state == ConnState.ERROR && currentIp.isNotBlank() &&
+            (WifiNet.available || !TvSocket.isLocal(currentIp))) connect(currentIp)
     }
 
     private fun loadApps(ip: String) {
@@ -563,9 +679,13 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             try {
                 withContext(io) { link.action() }
+                lastSendAt = android.os.SystemClock.elapsedRealtime()
                 fastMode = remote.isFast
             } catch (e: Exception) {
+                if (remote !== link || state != ConnState.CONNECTED) return@launch   // bu arada başka bağlantı kuruldu
+                connGen++
                 state = ConnState.ERROR
+                lostByNetwork = true
                 fastMode = false
                 message = "Bağlantı koptu: ${e.message ?: e.javaClass.simpleName}"
                 DiagLog.log("Bağlantı koptu (${methodLabel()}): ${e.javaClass.simpleName}: ${e.message.orEmpty()}")

@@ -109,7 +109,7 @@ object TvPing {
     fun isOnline(ip: String, timeoutMs: Int = 1200): Boolean =
         listOf(AtvRemote.PORT_REMOTE, 5555).any { port ->
             runCatching {
-                java.net.Socket().use { it.connect(java.net.InetSocketAddress(ip, port), timeoutMs) }
+                TvSocket.create(ip).use { it.connect(java.net.InetSocketAddress(ip, port), timeoutMs) }
                 true
             }.getOrDefault(false)
         }

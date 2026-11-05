@@ -48,7 +48,7 @@ class TvRemote(private val context: Context) : RemoteLink {
         close()
         host = ip
         this.port = port
-        val d = Dadb.create(ip, port, keyPair)
+        val d = Dadb.create(ip, port, keyPair, connectTimeout = CONNECT_TIMEOUT)
         // Model adı ve tuş sunucusunun TV'de hazır olup olmadığı tek komutta öğrenilir
         val out = d.shell("getprop ro.product.model; [ -f $serverPath ] && echo SERVER_OK").output
         val model = out.lineSequence().firstOrNull()?.trim().orEmpty()
@@ -197,7 +197,7 @@ class TvRemote(private val context: Context) : RemoteLink {
      * Bu nesnenin açık bağlantısına dokunmaz; aynı ADB anahtarı kullanılır.
      */
     fun oneShot(ip: String, command: String): String =
-        Dadb.create(ip, 5555, keyPair).use { it.shell(command).output }
+        Dadb.create(ip, 5555, keyPair, connectTimeout = CONNECT_TIMEOUT).use { it.shell(command).output }
 
     /** TV'deki başlatılabilir uygulamaları listeler. Kilit tutmaz, tuş gönderimini bekletmez. */
     override fun listApps(): List<TvApp> {
@@ -251,6 +251,26 @@ class TvRemote(private val context: Context) : RemoteLink {
             val pkg = t.substring(i + 1)
             TvPackage(pkg, appName(pkg), pkg in sys, pkg in dis, "", t.substring(0, i), 0)
         }.filter { it.pkg != context.packageName }
+    }
+
+    /**
+     * Nabız: bağlantı gerçekten canlı mı (birkaç saniye içinde cevap gelmezse false).
+     * Hızlı modda TV'deki tuş sunucusuna tek satır gider (TV'de yeni program çalışmaz);
+     * hızlı mod yoksa küçük bir kabuk komutu kullanılır. Kilit tutmaz, tuşları bekletmez.
+     */
+    fun ping(timeoutSec: Long = 4): Boolean {
+        val d = dadb ?: return false
+        if (fast != null) {
+            val ok = synchronized(serverLock) {
+                val s = fast ?: return@synchronized null
+                if (!sendFast("h")) return@synchronized false
+                val task = waiter.submit<Boolean> { s.source.readUtf8Line() == "END" }
+                try { task.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { task.cancel(true); false }
+            }
+            if (ok != null) return ok
+        }
+        val task = waiter.submit<Boolean> { d.shell("echo h").output.trim() == "h" }
+        return try { task.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { task.cancel(true); false }
     }
 
     /** TV'de şu an çalan medya (yardımcı yoksa ya da bir şey çalmıyorsa null). */
@@ -430,7 +450,7 @@ class TvRemote(private val context: Context) : RemoteLink {
         runCatching { fast?.close() }
         fast = null
         runCatching { dadb?.close() }
-        val d = Dadb.create(host, port, keyPair)
+        val d = Dadb.create(host, port, keyPair, connectTimeout = CONNECT_TIMEOUT)
         dadb = d
         startFastMode(d)
     }
@@ -526,6 +546,9 @@ private val NAME_SKIP = setOf("com", "tv", "android", "app", "apps", "mobile", "
  * kabuk komutuyla ("input keyevent") her seferinde kabul ediyor.
  * Giriş kaynağı, Rehber, Bilgi, Altyazı, Ses dili.
  */
+/** TV'ye ulaşılamazsa bağlanma en fazla bu kadar bekler (eskiden sınırsızdı, "Bağlanıyor…" takılı kalıyordu). */
+private const val CONNECT_TIMEOUT = 5_000
+
 private val SLOW_KEYS = setOf(178, 172, 165, 175, 222)
 
 /** dumpsys audio çıktısından sessiz durumu (saf, test edilebilir). Hiçbir bilgi yoksa null. */

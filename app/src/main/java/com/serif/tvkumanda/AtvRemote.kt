@@ -9,7 +9,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.math.BigInteger
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
@@ -172,8 +171,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
 
         if (pin == null) trust.seen?.let { prefs.edit().putString(pinKey(ip), sha256Hex(it.encoded)).apply() }
 
-        // TV en geç 5 sn'de bir ping atar; 20 sn sessizlik bağlantının koptuğunu gösterir
-        s.soTimeout = 20_000
+        // TV en geç 5 sn'de bir ping atar; 12 sn sessizlik bağlantının koptuğunu gösterir (eskiden 20 sn)
+        s.soTimeout = 12_000
         socket = s
         out = o
         Thread({ readLoop(s, inp, o) }, "atv-reader").apply { isDaemon = true }.start()
@@ -535,8 +534,8 @@ class AtvRemote(private val context: Context) : RemoteLink {
         ensureClientKey()
         val ctx = SSLContext.getInstance("TLS")
         ctx.init(arrayOf(ClientKeyManager()), arrayOf(trust), null)
-        val raw = Socket()
-        raw.connect(InetSocketAddress(ip, port), 5_000)
+        val raw = TvSocket.create(ip)
+        try { raw.connect(InetSocketAddress(ip, port), 5_000) } catch (e: Exception) { runCatching { raw.close() }; throw e }
         raw.tcpNoDelay = true
         val s = ctx.socketFactory.createSocket(raw, ip, port, true) as SSLSocket
         s.soTimeout = 10_000

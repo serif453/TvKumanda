@@ -92,7 +92,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
 Kendi planlanan özellikler bittikten sonra:
 1. ADB'de Türkçe harf: metni TV panosuna koyup yapıştırmak.
 2. Akıllı bağlantı hatası: tek sebep + çözüm (TV kapalı, IP değişmiş, ADB kapalı, VPN…).
-3. VPN / mobil veri tuzağı: TV bağlantısını Wi-Fi'a zorlamak.
+3. ~~VPN / mobil veri tuzağı: TV bağlantısını Wi-Fi'a zorlamak.~~ Yapıldı (5 Kasım 2026, `docs/notlar/kumanda.md` → Bağlantı kararlılığı).
 4. Kodlu kablosuz hata ayıklama ile bilgisayarsız ADB eşleştirmesi.
 5. Geri alınabilir gereksiz uygulama listeleri (marka marka).
 6. "TV dondu" tuşu; ekran kapalı ses açık; şu an çalan.

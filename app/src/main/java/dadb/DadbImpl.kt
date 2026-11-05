@@ -79,7 +79,8 @@ internal class DadbImpl @Throws(IllegalArgumentException::class) constructor(
 
     private fun newConnection(): Pair<AdbConnection, Socket> {
         val socketAddress = InetSocketAddress(host, port)
-        val socket = Socket()
+        // TV Kumanda: ev ağı adreslerine Wi-Fi üzerinden gidilir (mobil veriye kaymasın)
+        val socket = com.serif.tvkumanda.TvSocket.create(host)
         socket.soTimeout = socketTimeout
         socket.connect(socketAddress, connectTimeout)
         if (keepAlive) {

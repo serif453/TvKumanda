@@ -133,3 +133,17 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   (kutular 38 dp, araç simgeleri 46 dp, Geri 36, Ana Sayfa 38, mikrofon 36). Adlar sesli okuma (`semantics`) için duruyor.
 - **Yön dairesinin içi (5 Kasım 2026, v0.166 sonrası, Serif):** düz `0xFF1D1D21` yerine Geri / Ana Sayfa tuşlarıyla aynı cam
   (`Modifier.glass(CircleShape)`: üstte hafif açık, aşağı koyulaşan, ince parlak kenar). Orta tuş, oklar ve dilim parlaması aynı.
+- **Bağlantı kararlılığı (5 Kasım 2026, Serif: "kararsız, mobil veride bağlı görünüyor, Wi-Fi'da bağlanamıyorum"):**
+  - Wi-Fi'a zorlama: ev ağı adreslerine giden tüm TV soketleri (Standart, ADB/dadb, TvPing) `TvSocket.create` ile Wi-Fi ağına
+    bağlanır (`WifiNet`, internetsiz Wi-Fi de sayılır). Honor "Wi-Fi+" gibi özellikler trafiği mobil veriye kaydırıyordu.
+    Wi-Fi yoksa "Wi-Fi'a bağlı değilsin" (boşuna denenmez). Ev ağı dışı adres (VPN ile uzaktan) olduğu gibi kalır.
+  - ADB bağlanma süresi 5 sn (`CONNECT_TIMEOUT`; eskiden sınırsızdı, "Bağlanıyor…" takılıyordu). TV'deki izin onayı süresi sınırsız kalır.
+  - ADB nabzı: uygulama ekrandayken 10 sn'de bir (hızlı mod yoksa 20 sn, son 5 sn'de tuş gittiyse atlanır) `TvRemote.ping`:
+    hızlı kanala "h" → TV "END" der (4 sn). Cevapsızsa `onLinkLost`: "Yeniden bağlanılıyor…", bir deneme, olmazsa hata.
+    Serif yük sordu: birkaç bayt, yalnızca uygulama açıkken; Standart'ta TV zaten 5 sn'de bir soruyor.
+  - Standart: TV sessizliği 12 sn'de kopuş sayılır (eskiden 20).
+  - Wi-Fi gidince bağlantı anında kapanır ("Wi-Fi bağlantısı gitti"), geri gelince ya da uygulama öne gelince (`onResume`)
+    kendiliğinden yeniden bağlanılır (`lostByNetwork`). Kullanıcı "Bağlantıyı kes" derse yeniden bağlanılmaz.
+  - `connGen`: her bağlanma denemesinin numarası; eski denemenin geç sonucu yenisinin durumunu ezmez, kullanılmayan bağlantı kapatılır.
+  - Hata mesajları sadeleşti (`connError`): yanıt vermedi / ulaşılamadı / kabul etmedi.
+

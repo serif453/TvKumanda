@@ -96,6 +96,10 @@ public final class KeyServer {
                     listApps();
                 } else if (line.equals("P")) {
                     listPackages();
+                } else if (line.equals("h")) {
+                    // Nabız: telefon bağlantının canlı olduğunu sorar
+                    System.out.println("END");
+                    System.out.flush();
                 } else if (line.equals("N")) {
                     nowPlaying();
                 } else if (line.startsWith("s ")) {
