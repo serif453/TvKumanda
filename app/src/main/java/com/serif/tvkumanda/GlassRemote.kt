@@ -460,7 +460,6 @@ private fun MicKey(modifier: Modifier, active: Boolean, onClick: () -> Unit) {
 
 // ---------------- Düz yön dairesi (Google TV kumandası gibi) ----------------
 
-private val DPadRing = Color(0xFF1D1D21)
 private val DPadEdge = Color(0xFF0E0E10)
 private val DPadCenter = Color(0xFF444648)
 private val DPadCenterPressed = Color(0xFFECECEF)
@@ -481,7 +480,7 @@ internal fun FlatDPad(size: Dp, onKey: (Int) -> Unit) {
     zone?.let { shownZone = it }
     val centerColor by animateColorAsState(if (center) DPadCenterPressed else DPadCenter, tween(if (center) 40 else 160), label = "ok")
     Box(
-        Modifier.size(size).clip(CircleShape).background(DPadRing).border(2.dp, DPadEdge, CircleShape)
+        Modifier.size(size).glass(CircleShape)   // içi Geri / Ana Sayfa tuşlarıyla aynı cam (Serif, 5 Kasım 2026)
             .drawBehind {
                 if (glow > 0f) {
                     val start = when (shownZone) { Dir.RIGHT -> -45f; Dir.DOWN -> 45f; Dir.LEFT -> 135f; Dir.UP -> 225f }
