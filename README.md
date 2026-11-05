@@ -38,7 +38,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - Sesli komut: telefonun mikrofonuyla TV'de arama
 - Telefonun ses tuşları TV'nin sesini açar/kısar (Ayarlar'dan kapatılabilir)
 - Uygulama satırı: TV'deki uygulamalar gerçek adları ve simgeleriyle, basılı tutup sürükleyerek istediğin sırayla (ADB)
-- Şu an çalan: TV'de oynayan medya için oynatıcı çubuğu (ADB)
+- Şu an çalan: TV'de bir şey oynarken kumandada alt sağda uygulamanın küçük simgesi çıkar; dokununca tam ekran "Şimdi oynatılıyor" sayfası (sarma çubuğu, önceki/geri/oynat/ileri/sonraki, TV sesi) açılır (ADB)
 - Birden fazla TV kaydetme, ağda otomatik TV bulma, Wake-on-LAN ile uyandırma
 - TV adına dokununca açılan küçük panel: kayıtlı TV'ler ve IR kumandalar arasında tek dokunuşla geçiş, ADB / Standart seçimi
 

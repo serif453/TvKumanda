@@ -18,11 +18,12 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     v0.121 düzeltmeleri (Serif): alt sıra Geri · Ana Sayfa · Mikrofon arası 9 dp (yarıya indi); ses çubuğu −'den +'ya kadar
     uzar; TV adı kutusunda iç boşluk, ad sığmazsa "…"; üstteki mor ışık keskin kenarsız; alttaki şerit `glassSwoosh` ile
     boşluğun içine çizilir (oynatıcı çubuğuna binmesin).
-    Oynatıcı çubuğunda (`NowPlayingBar`, TV'de bir şey çalarken) Önceki/Oynat/Sonraki tuşları yok: alttaki medya çubuğunda
-    zaten var (Serif'in isteği, 1 Kasım 2026). v0.126: oynatıcı ayrı kart değil, medya çubuğuyla **tek cam kart**
-    (`GlassMediaBar(header = NowPlayingContent, leading = NowPlayingIcon)`): üstte tek satır başlık ("…", üst boşluk kısa),
-    altında en soldan sarma çubuğu + sağda "6:57 / 18:23", en altta uygulama simgesi (32 dp, ⏮'nin solunda; Serif'in isteği) +
-    medya tuşları. Kanal adı yok; başlık yoksa uygulama adı. Video açıkken kumanda kartıyla arası 10 dp (kart uzar).
+    **Eski oynatıcı kartı kaldırıldı (5 Kasım 2026, Serif'in isteği ve onayladığı önizleme):** Kumanda'da başlık + sarma çubuğu + medya tuşları kartı yok.
+    TV'de bir şey çalarken alt sağda (Kısayollar'ın üstünde) çalan uygulamanın küçük yuvarlak simgesi (`NowPlayingChip`, rozet: çalıyor/duraklatıldı) durur;
+    dokununca tam ekran `NowPlayingPage` (`NowPlayingPage.kt`): ✕ + "Şimdi oynatılıyor", büyük görsel (TV kapak vermediği için uygulama simgesi),
+    başlık (+ sanatçı/alt başlık varsa), sarma çubuğu ve süreler, ⏮ ⏪ ▶⏸ ⏩ ⏭ (`MediaKeysRow`), TV ses çubuğu (`GlassVolumePill`), en altta
+    **TV adı yerine çalan uygulamanın adı**. Çalan bilgisi 3 sn boyunca gelmezse sayfa kendiliğinden kapanır. Simgenin yeri (64 dp) hep ayrılır
+    (çalmaya başlayınca ekran zıplamasın), arkasında `glassSwoosh`. Sağdaki 🎵 "Medya tuşları" penceresi duruyor.
 - TV seçimi: `TvPicker.kt` (panel) + `TvSheet.kt` (`TvManageSections`, büyük hâlin bölümleri); bağlıyken büyüyünce ağda arama yapılmaz, "Tekrar ara" ile elle aranır (Serif'in isteği).
 - **TV paneli (1 Kasım 2026, Serif'in isteği ve onayı):** TV adı kutusuna (pil) dokununca alttan pencere değil, pilin hemen
   altından aşağı açılan küçük cam panel (`TvPicker.kt`, `TvPickerPanel`). Genişlik ayarlar ve güç düğmelerinin iç kenarları

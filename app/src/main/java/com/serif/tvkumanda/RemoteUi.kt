@@ -207,6 +207,8 @@ fun RemoteScreen(
     var appRowTick by remember { mutableIntStateOf(0) }
     // Kumandadaki fn ve medya tuşlarının açtığı Araçlar pencereleri
     var remoteTool by remember { mutableStateOf<ToolId?>(null) }
+    // TV'de çalanın küçük simgesine basınca açılan tam ekran "Şimdi oynatılıyor" sayfası
+    var nowPlayingOpen by remember { mutableStateOf(false) }
     LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = 0 }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
@@ -235,8 +237,6 @@ fun RemoteScreen(
         else window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
-    // Oynatıcı yalnızca görünüp kaybolunca bütün ekran yeniden düzenlenir; içerik değişince sadece çubuk çizilir
-    val npVisible by remember { derivedStateOf { LiveUi.nowPlaying != null } }
     // Cast: tam ekran oynatıcı ve "klasörde göster" isteği
     val context = LocalContext.current
     val mediaLibrary = remember { MediaLibrary.get(context) }
@@ -323,23 +323,16 @@ fun RemoteScreen(
             onMediaKeys = { remoteTool = ToolId.MEDIA_KEYS },
             modifier = Modifier.weight(1f, fill = false)
         )
-        // TV'de bir şey çalınca oynatıcı medya çubuğuyla tek kart olur; kumanda kartı aşağı doğru uzar (boşluk 10 dp)
-        Spacer(Modifier.height(if (npVisible) 10.dp else 12.dp))
-        GlassMediaBar(
-            onKey,
-            header = if (npVisible) { { LiveUi.nowPlaying?.let { NowPlayingContent(it, ui.apps, onSeekTv) } } } else null,
-            leading = if (npVisible) { { LiveUi.nowPlaying?.let { NowPlayingIcon(it, ui.apps) } } } else null
-        )
-        // Medya çubuğu ile alt menü arasında bir oynatıcı çubuğu sığacak kadar boşluk (Serif'in tasarımı).
-        // Oynatıcı çubuğu görünürken ya da ekran kısaysa boşluk küçülür, tuşlar küçülmesin diye.
+        // Alt sağda (Kısayollar'ın üstünde) TV'de çalan uygulamanın küçük simgesi; dokununca "Şimdi oynatılıyor" sayfası açılır.
+        // Yer her zaman ayrılır, çalmaya başlayınca ekran zıplamasın. Arkada eskisi gibi mor şerit.
         val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
-        val gap = when {
-            npVisible -> 0.dp
-            screenH >= 780 -> 80.dp
-            screenH >= 720 -> 40.dp
-            else -> 0.dp
+        Spacer(Modifier.height(10.dp))
+        Box(
+            Modifier.fillMaxWidth().height(if (screenH >= 720) 64.dp else 56.dp).glassSwoosh().padding(end = 12.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            LiveUi.nowPlaying?.let { NowPlayingChip(it, ui.apps) { nowPlayingOpen = true } }
         }
-        Spacer(Modifier.fillMaxWidth().height(gap).glassSwoosh())
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }
@@ -406,6 +399,8 @@ fun RemoteScreen(
     )
 
     if (settingsOpen) SettingsPage(ui, onOpenTvs = { settingsOpen = false; openTvs() }) { settingsOpen = false }
+
+    if (nowPlayingOpen) NowPlayingPage(ui, ui.apps, onKey, onSeekTv) { nowPlayingOpen = false }
 
     if (typingOpen) {
         TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)

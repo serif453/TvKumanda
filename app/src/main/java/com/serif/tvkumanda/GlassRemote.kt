@@ -394,7 +394,7 @@ private const val KEY_GUIDE = 172  // KEYCODE_GUIDE
  * sürükleyip bırakmak sesi o seviyeye getirir. TV'nin sesi henüz bilinmiyorsa çubuk soluk ve kapalıdır.
  */
 @Composable
-private fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
+internal fun GlassVolumePill(ui: UiState, onKey: (Int) -> Unit, modifier: Modifier) {
     val shape = RoundedCornerShape(29.dp)
     Row(
         // Sessiz tuşu sol kenara yakın; kazanılan alanın yarısı çubuğa, yarısı çubuğun iki yanına boşluk (Serif'in isteği)
@@ -481,28 +481,14 @@ private fun GlassVolumeTrack(volume: Int?, max: Int, muted: Boolean, modifier: M
 
 // ---------------- Medya çubuğu ----------------
 
+/** Önceki · geri sar · oynat/duraklat · ileri sar · sonraki; "Şimdi oynatılıyor" sayfasında kullanılır. */
 @Composable
-fun GlassMediaBar(onKey: (Int) -> Unit, header: (@Composable () -> Unit)? = null, leading: (@Composable () -> Unit)? = null) {
-    // TV'de bir şey çalarken oynatıcı (başlık + sarma çubuğu) aynı cam kartın üstüne girer: tek kart
-    if (header == null) {
-        MediaKeysRow(Modifier.fillMaxWidth().height(68.dp).glass(RoundedCornerShape(34.dp), strength = 0.65f), onKey)
-    } else {
-        Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(28.dp), strength = 0.65f)) {
-            header()
-            MediaKeysRow(Modifier.fillMaxWidth().height(64.dp), onKey, leading)
-        }
-    }
-}
-
-@Composable
-private fun MediaKeysRow(modifier: Modifier, onKey: (Int) -> Unit, leading: (@Composable () -> Unit)? = null) {
+internal fun MediaKeysRow(modifier: Modifier, onKey: (Int) -> Unit) {
     Row(
         modifier.padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Video açıkken oynatılan uygulamanın simgesi tuşların solunda
-        leading?.invoke()
         BarKey(AppIcons.SkipPrevious, "Önceki") { onKey(Keys.PREV) }
         BarKey(Icons.Filled.FastRewind, "Geri sar", repeat = true) { onKey(89) }
         val inter = remember { MutableInteractionSource() }
