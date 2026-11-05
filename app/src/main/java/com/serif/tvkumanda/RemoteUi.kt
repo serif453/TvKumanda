@@ -135,7 +135,7 @@ fun RemoteTheme(content: @Composable () -> Unit) {
     )
 }
 
-private enum class Sheet { NONE, KEYBOARD, NUMPAD, EDIT_APPS }
+private enum class Sheet { NONE, KEYBOARD, NUMPAD, EDIT_APPS, MORE }
 
 // ---------- Ana ekran ----------
 @OptIn(ExperimentalMaterial3Api::class)
@@ -202,14 +202,16 @@ fun RemoteScreen(
     val openTvs = { pickerExpanded = true; pickerOpen = true }
     var rootTop by remember { mutableFloatStateOf(0f) }
     var barBottom by remember { mutableFloatStateOf(0f) }
-    // Kumanda: yön tuşu (0), kaydırma (1), fare (2)
-    var padMode by remember { mutableIntStateOf(0) }
+    // Kumanda: yön tuşu (0), kaydırma (1), fare (2). Yön / kaydırma ⌄ menüsünden seçilir ve hatırlanır;
+    // fareden çıkınca seçili olana dönülür.
+    var padMode by remember { mutableIntStateOf(if (AppSettings.swipeControl) 1 else 0) }
+    val baseMode = if (AppSettings.swipeControl) 1 else 0
     var appRowTick by remember { mutableIntStateOf(0) }
     // Kumandadaki fn ve medya tuşlarının açtığı Araçlar pencereleri
     var remoteTool by remember { mutableStateOf<ToolId?>(null) }
     // TV'de çalanın küçük simgesine basınca açılan tam ekran "Şimdi oynatılıyor" sayfası
     var nowPlayingOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = 0 }
+    LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = baseMode }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
     // Alt menüdeki sekmeler (Ayarlar → Alt menü). Gizli bir sekmedeyken (ör. paylaşımla açılan Cast) o sekme
@@ -288,7 +290,10 @@ fun RemoteScreen(
                     else { pickerExpanded = ui.savedTvs.isEmpty(); pickerOpen = true }
                 },
                 onPower = { onKey(Keys.POWER) },
-                showPower = tab == Tab.REMOTE
+                showPower = tab == Tab.REMOTE,
+                controlSwipe = if (tab == Tab.REMOTE) AppSettings.swipeControl else null,
+                onControl = { AppSettings.setSwipeControl(context, it); padMode = if (it) 1 else 0 },
+                onDisconnect = onDisconnect
             )
         }
 
@@ -314,12 +319,11 @@ fun RemoteScreen(
         Spacer(Modifier.height(14.dp))
         // Yön tuşu kartı kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
         GlassPadCard(
-            ui, padMode, { padMode = it }, onKey, onMouse, onMic,
+            ui, padMode, { padMode = if (it == 0) baseMode else it }, onKey, onMouse, onMic,
             onNumpad = { sheet = Sheet.NUMPAD },
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
-            onTvSettings = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } } },
-            onSystemKeys = { remoteTool = ToolId.SYSTEM_KEYS },
+            onMore = { sheet = Sheet.MORE },
             onMediaKeys = { remoteTool = ToolId.MEDIA_KEYS },
             modifier = Modifier.weight(1f, fill = false)
         )
@@ -418,6 +422,14 @@ fun RemoteScreen(
                     Sheet.KEYBOARD -> KeyboardSheet(onText, onKey)
                     Sheet.NUMPAD -> NumpadSheet(onKey)
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }
+                    Sheet.MORE -> MoreKeysSheet(
+                        onKey = { sheet = Sheet.NONE; onKey(it) },
+                        onSystemKeys = { sheet = Sheet.NONE; remoteTool = ToolId.SYSTEM_KEYS },
+                        onTvSettings = {
+                            sheet = Sheet.NONE
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } }
+                        }
+                    )
                     Sheet.NONE -> {}
                 }
             }

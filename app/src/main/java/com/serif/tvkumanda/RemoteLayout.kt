@@ -61,8 +61,11 @@ import androidx.compose.ui.unit.sp
 // ---------------- Üst şerit (tüm sekmeler; renkleri Kumanda'da lacivert) ----------------
 
 @Composable
-fun TopBarV2(ui: UiState, navy: Boolean, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit, showPower: Boolean = true) {
-    if (navy) { GlassTopBar(ui, onSettings, onPicker, onPower, showPower); return }
+fun TopBarV2(
+    ui: UiState, navy: Boolean, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit, showPower: Boolean = true,
+    controlSwipe: Boolean? = null, onControl: (Boolean) -> Unit = {}, onDisconnect: () -> Unit = {}
+) {
+    if (navy) { GlassTopBar(ui, onSettings, onPicker, onPower, showPower, controlSwipe, onControl, onDisconnect); return }
     val btn = if (navy) Navy.Btn else Pal.Btn
     val border = if (navy) Navy.Border else Color.White.copy(alpha = 0.06f)
     Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -99,3 +99,19 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - **Titreşim gücü** `titresim_guc` (LOW/MID/HIGH): hazır efekt yerine süre + güç (15/25/45 ms); fark her telefonda hissedilsin diye.
 - **Lisans sayfası** (`LicensePage.kt`): Türkçe özet, açık kaynak listesi (README ile uyumlu tut), tam metin `assets/LICENSE.txt` (kök `LICENSE`in kopyası).
 - **Tanıtım sayfası** (`AboutPage.kt`): Ayarlar → Hakkında → TV Kumanda; içerik Serif'in onayıyla, geliştiricinin ağzından. Özellik ya da gizlilik durumu değişirse metin de güncellenir.
+
+## Yeni kumanda düzeni (5 Kasım 2026, Serif'in onayladığı önizleme; örnek: Google TV uygulaması)
+- **Yön dairesi** (`FlatDPad`, `GlassRemote.kt`): düz koyu halka, ortada yazısız gri düğme, soluk oklar. Basılan yönün çeyrek
+  dilimi açık renkte parlar, ortaya basınca gri düğme beyazlaşır; yön basılı tutulunca tekrarlar. Eski `DPad` (mor OK) artık
+  kumandada kullanılmıyor.
+- **Kaydırma / D-pad seçimi:** TV adı kutusunun sağındaki ⌄ ayrı yuvarlak tuş (yalnızca Kumanda sekmesinde) → menü: Cihaz seçin
+  (TV paneli) · Bağlantıyı kes · Kaydırma kontrolü · D-pad kontrolü (seçilide ✓). Seçim `AppSettings.swipeControl`
+  ("kaydirma_kontrol") ile hatırlanır. Ad kısmına dokunmak eskisi gibi TV panelini açar. Soldaki Kaydırma tuşu kaldırıldı.
+- **Kaydırma yüzeyi** (`SwipePad`): dairenin yerinde, yan tuşlar görünür kalır (eski geniş yüzey yalnızca fare modunda).
+  Ortadaki nokta parmağı takip eder, ~48 dp kaydırma = bir yön, kısa dokunma = OK (halka yayılır), yön gidince o kenar parlar;
+  altta "Gezinmek için kaydırın / Seçmek için dokunun". Eski `TouchPad` kullanılmıyor.
+- **Yan tuşlar 3 + 3:** sol Kaynak · ⋯ Daha fazla (mor) · Klavye; sağ 123 · Fare · Medya. ⋯ alttan pencere açar
+  (`MoreKeysSheet`): Bilgi (165) · Rehber (172) · Fn tuşları (= Sistem kısayolları) · TV ayarları.
+- **Alt sıra:** yuvarlak Geri (←) · geniş kapsül Ana Sayfa (dolu ev) · yuvarlak koyu Mikrofon (dinlerken yine kırmızı, halkalı).
+- Fare modunda 6 yan tuş solar, yüzey yan tuşların alanını kaplar; alt sıra yerinde kalır. Klavye artık sol sütunda olduğu
+  için fare modunda görünmez. Ses çubuğuna dokunulmadı.

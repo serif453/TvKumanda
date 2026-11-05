@@ -109,6 +109,9 @@ object AppSettings {
     /** Cast'te son kullanılan internet adresleri. */
     var castUrls by mutableStateOf<List<String>>(emptyList())
         private set
+    /** Kumandada yön tuşları yerine kaydırma yüzeyi (TV adının yanındaki ⌄ menüsünden seçilir, son seçim hatırlanır). */
+    var swipeControl by mutableStateOf(false)
+        private set
     private var loaded = false
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
@@ -129,7 +132,10 @@ object AppSettings {
         castRemember = p.getString("cast_hatirla", "TOP") ?: "TOP"
         castUrls = p.getString("cast_url_gecmis", "").orEmpty().split('\n').filter { it.isNotBlank() }
         theme = runCatching { AppTheme.valueOf(p.getString("tema", null) ?: "MOR") }.getOrDefault(AppTheme.MOR)
+        swipeControl = p.getBoolean("kaydirma_kontrol", false)
     }
+
+    fun setSwipeControl(c: Context, v: Boolean) { swipeControl = v; prefs(c).edit().putBoolean("kaydirma_kontrol", v).apply() }
 
     fun setHaptic(c: Context, v: Boolean) { haptic = v; prefs(c).edit().putBoolean("titresim", v).apply(); if (v) tap(c) }
     fun setVolumeKeys(c: Context, v: Boolean) { volumeKeys = v; prefs(c).edit().putBoolean("ses_tuslari", v).apply() }
