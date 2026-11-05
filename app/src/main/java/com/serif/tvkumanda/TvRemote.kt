@@ -168,6 +168,8 @@ class TvRemote(private val context: Context) : RemoteLink {
         return try {
             d.shell(command).output
         } catch (e: Exception) {
+            // Dosya aktarımı sürerken bağlantı yenilenmez: aktarım aynı bağlantıyı kullanıyor, kapatılırsa ölür
+            if (TvFiles.transferring) throw e
             reconnect()
             dadb!!.shell(command).output
         }

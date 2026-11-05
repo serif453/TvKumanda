@@ -577,12 +577,14 @@ class MainActivity : ComponentActivity() {
     /** ADB nabzı: cevap gelmezse bağlantı kopmuş sayılır. */
     private fun checkPulse() {
         if (pulseRunning) return
+        // Dosya aktarımı hattı doldurur, TV nabza geç cevap verir: bu arada sorulmaz (yoksa bağlantı boşuna yenilenip aktarım ölür)
+        if (TvFiles.transferring) return
         pulseRunning = true
         val gen = connGen
         scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { adb.ping() }.getOrDefault(false) }
             pulseRunning = false
-            if (ok || gen != connGen || state != ConnState.CONNECTED || method != ConnMethod.ADB) return@launch
+            if (ok || TvFiles.transferring || gen != connGen || state != ConnState.CONNECTED || method != ConnMethod.ADB) return@launch
             onLinkLost("ADB nabzı cevapsız")
         }
     }

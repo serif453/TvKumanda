@@ -25,6 +25,18 @@ import java.util.zip.ZipOutputStream
  * [progress] geri çağrıları 0..1 arası değer alır.
  */
 object TvFiles {
+    /**
+     * Süren dosya aktarımı sayısı. Aktarım sürerken ADB hattı dolu olur ve TV kısa komutlara geç cevap verir:
+     * bu arada nabız sorulmaz ve bağlantı kendiliğinden yenilenmez (yenilenirse aktarım "Socket closed" ile ölüyordu).
+     */
+    private val active = java.util.concurrent.atomic.AtomicInteger(0)
+    val transferring: Boolean get() = active.get() > 0
+
+    private inline fun <T> transfer(block: () -> T): T {
+        active.incrementAndGet()
+        try { return block() } finally { active.decrementAndGet() }
+    }
+
 
     private fun adb(): TvRemote = TvTools.adb ?: throw IllegalStateException("Önce TV'ye ADB ile bağlan")
     private fun sh(cmd: String) = adb().shell(cmd)
@@ -135,7 +147,10 @@ object TvFiles {
      *
      * [open] her denemede akışı baştan açar (yedek yola geçerken dosya yeniden okunur).
      */
-    private fun pushStream(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int = 1) {
+    private fun pushStream(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int = 1) =
+        transfer { pushStreamInner(open, size, remote, progress, cancel, roomFactor) }
+
+    private fun pushStreamInner(open: () -> java.io.InputStream, size: Long, remote: String, progress: (Float) -> Unit, cancel: Cancel?, roomFactor: Int) {
         val tv = adb()
         val part = "$remote.part"
         if (size > 0) ensureRoom(remote.substringBeforeLast('/', "/").ifEmpty { "/" }, size * roomFactor)
@@ -222,7 +237,7 @@ object TvFiles {
         var sock: java.net.Socket? = null
         val until = System.currentTimeMillis() + 5000
         while (sock == null && System.currentTimeMillis() < until) {
-            sock = runCatching { java.net.Socket().apply { connect(java.net.InetSocketAddress(tv.tvIp, port), 1500) } }.getOrNull()
+            sock = runCatching { TvSocket.create(tv.tvIp).apply { connect(java.net.InetSocketAddress(tv.tvIp, port), 1500) } }.getOrNull()
             if (sock == null) Thread.sleep(200)
         }
         if (sock == null) {
@@ -552,7 +567,7 @@ object TvFiles {
     fun preview(context: Context, f: TvFile): File {
         if (f.size > 25L * 1024 * 1024) throw IOException("Fotoğraf önizleme için çok büyük; telefona indirebilirsin")
         val dst = File(context.cacheDir, "onizleme").apply { mkdirs(); listFiles()?.forEach { it.delete() } }.let { File(it, "p_" + f.name) }
-        adb().dadbOrThrow().pull(dst, f.path)
+        transfer { adb().dadbOrThrow().pull(dst, f.path) }
         return dst
     }
 
@@ -565,6 +580,6 @@ object TvFiles {
         val d = adb().dadbOrThrow()
         val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.name.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
-        return saveToDownloads(context, f.name, mime) { out -> d.pull(CountingSink(out.sink(), f.size, progress, cancel), f.path) }
+        return transfer { saveToDownloads(context, f.name, mime) { out -> d.pull(CountingSink(out.sink(), f.size, progress, cancel), f.path) } }
     }
 }

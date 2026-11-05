@@ -69,6 +69,10 @@ bir yardımcı uygulama (açılışta kendiliğinden başlayan) gerekecek; bu, S
   `intent.component` ile ayırır; alttan pencere açılır, TV'ye bağlanınca `TvFiles.sendFiles` ile Download'a gönderir.
   Standart bağlantıda dosya taşınamaz: pencere "ADB ile bağlan" sunar (türü değiştirip aynı TV'ye yeniden bağlanır).
   Gönderim sürerken pencere kaydırılarak kapanmaz; "Durdur" yarım dosyayı siler.
+- **"Socket closed" düzeltmesi (5 Kasım 2026, Serif: "dosya gönderme hep hata veriyor"):** Aktarım ADB hattını doldurunca TV
+  nabza (`ping`, 4 sn) geç cevap veriyor, uygulama "koptu" sanıp bağlantıyı yeniliyor, aktarımın kullandığı dadb kapanıyordu.
+  Artık `TvFiles.transferring` (gönderme ve çekme) sürerken `checkPulse` sorulmaz ve `TvRemote.shell` hata olsa da yeniden
+  bağlanmaz. Hızlı yolun (nc) soketi de `TvSocket.create` ile Wi-Fi'a bağlanır. Kopan bağlantı mesajı `errorText`'te Türkçe.
 - **Hız (1 Kasım 2026, Serif'in onayıyla):** Performans ve Çalışan uygulamalar'daki sürekli ölçümler uygulama arkadayken
   duraklar (`rememberForeground` + `awaitForeground`, ToolSheets.kt); dönünce önceki ölçüm bayat sayılır. Ekran kaydı yoklaması
   bilerek hariç. "ADB gecikmesi" = `TvRemote.shellTimed` (kilit alındıktan sonraki süre; süreç ölçümünü bekleme sayılmaz).

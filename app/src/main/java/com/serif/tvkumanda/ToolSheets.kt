@@ -157,7 +157,14 @@ internal suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers
     runCatching(block).onFailure { DiagLog.log("Araç hatası: ${it.javaClass.simpleName}: ${it.message.orEmpty()}") }
 }
 
-internal fun errorText(e: Throwable) = "Olmadı: ${e.message ?: e.javaClass.simpleName}"
+internal fun errorText(e: Throwable): String {
+    // Kopan bağlantının İngilizce sistem mesajı ("Socket closed", "Broken pipe"…) yerine anlaşılır cümle
+    val m = e.message.orEmpty()
+    if (e is java.net.SocketException || e is java.io.EOFException ||
+        m.contains("closed", ignoreCase = true) || m.contains("broken pipe", ignoreCase = true) || m.contains("reset", ignoreCase = true))
+        return "Olmadı: TV bağlantısı işlem sırasında koptu, tekrar dene"
+    return "Olmadı: ${m.ifEmpty { e.javaClass.simpleName }}"
+}
 
 // ---------------- Ortak parçalar ----------------
 
