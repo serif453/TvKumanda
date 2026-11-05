@@ -34,6 +34,7 @@ daha fazla yetki verir, o yüzden ayrıca açılması gerekir.
 - Bilgi ve Rehber tuşları; "fn" ile sistem kısayolları, 🎵 ile medya tuşları penceresi
 - Üç kontrol modu: yön tuşları, kaydırma ve fare (fare yalnızca ADB); üçü de TV adının yanındaki ⌄ menüsünden seçilir; Uygulama yöneticisi, APK yükle, Dosya gönder ve TV dosya gezgini Kumanda ekranından da açılır
 - Fare: ayarlanabilir imleç hızı, sola ya da sağa alınabilen kaydırma şeridi, basılı tutup sürükleme / seçme, parmak altında halka
+- Oyun kolu: "Daha fazla" penceresinden açılan yatay, tam ekran kol (iki çubuk, yön tuşları, A/B/X/Y, L1/L2/R1/R2, Select/Start). ADB'de TV'ye gerçek bir oyun kolu takılmış gibi görünür (analog çubuklar, aynı anda birden çok tuş); Standart'ta tuşlar tek tek gider, sağ çubuk çalışmaz. Kalem simgesiyle tuşlar taşınır, büyütülüp küçültülür, kaldırılır ve geri eklenir
 - TV'ye yazma: telefonun klavyesiyle canlı yazma; Standart bağlantıda Türkçe harfler (ş, ğ, ı…) olduğu gibi gider
 - Sesli komut: telefonun mikrofonuyla TV'de arama
 - Telefonun ses tuşları TV'nin sesini açar/kısar (Ayarlar'dan kapatılabilir)

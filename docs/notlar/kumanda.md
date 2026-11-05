@@ -146,4 +146,13 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
     kendiliğinden yeniden bağlanılır (`lostByNetwork`). Kullanıcı "Bağlantıyı kes" derse yeniden bağlanılmaz.
   - `connGen`: her bağlanma denemesinin numarası; eski denemenin geç sonucu yenisinin durumunu ezmez, kullanılmayan bağlantı kapatılır.
   - Hata mesajları sadeleşti (`connError`): yanıt vermedi / ulaşılamadı / kabul etmedi.
-
+- **Oyun kolu (5 Kasım 2026, Serif'in isteği ve onayladığı önizleme):** "Daha fazla" penceresinde TV ayarları'nın yanında
+  "Oyun kolu" kutucuğu → `GamepadPage.kt` (yatay, tam ekran, sistem çubukları gizli, ekran kararmaz). Yön dönüşü için
+  `MainActivity` manifestte `configChanges` aldı (yeniden oluşturulmasın; bağlantı ve durum korunur), sayfa kapanınca dikeye döner.
+  Tuş tanımları, varsayılan yerler ve kayıt `GamepadLayout.kt` (saf, `GamepadLayoutTest`); düzen `oyun_kolu` tercihlerinde `duzen`.
+  ADB hızlı modda TV'de sanal oyun kolu (`KeyServer`: "G" kur, "g düğmeler şapka lx ly rx ry", "G0" çıkar; /dev/uhid,
+  ürün 0x7A02): çubuklar analog, aynı anda birden çok tuş. Standart'ta tuş kodları (BUTTON_A…), sol çubuk ve yön tuşları
+  basılı tutunca tekrar eder, sağ çubuk çalışmaz. Ana Sayfa tuşu her iki yolda HOME gönderir.
+  Düzenleme (kalem): sürükle = taşı, dokun = seç, − / + boyut (%60–%160), Kaldır, "Tuş ekle" ile geri, Sıfırla, Bitti (kaydeder;
+  geri tuşu da kaydedip çıkar). Yön tuşları ve çubuklar tek parça. Tek düzen; birden çok düzen ileride (Serif'e soruldu).
+  Philips'te denenecek: sanal kolun tanınması, oyunlarda düğme eşleşmesi.

@@ -90,6 +90,16 @@ public final class KeyServer {
                 } else if (line.equals("u")) {
                     mouseButtons = 0;
                     mouseReport(0, 0, 0, 0);
+                } else if (line.equals("G")) {
+                    // Oyun kolu sayfası açıldı: sanal oyun kolu kurulur
+                    ensureGamepad();
+                } else if (line.equals("G0")) {
+                    // Sayfa kapandı: oyun kolu çıkarılır (TV "kol ayrıldı" görür)
+                    closeGamepad();
+                } else if (line.startsWith("g ")) {
+                    String[] p = line.split(" ");
+                    gamepadReport(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3]),
+                            Integer.parseInt(p[4]), Integer.parseInt(p[5]), Integer.parseInt(p[6]));
                 } else if (line.startsWith("w ")) {
                     mouseWheel(Integer.parseInt(line.substring(2).trim()));
                 } else if (line.equals("a")) {
@@ -223,6 +233,75 @@ public final class KeyServer {
 
     private static void mouseWheel(int n) throws Exception {
         mouseReport(mouseButtons, 0, 0, clamp(n));
+    }
+
+    // ---------------- Sanal oyun kolu (/dev/uhid) ----------------
+    // Fare gibi ayrı bir UHID cihazı: 16 düğme, 8 yönlü şapka (yön tuşları), iki analog çubuk (X/Y, Z/Rz).
+    // Linux düğmeleri BTN_A, B, C, X, Y, Z, TL, TR, TL2, TR2, SELECT, START, MODE… sırasıyla eşler; Android bunları
+    // oyun kolu tuşlarına, Z/Rz'yi sağ çubuğa, şapkayı yön tuşlarına çevirir. TV gerçek bir kol takılmış sanar.
+
+    private static FileOutputStream gamepad;
+
+    private static final byte[] GAMEPAD_DESCRIPTOR = {
+            0x05, 0x01, 0x09, 0x05, (byte) 0xA1, 0x01,
+            // 16 düğme
+            0x05, 0x09, 0x19, 0x01, 0x29, 0x10, 0x15, 0x00, 0x25, 0x01,
+            0x75, 0x01, (byte) 0x95, 0x10, (byte) 0x81, 0x02,
+            // Şapka: 0-7, başka değer = basılı değil
+            0x05, 0x01, 0x09, 0x39, 0x15, 0x00, 0x25, 0x07, 0x35, 0x00, 0x46, 0x3B, 0x01, 0x65, 0x14,
+            0x75, 0x04, (byte) 0x95, 0x01, (byte) 0x81, 0x42,
+            0x75, 0x04, (byte) 0x95, 0x01, (byte) 0x81, 0x03,
+            0x65, 0x00, 0x35, 0x00, 0x45, 0x00,
+            // Çubuklar: X, Y (sol), Z, Rz (sağ), -127..127
+            0x09, 0x30, 0x09, 0x31, 0x09, 0x32, 0x09, 0x35,
+            0x15, (byte) 0x81, 0x25, 0x7F, 0x75, 0x08, (byte) 0x95, 0x04, (byte) 0x81, 0x02,
+            (byte) 0xC0
+    };
+
+    private static void ensureGamepad() throws Exception {
+        if (gamepad != null) return;
+        FileOutputStream out = new FileOutputStream("/dev/uhid");
+        ByteBuffer b = ByteBuffer.allocate(4 + 128 + 64 + 64 + 2 + 2 + 4 * 4 + 4096).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(UHID_CREATE2);
+        b.put("TvKumanda Gamepad".getBytes("UTF-8"));
+        b.position(4 + 128 + 64 + 64);
+        b.putShort((short) GAMEPAD_DESCRIPTOR.length);
+        b.putShort((short) 0x03);                // BUS_USB
+        b.putInt(0x18D1);                        // vendor
+        b.putInt(0x7A02);                        // product (fareden ayrı)
+        b.putInt(1);
+        b.putInt(0);
+        b.put(GAMEPAD_DESCRIPTOR);
+        out.write(b.array());
+        out.flush();
+        gamepad = out;
+        Thread.sleep(150);
+    }
+
+    private static void closeGamepad() {
+        FileOutputStream g = gamepad;
+        gamepad = null;
+        if (g != null) {
+            try {
+                g.close(); // dosya kapanınca çekirdek cihazı kaldırır
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void gamepadReport(int buttons, int hat, int lx, int ly, int rx, int ry) throws Exception {
+        ensureGamepad();
+        ByteBuffer b = ByteBuffer.allocate(4 + 2 + 4096).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(UHID_INPUT2);
+        b.putShort((short) 7);
+        b.put((byte) (buttons & 0xFF));
+        b.put((byte) ((buttons >> 8) & 0xFF));
+        b.put((byte) (hat & 0x0F));
+        b.put((byte) clamp(lx));
+        b.put((byte) clamp(ly));
+        b.put((byte) clamp(rx));
+        b.put((byte) clamp(ry));
+        gamepad.write(b.array());
     }
 
     // ---------------- Uygulama listesi (ad + simge) ----------------

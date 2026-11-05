@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Input
 import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.OndemandVideo
@@ -656,9 +657,9 @@ private fun HintLine(icon: ImageVector, text: String) {
 
 // ---------------- Daha fazla ----------------
 
-/** Daha fazla penceresi: Kaynak, Bilgi, Rehber, fn (Sistem kısayolları), TV ayarları. */
+/** Daha fazla penceresi: Kaynak, Bilgi, Rehber, fn (Sistem kısayolları), TV ayarları, Oyun kolu. */
 @Composable
-internal fun MoreKeysSheet(onKey: (Int) -> Unit, onSource: () -> Unit, onSystemKeys: () -> Unit, onTvSettings: () -> Unit) {
+internal fun MoreKeysSheet(onKey: (Int) -> Unit, onSource: () -> Unit, onSystemKeys: () -> Unit, onTvSettings: () -> Unit, onGamepad: () -> Unit) {
     GlassText {
         Column {
             Text("Daha fazla", color = Glass.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -674,7 +675,7 @@ internal fun MoreKeysSheet(onKey: (Int) -> Unit, onSource: () -> Unit, onSystemK
                     Text("fn", color = Glass.Text, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium)
                 }
                 MoreTile(Modifier.weight(1f), "TV ayarları", onTvSettings) { SideIcon(Icons.Outlined.Settings, null) }
-                Spacer(Modifier.weight(1f))
+                MoreTile(Modifier.weight(1f), "Oyun kolu", onGamepad) { SideIcon(Icons.Outlined.SportsEsports, null, 30.dp) }
             }
         }
     }

@@ -214,6 +214,8 @@ fun RemoteScreen(
     val adbReady = ui.method == ConnMethod.ADB && ui.state == ConnState.CONNECTED
     // TV'de çalanın küçük simgesine basınca açılan tam ekran "Şimdi oynatılıyor" sayfası
     var nowPlayingOpen by remember { mutableStateOf(false) }
+    // "Daha fazla" → Oyun kolu: yatay, tam ekran sayfa
+    var gamepadOpen by remember { mutableStateOf(false) }
     LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = baseMode }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
@@ -428,6 +430,8 @@ fun RemoteScreen(
 
     if (nowPlayingOpen) NowPlayingPage(ui, ui.apps, onKey, onSeekTv) { nowPlayingOpen = false }
 
+    if (gamepadOpen) GamepadPage(ui, onKey, onMouse) { gamepadOpen = false }
+
     if (typingOpen) {
         TypingScreen(ui.typingSeed, ui.typingSeedTick, ui.imeReady, ui.typingHint, onLiveText, onTypingSubmit, onCloseTyping, onTvSearch)
     }
@@ -454,7 +458,8 @@ fun RemoteScreen(
                         onTvSettings = {
                             sheet = Sheet.NONE
                             scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { TvTools.openSettings() } }
-                        }
+                        },
+                        onGamepad = { sheet = Sheet.NONE; gamepadOpen = true }
                     )
                     Sheet.NONE -> {}
                 }
