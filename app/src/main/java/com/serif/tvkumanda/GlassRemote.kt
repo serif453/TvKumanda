@@ -1,6 +1,10 @@
 package com.serif.tvkumanda
 
 import android.widget.Toast
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Layers
@@ -332,7 +336,7 @@ fun PurpleRemote(
                     RemoteTile(Modifier.weight(1f), "Klavye", hot = true, onClick = onKeyboard) { TileIcon(Icons.Filled.Keyboard) }
                     RemoteTile(Modifier.weight(1f), "Medya Tuşları", onClick = onMediaKeys) { TileIcon(Icons.Outlined.QueueMusic) }
                     RemoteTile(Modifier.weight(1f), "Numaralar", onClick = onNumpad) { TileIcon(Icons.Filled.Dialpad) }
-                    RemoteTile(Modifier.weight(1f), "Daha fazla", onClick = onMore) { TileIcon(Icons.Filled.MoreHoriz) }
+                    RemoteTile(Modifier.weight(1f), "Daha fazla", onClick = onMore) { TileIcon(Icons.Filled.MoreHoriz, 42.dp) }
                 }
                 Spacer(Modifier.height(gap))
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -360,8 +364,8 @@ fun PurpleRemote(
                 }
                 Spacer(Modifier.height(gap))
                 Row(Modifier.fillMaxWidth().height(bigH), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BigKey(Modifier.weight(1f), "Geri", onClick = { onKey(Keys.BACK) }) { TileIcon(Icons.AutoMirrored.Filled.ArrowBack, 24.dp) }
-                    BigKey(Modifier.weight(1f), "Ana Sayfa", onClick = { onKey(Keys.HOME) }) { TileIcon(Icons.Filled.Home, 26.dp) }
+                    BigKey(Modifier.weight(1f), "Geri", onClick = { onKey(Keys.BACK) }) { TileIcon(Icons.AutoMirrored.Filled.ArrowBack, 36.dp) }
+                    BigKey(Modifier.weight(1f), "Ana Sayfa", onClick = { onKey(Keys.HOME) }) { TileIcon(Icons.Filled.Home, 38.dp) }
                     MicKey(Modifier.weight(1f), ui.micActive, onMic)
                 }
                 Spacer(Modifier.height(gap))
@@ -389,18 +393,18 @@ private fun Modifier.hot(shape: Shape, pressed: Boolean): Modifier =
         .clip(shape).background(HotFill).border(1.5.dp, HotEdge, shape)
 
 @Composable
-private fun TileIcon(icon: ImageVector, size: Dp = 26.dp) = Icon(icon, null, tint = Glass.Text, modifier = Modifier.size(size))
+private fun TileIcon(icon: ImageVector, size: Dp = 38.dp) = Icon(icon, null, tint = Glass.Text, modifier = Modifier.size(size))
 
 /** Simgeyi renk geçişiyle boyar (araç kutularındaki mavi / mor simgeler). */
 @Composable
-private fun GradientIcon(icon: ImageVector, brush: Brush, size: Dp = 32.dp) = Icon(
+private fun GradientIcon(icon: ImageVector, brush: Brush, size: Dp = 46.dp) = Icon(
     icon, null, tint = Color.White,
     modifier = Modifier.size(size)
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent { drawContent(); drawRect(brush, blendMode = BlendMode.SrcIn) }
 )
 
-/** Simge + altında yazı olan kutu. */
+/** Yalnızca simgeli kutu (Serif: yazısız, büyük simge); ad sesli okuma için kalır. */
 @Composable
 private fun RemoteTile(modifier: Modifier, label: String, hot: Boolean = false, onClick: () -> Unit, icon: @Composable () -> Unit) {
     val inter = remember { MutableInteractionSource() }
@@ -411,16 +415,12 @@ private fun RemoteTile(modifier: Modifier, label: String, hot: Boolean = false, 
         modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
             .then(if (hot) Modifier.hot(shape, pressed) else Modifier.glass(shape, pressed))
             .pressable(inter, onClick = onClick)
-            .padding(horizontal = 4.dp),
+            .semantics { contentDescription = label; role = Role.Button },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
-        icon()
-        Spacer(Modifier.height(5.dp))
-        Text(label, color = Glass.Text, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    ) { icon() }
 }
 
-/** Kapsül tuş: simge + yazı (Geri, Ana Sayfa). */
+/** Yalnızca simgeli kapsül tuş (Geri, Ana Sayfa). */
 @Composable
 private fun BigKey(modifier: Modifier, label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
     val inter = remember { MutableInteractionSource() }
@@ -429,16 +429,13 @@ private fun BigKey(modifier: Modifier, label: String, onClick: () -> Unit, icon:
     val shape = RoundedCornerShape(50)
     Column(
         modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
-            .glass(shape, pressed).pressable(inter, onClick = onClick),
+            .glass(shape, pressed).pressable(inter, onClick = onClick)
+            .semantics { contentDescription = label; role = Role.Button },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
-        icon()
-        Spacer(Modifier.height(3.dp))
-        Text(label, color = Glass.Text, fontSize = 13.sp, lineHeight = 15.sp, maxLines = 1)
-    }
+    ) { icon() }
 }
 
-/** Sesli Arama: mor kapsül; dinlerken kırmızıya döner ve kenarı ses seviyesiyle nabız atar. */
+/** Sesli Arama: mor kapsül, yalnızca mikrofon simgesi; dinlerken kırmızıya döner ve ışığı ses seviyesiyle nabız atar. */
 @Composable
 private fun MicKey(modifier: Modifier, active: Boolean, onClick: () -> Unit) {
     val level = LiveUi.micLevel
@@ -457,11 +454,7 @@ private fun MicKey(modifier: Modifier, active: Boolean, onClick: () -> Unit) {
             )
             .pressable(inter, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
-        Icon(AppIcons.Mic, "Sesli Arama", tint = tint, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.height(3.dp))
-        Text(if (active) "Dinliyor…" else "Sesli Arama", color = Glass.Text, fontSize = 13.sp, lineHeight = 15.sp, maxLines = 1)
-    }
+    ) { Icon(AppIcons.Mic, if (active) "Dinliyor" else "Sesli Arama", tint = tint, modifier = Modifier.size(36.dp)) }
 }
 
 

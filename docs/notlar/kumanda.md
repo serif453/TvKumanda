@@ -129,3 +129,5 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - Araç kutuları Kumanda'dan açılır: Uygulama yöneticisi ve TV dosya gezgini tam ekran (`ToolPageHost` artık Kumanda'da da),
   APK yükle ve Dosya gönder alttan pencere (`ToolSheet`). ADB değilse "Bu araç ADB bağlantısı gerektirir".
 - TV'de çalanın küçük simgesi (`NowPlayingChip`) dairenin alanının sağ alt köşesinde; eski mor şerit (`glassSwoosh`) satırı kalktı.
+- **Yazısız kutular (5 Kasım 2026, v0.165 sonrası, Serif):** kumanda gövdesindeki 11 kutuda yazı yok, yalnızca büyük simge
+  (kutular 38 dp, araç simgeleri 46 dp, Geri 36, Ana Sayfa 38, mikrofon 36). Adlar sesli okuma (`semantics`) için duruyor.
