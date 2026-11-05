@@ -156,3 +156,12 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Düzenleme (kalem): sürükle = taşı, dokun = seç, − / + boyut (%60–%160), Kaldır, "Tuş ekle" ile geri, Sıfırla, Bitti (kaydeder;
   geri tuşu da kaydedip çıkar). Yön tuşları ve çubuklar tek parça. Tek düzen; birden çok düzen ileride (Serif'e soruldu).
   Philips'te denenecek: sanal kolun tanınması, oyunlarda düğme eşleşmesi.
+- **Air Mouse (5 Kasım 2026, Serif'in isteği):** ⌄ menüsünde "Fare kontrolü"nün altında (`controlMode` 3, oturumluk, yalnızca ADB
+  hızlı mod). Bluetooth fare taklidi yerine var olan sanal fare (`KeyServer` m/c/d/u/w) seçildi (Serif: "ADB üzerinden ekle"):
+  eşleştirme yok, Honor desteği riski yok. Bluetooth yolu Standart bağlantı için ileride düşünülebilir.
+  `AirMousePad` (`AirMouse.kt`): büyük alana basılıyken jiroskop imleci yürütür (sensör yalnızca basılıyken açık), <220 ms
+  dokunma = tık; altta "Tıkla" (basınca d, bırakınca u → telefonla birlikte sürükleme); fare modunun kaydırma şeridi ve
+  "Air Mouse ▾" (fare hız ayarıyla ortak). Mod açıkken ekran kararmaz. Jiroskop yoksa uyarı.
+  Hesap `AirMotion.kt` (saf, `AirMotionTest`): sağa-sola = yerçekimi yönündeki dönüş (telefon düz ya da dik tutulsa da doğru),
+  yukarı-aşağı = cihaz X ekseni; 0.025 rad/sn ölü bölge, yumuşatma, hafif hızlanma, 1300 px/rad × hız ayarı.
+  Philips'te denenecek: yönler, hız, titreme.

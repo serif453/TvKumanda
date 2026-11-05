@@ -62,6 +62,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Input
 import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.ScreenRotation
 import androidx.compose.material.icons.outlined.OndemandVideo
 import androidx.compose.material.icons.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Settings
@@ -111,7 +112,7 @@ fun GlassText(content: @Composable () -> Unit) {
 
 /**
  * controlMode null değilse (yalnızca Kumanda sekmesi) TV adının sağındaki ⌄ ayrı bir yuvarlak tuştur ve küçük bir menü
- * açar: Cihaz seçin · Bağlantıyı kes · Kaydırma / Fare / D-pad kontrolü (Serif'in örneği: Google TV uygulaması).
+ * açar: Cihaz seçin · Bağlantıyı kes · Kaydırma / Fare / Air Mouse / D-pad kontrolü (Serif'in örneği: Google TV uygulaması).
  * Modlar: 0 yön dairesi, 1 kaydırma, 2 fare.
  */
 @Composable
@@ -227,6 +228,7 @@ private fun ControlMenuButton(ui: UiState, mode: Int, onPicker: () -> Unit, onDi
                 HorizontalDivider(Modifier.padding(vertical = 4.dp, horizontal = 8.dp), color = Color.White.copy(alpha = 0.10f))
                 MenuRow(Icons.Outlined.Swipe, "Kaydırma kontrolü", checked = mode == 1) { open = false; onControl(1) }
                 MenuRow(Icons.Outlined.Mouse, "Fare kontrolü", checked = mode == 2) { open = false; onControl(2) }
+                MenuRow(Icons.Outlined.ScreenRotation, "Air Mouse", checked = mode == 3) { open = false; onControl(3) }
                 MenuRow(Icons.Outlined.Gamepad, "D-pad kontrolü", checked = mode == 0) { open = false; onControl(0) }
             }
         }
@@ -357,6 +359,16 @@ fun PurpleRemote(
                                     Spacer(Modifier.width(5.dp))
                                     Text("Fare", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 }
+                            }
+                        }
+                        3 -> Box(Modifier.fillMaxSize()) {
+                            AirMousePad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse) { onMode(0) }
+                            if (ui.method != ConnMethod.STANDARD && ui.fastMode) {
+                                MouseModeLabel(
+                                    Modifier.align(if (MouseSettings.stripLeft) Alignment.TopEnd else Alignment.TopStart)
+                                        .padding(start = 12.dp, end = 12.dp, top = 12.dp),
+                                    title = "Air Mouse"
+                                )
                             }
                         }
                         else -> FlatDPad(circle, onKey)

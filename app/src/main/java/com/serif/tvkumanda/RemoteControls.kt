@@ -183,7 +183,7 @@ private val EdgeZone = 0.dp   // modlar artık düğmeyle değişiyor; kenar şe
 private fun inEdge(x: Float, width: Int, edgePx: Float) = x < edgePx || x > width - edgePx
 
 @Composable
-private fun PadSurface(
+internal fun PadSurface(
     modifier: Modifier,
     hint: List<String>,
     gesture: Modifier,

@@ -80,10 +80,10 @@ object MouseSettings {
 }
 
 /**
- * Sol üstteki "Fare ▾" etiketi: dokununca küçük ayar penceresi açılır (imleç hızı, şerit sol/sağ).
+ * Sol üstteki "Fare ▾" etiketi (Air Mouse'ta "Air Mouse ▾"; aynı ayarlar): dokununca küçük ayar penceresi açılır (imleç hızı, şerit sol/sağ).
  */
 @Composable
-fun MouseModeLabel(modifier: Modifier = Modifier) {
+fun MouseModeLabel(modifier: Modifier = Modifier, title: String = "Fare") {
     val context = LocalContext.current
     LaunchedEffect(Unit) { MouseSettings.load(context) }
     var open by remember { mutableStateOf(false) }
@@ -97,7 +97,7 @@ fun MouseModeLabel(modifier: Modifier = Modifier) {
         ) {
             Icon(Icons.Outlined.Mouse, null, tint = Glass.Text.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(5.dp))
-            Text("Fare", color = Glass.Text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(title, color = Glass.Text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Icon(Icons.Filled.ArrowDropDown, "Fare ayarları", tint = Glass.Text.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Navy.Btn) {

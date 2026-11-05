@@ -204,8 +204,8 @@ fun RemoteScreen(
     val openTvs = { pickerExpanded = true; pickerOpen = true }
     var rootTop by remember { mutableFloatStateOf(0f) }
     var barBottom by remember { mutableFloatStateOf(0f) }
-    // Kumanda: yön tuşu (0), kaydırma (1), fare (2); üçü de ⌄ menüsünden seçilir. Yön / kaydırma hatırlanır,
-    // fare (yalnızca ADB) o oturumluk; fareden çıkınca seçili olana dönülür.
+    // Kumanda: yön tuşu (0), kaydırma (1), fare (2), Air Mouse (3); hepsi ⌄ menüsünden seçilir. Yön / kaydırma hatırlanır,
+    // fare ve Air Mouse (yalnızca ADB) o oturumluk; fareden çıkınca seçili olana dönülür.
     var padMode by remember { mutableIntStateOf(if (AppSettings.swipeControl) 1 else 0) }
     val baseMode = if (AppSettings.swipeControl) 1 else 0
     var appRowTick by remember { mutableIntStateOf(0) }
@@ -216,7 +216,7 @@ fun RemoteScreen(
     var nowPlayingOpen by remember { mutableStateOf(false) }
     // "Daha fazla" → Oyun kolu: yatay, tam ekran sayfa
     var gamepadOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = baseMode }
+    LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode >= 2) padMode = baseMode }
     // "Paylaş" ile dosya gelince Cast sekmesine geçilir
     LaunchedEffect(ui.castTabTick) { if (ui.castTabTick > 0) tab = Tab.CAST }
     // Alt menüdeki sekmeler (Ayarlar → Alt menü). Gizli bir sekmedeyken (ör. paylaşımla açılan Cast) o sekme
@@ -298,10 +298,12 @@ fun RemoteScreen(
                 showPower = tab == Tab.REMOTE,
                 controlMode = if (tab == Tab.REMOTE) padMode else null,
                 onControl = { m ->
-                    if (m == 2 && ui.method != ConnMethod.ADB)
-                        android.widget.Toast.makeText(context, "Fare yalnızca ADB bağlantısında çalışır", android.widget.Toast.LENGTH_SHORT).show()
+                    if (m >= 2 && ui.method != ConnMethod.ADB)
+                        android.widget.Toast.makeText(context,
+                            (if (m == 3) "Air Mouse" else "Fare") + " yalnızca ADB bağlantısında çalışır",
+                            android.widget.Toast.LENGTH_SHORT).show()
                     else {
-                        if (m != 2) AppSettings.setSwipeControl(context, m == 1)
+                        if (m < 2) AppSettings.setSwipeControl(context, m == 1)
                         padMode = m
                     }
                 },
