@@ -9,6 +9,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.math.BigInteger
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
