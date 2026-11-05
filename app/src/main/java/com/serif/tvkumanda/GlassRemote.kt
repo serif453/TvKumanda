@@ -1,6 +1,14 @@
 package com.serif.tvkumanda
 
 import android.widget.Toast
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -97,13 +105,14 @@ fun GlassText(content: @Composable () -> Unit) {
 // ---------------- Üst şerit ----------------
 
 /**
- * controlSwipe null değilse (yalnızca Kumanda sekmesi) TV adının sağındaki ⌄ ayrı bir yuvarlak tuştur ve küçük bir menü
- * açar: Cihaz seçin · Bağlantıyı kes · Kaydırma kontrolü · D-pad kontrolü (Serif'in örneği: Google TV uygulaması).
+ * controlMode null değilse (yalnızca Kumanda sekmesi) TV adının sağındaki ⌄ ayrı bir yuvarlak tuştur ve küçük bir menü
+ * açar: Cihaz seçin · Bağlantıyı kes · Kaydırma / Fare / D-pad kontrolü (Serif'in örneği: Google TV uygulaması).
+ * Modlar: 0 yön dairesi, 1 kaydırma, 2 fare.
  */
 @Composable
 fun GlassTopBar(
     ui: UiState, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit, showPower: Boolean = true,
-    controlSwipe: Boolean? = null, onControl: (Boolean) -> Unit = {}, onDisconnect: () -> Unit = {}
+    controlMode: Int? = null, onControl: (Int) -> Unit = {}, onDisconnect: () -> Unit = {}
 ) {
     GlassText {
         Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -122,7 +131,7 @@ fun GlassTopBar(
             Column(
                 Modifier.weight(1f).fillMaxHeight()
                     .clickable(interactionSource = inter, indication = null, onClick = onPicker)
-                    .padding(start = 12.dp, end = if (controlSwipe != null) 4.dp else 12.dp),
+                    .padding(start = 12.dp, end = if (controlMode != null) 4.dp else 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
                 // Uzun TV adı kutudan taşmasın: simge ve ok hep görünür, ad sığmazsa "…" ile kısalır
@@ -138,7 +147,7 @@ fun GlassTopBar(
                         color = Glass.Text, fontSize = 17.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (controlSwipe == null) {
+                    if (controlMode == null) {
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.KeyboardArrowDown, null, tint = Glass.Text, modifier = Modifier.size(22.dp))
                     }
@@ -158,7 +167,7 @@ fun GlassTopBar(
                     )
                 }
             }
-            if (controlSwipe != null) ControlMenuButton(ui, controlSwipe, onPicker, onDisconnect, onControl)
+            if (controlMode != null) ControlMenuButton(ui, controlMode, onPicker, onDisconnect, onControl)
             }
             // Güç: kırmızı cam (yalnızca Kumanda sekmesinde; diğerlerinde TV kutusu o alana uzanır)
             if (showPower) {
@@ -185,7 +194,7 @@ fun GlassTopBar(
 }
 
 @Composable
-private fun ControlMenuButton(ui: UiState, swipe: Boolean, onPicker: () -> Unit, onDisconnect: () -> Unit, onControl: (Boolean) -> Unit) {
+private fun ControlMenuButton(ui: UiState, mode: Int, onPicker: () -> Unit, onDisconnect: () -> Unit, onControl: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val turn by animateFloatAsState(if (open) 180f else 0f, tween(200), label = "chev")
     Box(Modifier.padding(end = 6.dp)) {
@@ -211,8 +220,9 @@ private fun ControlMenuButton(ui: UiState, swipe: Boolean, onPicker: () -> Unit,
                     open = false; onDisconnect()
                 }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp, horizontal = 8.dp), color = Color.White.copy(alpha = 0.10f))
-                MenuRow(Icons.Outlined.Swipe, "Kaydırma kontrolü", checked = swipe) { open = false; onControl(true) }
-                MenuRow(Icons.Outlined.Gamepad, "D-pad kontrolü", checked = !swipe) { open = false; onControl(false) }
+                MenuRow(Icons.Outlined.Swipe, "Kaydırma kontrolü", checked = mode == 1) { open = false; onControl(1) }
+                MenuRow(Icons.Outlined.Mouse, "Fare kontrolü", checked = mode == 2) { open = false; onControl(2) }
+                MenuRow(Icons.Outlined.Gamepad, "D-pad kontrolü", checked = mode == 0) { open = false; onControl(0) }
             }
         }
     }
@@ -280,180 +290,180 @@ fun GlassSquare(
 private fun SideIcon(icon: ImageVector, label: String?, size: Dp = 26.dp, selected: Boolean = false) =
     Icon(icon, label, tint = if (selected) Color.White else Glass.Text, modifier = Modifier.size(size))
 
-/** Mikrofon: koyu yuvarlak cam (Google TV kumandası gibi); dinlerken kırmızıya döner ve etrafında halkalar yayılır. */
-@Composable
-private fun GlassMic(size: Dp, active: Boolean, onClick: () -> Unit) {
-    val level = LiveUi.micLevel     // yalnızca bu tuş yeniden çizilir
-    val inter = remember { MutableInteractionSource() }
-    val scale = pressScale(inter)
-    val shape = CircleShape
-    val pressed by inter.collectIsPressedAsState()
-    val p = if (active) {
-        val pulse = rememberInfiniteTransition(label = "mic")
-        pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "ring")
-    } else null
-    val lvl by animateFloatAsState(if (active) level else 0f, tween(120), label = "lvl")
-    val tint by animateColorAsState(if (active) Pal.Red else Color.White, tween(200), label = "tint")
-    Box(
-        Modifier.size(size).drawBehind {
-            if (active) {
-                val r = this.size.minDimension / 2
-                drawCircle(Pal.Red.copy(alpha = 0.22f), radius = r * (1f + 0.35f * lvl))
-                for (k in 0..1) {
-                    val f = ((p?.value ?: 0f) + k * 0.5f) % 1f
-                    drawCircle(Pal.Red.copy(alpha = 0.45f * (1f - f)), radius = r * (1f + 0.55f * f), style = Stroke(width = 2.dp.toPx()))
-                }
-            }
-        },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale }
-                .then(
-                    if (active) Modifier.clip(shape).background(SolidBrush(Color(0xFF4A2327)))
-                        .border(1.dp, Pal.Red.copy(alpha = 0.5f), shape)
-                    else Modifier.glass(shape, pressed)
-                )
-                .pressable(inter, onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) { Icon(AppIcons.Mic, "Sesli Ara", tint = tint, modifier = Modifier.size(size * 0.42f)) }
-    }
-}
-
 private fun SolidBrush(c: Color) = Brush.verticalGradient(listOf(c, c))
 
-// ---------------- Yön kartı ----------------
+// ---------------- Kumanda gövdesi ----------------
 
 /**
- * Cam kart (5 Kasım 2026, Serif'in onayladığı önizleme): üstte ses çubuğu; altında solda 3 (Kaynak, ⋯ Daha fazla,
- * Klavye), sağda 3 (123, Fare, Medya) tuş, ortada yön dairesi ya da kaydırma yüzeyi; en altta Google TV kumandası gibi
- * yuvarlak Geri · geniş Ana Sayfa · yuvarlak Mikrofon. ⋯ = Bilgi, Rehber, fn (Sistem kısayolları), TV ayarları.
- * Fare modunda 6 yan tuş solar, yüzey kartın iki kenarına kadar genişler; sağ üstteki ✕ ile çıkılır.
+ * Kumanda gövdesi (5 Kasım 2026, Serif'in mor tasarımı ve onayladığı önizleme), yukarıdan aşağı:
+ * Klavye (mor) · Medya Tuşları · Numaralar · Daha fazla → yön dairesi (Google TV gibi, v0.164'teki hâli) →
+ * Geri · Ana Sayfa · Sesli Arama (mor) → Uyg. Yöneticisi · APK Yükle · Dosya Gönder · TV Dosya Gezgini → ses çubuğu.
+ * Yön dairesinin yerine ⌄ menüsünden kaydırma yüzeyi ya da fare yüzeyi gelir. Daire kalan boşluğa göre boyutlanır,
+ * ekran ne olursa olsun kaydırma gerekmez. [corner]: dairenin sağ alt köşesinde TV'de çalanın küçük simgesi.
  */
 @Composable
-fun GlassPadCard(
+fun PurpleRemote(
     ui: UiState,
     mode: Int,
     onMode: (Int) -> Unit,
     onKey: (Int) -> Unit,
     onMouse: (String) -> Unit,
     onMic: () -> Unit,
-    onNumpad: () -> Unit,
     onKeyboard: () -> Unit,
-    onMore: () -> Unit,
     onMediaKeys: () -> Unit,
-    modifier: Modifier
+    onNumpad: () -> Unit,
+    onMore: () -> Unit,
+    onTool: (ToolId) -> Unit,
+    modifier: Modifier,
+    corner: @Composable BoxScope.() -> Unit = {}
 ) {
-    val context = LocalContext.current
-    val adb = ui.method == ConnMethod.ADB
-    val shape = RoundedCornerShape(32.dp)
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val pad = 12.dp
-        val pill = 58.dp
-        val inner = maxWidth - pad * 2
-        val key = if (inner < 300.dp) 44.dp else 50.dp           // dar ekranlarda tuşlar biraz küçülür
-        val col = key + 4.dp
-        val rowGap = 18.dp                                        // daire ile alt sıra arası
-        val bottomKey = key + 14.dp                               // alt sıradaki yuvarlak tuşlar
-        val fixedH = pad * 2 + pill + 14.dp + rowGap + bottomKey
-        val circle = minOf(inner - col * 2 - 8.dp, maxHeight - fixedH).coerceIn(140.dp, 280.dp)
-        val bodyH = maxOf(circle, key * 3 + 20.dp)
-        val cardH = fixedH + bodyH
+        val tight = maxHeight < 560.dp                       // küçük ekranlarda kutular biraz alçalır
+        val tileH = if (tight) 58.dp else 66.dp
+        val bigH = if (tight) 54.dp else 62.dp
+        val toolH = if (tight) 64.dp else 74.dp
+        val pillH = if (tight) 52.dp else 58.dp
+        val gap = if (tight) 10.dp else 14.dp
+        val area = maxHeight - tileH - bigH - toolH - pillH - gap * 4
+        val circle = minOf(maxWidth * 0.74f, area).coerceIn(120.dp, 300.dp)
         GlassText {
-            Column(
-                Modifier.fillMaxWidth().height(cardH).glass(shape, strength = 0.55f).padding(pad)
-            ) {
-                GlassVolumePill(ui, onKey, Modifier.fillMaxWidth().height(pill))
-                Spacer(Modifier.height(14.dp))
-                // Fare modunda 6 yan tuş solar, yüzey kartın iki kenarına kadar genişler
-                val wide = mode == 2
-                val exp by animateFloatAsState(if (wide) 1f else 0f, tween(250), label = "padExpand")
-                val wideW = inner - (col - key)                          // tuşların dış kenarlarıyla aynı hiza
-                val sideAlpha = Modifier.graphicsLayer { alpha = 1f - exp }
-                Box(Modifier.fillMaxWidth().height(bodyH)) {
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                            GlassSquare(Modifier.size(key).then(sideAlpha), enabled = adb, onClick = {
-                                if (adb) onKey(Keys.INPUT) else Toast.makeText(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
-                            }) { SideIcon(Icons.Outlined.Input, "Kaynak") }
-                            GlassSquare(Modifier.size(key).then(sideAlpha), selected = true, onClick = onMore) { SideIcon(Icons.Filled.MoreHoriz, "Daha fazla", selected = true) }
-                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onKeyboard) { SideIcon(Icons.Filled.Keyboard, "Klavye") }
-                        }
-                        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                            if (exp < 0.999f) {
-                                Box(Modifier.size(circle).graphicsLayer { alpha = 1f - exp }) {
-                                    if (mode == 1 || (mode == 2 && AppSettings.swipeControl)) SwipePad(Modifier.fillMaxSize(), onKey)
-                                    else FlatDPad(circle, onKey)
-                                }
-                            }
-                        }
-                        Column(Modifier.width(col).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.CenterHorizontally) {
-                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onNumpad) { SideIcon(Icons.Filled.Dialpad, "123") }
-                            GlassSquare(Modifier.size(key).then(sideAlpha), selected = mode == 2, enabled = adb, onClick = {
-                                if (adb) onMode(if (mode == 2) 0 else 2) else Toast.makeText(context, "Fare yalnızca ADB bağlantısında çalışır", Toast.LENGTH_SHORT).show()
-                            }) { SideIcon(Icons.Outlined.Mouse, "Fare", selected = mode == 2) }
-                            GlassSquare(Modifier.size(key).then(sideAlpha), onClick = onMediaKeys) { SideIcon(Icons.Outlined.QueueMusic, "Medya tuşları") }
-                        }
-                    }
-                    // Fare yüzeyi: yan tuşların üstüne biner (gizli tuşlara dokunulamaz). Çıkarken küçülüp kaybolur.
-                    if (exp > 0.001f) {
-                        val w = circle + (wideW - circle) * exp
-                        val h = circle + (bodyH - circle) * exp
-                        Box(Modifier.align(Alignment.Center).size(w, h)) {
-                            TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse) { if (wide) onMode(0) }
-                            // Sol üst: "Fare ▾" (hız ve şerit ayarı) ya da düz "Fare" etiketi
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().height(tileH), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    RemoteTile(Modifier.weight(1f), "Klavye", hot = true, onClick = onKeyboard) { TileIcon(Icons.Filled.Keyboard) }
+                    RemoteTile(Modifier.weight(1f), "Medya Tuşları", onClick = onMediaKeys) { TileIcon(Icons.Outlined.QueueMusic) }
+                    RemoteTile(Modifier.weight(1f), "Numaralar", onClick = onNumpad) { TileIcon(Icons.Filled.Dialpad) }
+                    RemoteTile(Modifier.weight(1f), "Daha fazla", onClick = onMore) { TileIcon(Icons.Filled.MoreHoriz) }
+                }
+                Spacer(Modifier.height(gap))
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    when (mode) {
+                        1 -> SwipePad(Modifier.size(circle), onKey)
+                        2 -> Box(Modifier.fillMaxSize()) {
+                            TrackPad(Modifier.fillMaxSize(), ui.fastMode, ui.method, onMouse) { onMode(0) }
                             if (ui.method != ConnMethod.STANDARD && ui.fastMode) {
                                 // Şerit soldaysa etiket sağ üste geçer, üst üste binmesinler
                                 MouseModeLabel(
                                     Modifier.align(if (MouseSettings.stripLeft) Alignment.TopEnd else Alignment.TopStart)
-                                        .padding(start = 12.dp, end = 12.dp, top = 12.dp).graphicsLayer { alpha = exp }
+                                        .padding(start = 12.dp, end = 12.dp, top = 12.dp)
                                 )
                             } else {
-                                Row(
-                                    Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp).graphicsLayer { alpha = exp },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(Modifier.align(Alignment.TopStart).padding(start = 18.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Outlined.Mouse, null, tint = Glass.Text.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(5.dp))
                                     Text("Fare", color = Glass.Text.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 }
-                                // Sağ üst: ✕ ile normal kumandaya dönülür (çalışan fare modunda ✕ kaydırma şeridinin tepesinde)
-                                Box(
-                                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp)
-                                        .graphicsLayer { alpha = exp }
-                                        .size(36.dp).clip(CircleShape)
-                                        .background(Color.Black.copy(alpha = 0.28f))
-                                        .clickable(enabled = wide) { onMode(0) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Filled.Close, "Moddan çık", tint = Glass.Text, modifier = Modifier.size(20.dp))
-                                }
                             }
                         }
+                        else -> FlatDPad(circle, onKey)
                     }
+                    corner()
                 }
-                Spacer(Modifier.height(rowGap))
-                // Alt sıra (Serif'in örneği: Google TV kumandası): yuvarlak Geri · geniş Ana Sayfa · yuvarlak Mikrofon
-                Row(Modifier.fillMaxWidth().height(bottomKey), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        GlassSquare(Modifier.size(bottomKey), CircleShapeR, onClick = { onKey(Keys.BACK) }) {
-                            SideIcon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", 26.dp)
-                        }
-                    }
-                    GlassSquare(Modifier.weight(1.6f).height(bottomKey), RoundedCornerShape(bottomKey / 2), onClick = { onKey(Keys.HOME) }) {
-                        SideIcon(Icons.Filled.Home, "Ana Sayfa", 28.dp)
-                    }
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        GlassMic(bottomKey, ui.micActive, onMic)
-                    }
+                Spacer(Modifier.height(gap))
+                Row(Modifier.fillMaxWidth().height(bigH), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    BigKey(Modifier.weight(1f), "Geri", onClick = { onKey(Keys.BACK) }) { TileIcon(Icons.AutoMirrored.Filled.ArrowBack, 24.dp) }
+                    BigKey(Modifier.weight(1f), "Ana Sayfa", onClick = { onKey(Keys.HOME) }) { TileIcon(Icons.Filled.Home, 26.dp) }
+                    MicKey(Modifier.weight(1f), ui.micActive, onMic)
                 }
+                Spacer(Modifier.height(gap))
+                Row(Modifier.fillMaxWidth().height(toolH), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    RemoteTile(Modifier.weight(1f), "Uyg. Yöneticisi", onClick = { onTool(ToolId.APP_MANAGER) }) { GradientIcon(Icons.Filled.Layers, ToolPurple) }
+                    RemoteTile(Modifier.weight(1f), "APK Yükle", onClick = { onTool(ToolId.APK_INSTALL) }) { GradientIcon(Icons.Filled.Download, ToolCyan) }
+                    RemoteTile(Modifier.weight(1f), "Dosya Gönder", onClick = { onTool(ToolId.SEND_FILES) }) { GradientIcon(Icons.Outlined.UploadFile, ToolCyan) }
+                    RemoteTile(Modifier.weight(1f), "TV Dosya Gezgini", onClick = { onTool(ToolId.FILE_BROWSER) }) { GradientIcon(Icons.Filled.Folder, ToolCyan) }
+                }
+                Spacer(Modifier.height(gap))
+                GlassVolumePill(ui, onKey, Modifier.fillMaxWidth().height(pillH))
             }
         }
     }
 }
 
-/** GlassSquare yuvarlak köşe ister; yarıçap %50 = daire. */
-private val CircleShapeR = RoundedCornerShape(50)
+private val ToolCyan = Brush.verticalGradient(listOf(Color(0xFF3FD4FF), Color(0xFF1F7FE8)))
+private val ToolPurple = Brush.linearGradient(listOf(Color(0xFF3FD4FF), Color(0xFF7B5CFF), Color(0xFFB44CFF)))
+private val HotFill = Brush.verticalGradient(listOf(Color(0xFF7A3CF0), Color(0xFF5321C4)))
+private val HotEdge = Color(0xFFB48CFF)
+
+/** Mor ışıklı dolgu (Klavye, Sesli Arama). */
+private fun Modifier.hot(shape: Shape, pressed: Boolean): Modifier =
+    glow(Color(0xFF8A4CFF).copy(alpha = if (pressed) 0.9f else 0.65f), 14.dp, shape)
+        .clip(shape).background(HotFill).border(1.5.dp, HotEdge, shape)
+
+@Composable
+private fun TileIcon(icon: ImageVector, size: Dp = 26.dp) = Icon(icon, null, tint = Glass.Text, modifier = Modifier.size(size))
+
+/** Simgeyi renk geçişiyle boyar (araç kutularındaki mavi / mor simgeler). */
+@Composable
+private fun GradientIcon(icon: ImageVector, brush: Brush, size: Dp = 32.dp) = Icon(
+    icon, null, tint = Color.White,
+    modifier = Modifier.size(size)
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent { drawContent(); drawRect(brush, blendMode = BlendMode.SrcIn) }
+)
+
+/** Simge + altında yazı olan kutu. */
+@Composable
+private fun RemoteTile(modifier: Modifier, label: String, hot: Boolean = false, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pressed by inter.collectIsPressedAsState()
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(if (hot) Modifier.hot(shape, pressed) else Modifier.glass(shape, pressed))
+            .pressable(inter, onClick = onClick)
+            .padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+    ) {
+        icon()
+        Spacer(Modifier.height(5.dp))
+        Text(label, color = Glass.Text, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Kapsül tuş: simge + yazı (Geri, Ana Sayfa). */
+@Composable
+private fun BigKey(modifier: Modifier, label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pressed by inter.collectIsPressedAsState()
+    val shape = RoundedCornerShape(50)
+    Column(
+        modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
+            .glass(shape, pressed).pressable(inter, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+    ) {
+        icon()
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = Glass.Text, fontSize = 13.sp, lineHeight = 15.sp, maxLines = 1)
+    }
+}
+
+/** Sesli Arama: mor kapsül; dinlerken kırmızıya döner ve kenarı ses seviyesiyle nabız atar. */
+@Composable
+private fun MicKey(modifier: Modifier, active: Boolean, onClick: () -> Unit) {
+    val level = LiveUi.micLevel
+    val inter = remember { MutableInteractionSource() }
+    val scale = pressScale(inter)
+    val pressed by inter.collectIsPressedAsState()
+    val shape = RoundedCornerShape(50)
+    val lvl by animateFloatAsState(if (active) level else 0f, tween(120), label = "lvl")
+    val tint by animateColorAsState(if (active) Pal.Red else Color.White, tween(200), label = "tint")
+    Column(
+        modifier.fillMaxHeight().graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(
+                if (active) Modifier.glow(Pal.Red.copy(alpha = 0.35f + 0.5f * lvl), 14.dp, shape)
+                    .clip(shape).background(SolidBrush(Color(0xFF4A2327))).border(1.5.dp, Pal.Red.copy(alpha = 0.7f), shape)
+                else Modifier.hot(shape, pressed)
+            )
+            .pressable(inter, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+    ) {
+        Icon(AppIcons.Mic, "Sesli Arama", tint = tint, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(3.dp))
+        Text(if (active) "Dinliyor…" else "Sesli Arama", color = Glass.Text, fontSize = 13.sp, lineHeight = 15.sp, maxLines = 1)
+    }
+}
+
 
 // ---------------- Düz yön dairesi (Google TV kumandası gibi) ----------------
 
@@ -654,20 +664,25 @@ private fun HintLine(icon: ImageVector, text: String) {
 
 // ---------------- Daha fazla ----------------
 
-/** ⋯ tuşunun açtığı pencere: Bilgi, Rehber, fn (Sistem kısayolları), TV ayarları. */
+/** Daha fazla penceresi: Kaynak, Bilgi, Rehber, fn (Sistem kısayolları), TV ayarları. */
 @Composable
-internal fun MoreKeysSheet(onKey: (Int) -> Unit, onSystemKeys: () -> Unit, onTvSettings: () -> Unit) {
+internal fun MoreKeysSheet(onKey: (Int) -> Unit, onSource: () -> Unit, onSystemKeys: () -> Unit, onTvSettings: () -> Unit) {
     GlassText {
         Column {
             Text("Daha fazla", color = Glass.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MoreTile(Modifier.weight(1f), "Kaynak", onSource) { SideIcon(Icons.Outlined.Input, null) }
                 MoreTile(Modifier.weight(1f), "Bilgi", { onKey(KEY_INFO) }) { SideIcon(Icons.Outlined.Info, null) }
                 MoreTile(Modifier.weight(1f), "Rehber", { onKey(KEY_GUIDE) }) { SideIcon(GlassIcons.Guide, null, 28.dp) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MoreTile(Modifier.weight(1f), "Fn tuşları", onSystemKeys) {
                     Text("fn", color = Glass.Text, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium)
                 }
                 MoreTile(Modifier.weight(1f), "TV ayarları", onTvSettings) { SideIcon(Icons.Outlined.Settings, null) }
+                Spacer(Modifier.weight(1f))
             }
         }
     }

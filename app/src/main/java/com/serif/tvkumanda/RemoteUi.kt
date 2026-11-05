@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.outlined.InstallMobile
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -202,13 +204,14 @@ fun RemoteScreen(
     val openTvs = { pickerExpanded = true; pickerOpen = true }
     var rootTop by remember { mutableFloatStateOf(0f) }
     var barBottom by remember { mutableFloatStateOf(0f) }
-    // Kumanda: yön tuşu (0), kaydırma (1), fare (2). Yön / kaydırma ⌄ menüsünden seçilir ve hatırlanır;
-    // fareden çıkınca seçili olana dönülür.
+    // Kumanda: yön tuşu (0), kaydırma (1), fare (2); üçü de ⌄ menüsünden seçilir. Yön / kaydırma hatırlanır,
+    // fare (yalnızca ADB) o oturumluk; fareden çıkınca seçili olana dönülür.
     var padMode by remember { mutableIntStateOf(if (AppSettings.swipeControl) 1 else 0) }
     val baseMode = if (AppSettings.swipeControl) 1 else 0
     var appRowTick by remember { mutableIntStateOf(0) }
-    // Kumandadaki fn ve medya tuşlarının açtığı Araçlar pencereleri
+    // Kumandadaki fn, medya tuşları, APK yükle ve dosya gönder kutularının açtığı Araçlar pencereleri
     var remoteTool by remember { mutableStateOf<ToolId?>(null) }
+    val adbReady = ui.method == ConnMethod.ADB && ui.state == ConnState.CONNECTED
     // TV'de çalanın küçük simgesine basınca açılan tam ekran "Şimdi oynatılıyor" sayfası
     var nowPlayingOpen by remember { mutableStateOf(false) }
     LaunchedEffect(ui.method) { if (ui.method != ConnMethod.ADB && padMode == 2) padMode = baseMode }
@@ -291,8 +294,15 @@ fun RemoteScreen(
                 },
                 onPower = { onKey(Keys.POWER) },
                 showPower = tab == Tab.REMOTE,
-                controlSwipe = if (tab == Tab.REMOTE) AppSettings.swipeControl else null,
-                onControl = { AppSettings.setSwipeControl(context, it); padMode = if (it) 1 else 0 },
+                controlMode = if (tab == Tab.REMOTE) padMode else null,
+                onControl = { m ->
+                    if (m == 2 && ui.method != ConnMethod.ADB)
+                        android.widget.Toast.makeText(context, "Fare yalnızca ADB bağlantısında çalışır", android.widget.Toast.LENGTH_SHORT).show()
+                    else {
+                        if (m != 2) AppSettings.setSwipeControl(context, m == 1)
+                        padMode = m
+                    }
+                },
                 onDisconnect = onDisconnect
             )
         }
@@ -317,26 +327,32 @@ fun RemoteScreen(
         Spacer(Modifier.height(14.dp))
         RemoteAppsRow(ui.apps, ui.state, ui.method, appRowTick, onLaunch) { sheet = Sheet.EDIT_APPS }
         Spacer(Modifier.height(14.dp))
-        // Yön tuşu kartı kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez
-        GlassPadCard(
+        // Mor tasarım (5 Kasım 2026): yön dairesi kalan boşluğa göre boyutlanır; ekran ne olursa olsun kaydırma gerekmez.
+        // TV'de çalanın küçük simgesi dairenin sağ alt köşesinde; dokununca "Şimdi oynatılıyor" sayfası açılır.
+        PurpleRemote(
             ui, padMode, { padMode = if (it == 0) baseMode else it }, onKey, onMouse, onMic,
-            onNumpad = { sheet = Sheet.NUMPAD },
             // Standart modda tam ekran canlı yazma, ADB'de küçük yazma penceresi
             onKeyboard = { if (ui.method == ConnMethod.STANDARD) onOpenTyping() else sheet = Sheet.KEYBOARD },
-            onMore = { sheet = Sheet.MORE },
             onMediaKeys = { remoteTool = ToolId.MEDIA_KEYS },
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        // Alt sağda (Kısayollar'ın üstünde) TV'de çalan uygulamanın küçük simgesi; dokununca "Şimdi oynatılıyor" sayfası açılır.
-        // Yer her zaman ayrılır, çalmaya başlayınca ekran zıplamasın. Arkada eskisi gibi mor şerit.
-        val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
-        Spacer(Modifier.height(10.dp))
-        Box(
-            Modifier.fillMaxWidth().height(if (screenH >= 720) 64.dp else 56.dp).glassSwoosh().padding(end = 12.dp),
-            contentAlignment = Alignment.CenterEnd
+            onNumpad = { sheet = Sheet.NUMPAD },
+            onMore = { sheet = Sheet.MORE },
+            onTool = { id ->
+                val msg = when {
+                    ui.method != ConnMethod.ADB -> "Bu araç ADB bağlantısı gerektirir"
+                    ui.state != ConnState.CONNECTED -> "Önce TV'ye bağlan"
+                    else -> null
+                }
+                if (msg != null) android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                else if (id == ToolId.APP_MANAGER || id == ToolId.FILE_BROWSER) ToolPages.page = id
+                else remoteTool = id
+            },
+            modifier = Modifier.weight(1f)
         ) {
-            LiveUi.nowPlaying?.let { NowPlayingChip(it, ui.apps) { nowPlayingOpen = true } }
+            LiveUi.nowPlaying?.let {
+                Box(Modifier.align(Alignment.BottomEnd)) { NowPlayingChip(it, ui.apps) { nowPlayingOpen = true } }
+            }
         }
+        Spacer(Modifier.height(14.dp))
         // Kumanda sabit ekran: tuşlar alt menünün üstünde biter
         Spacer(Modifier.height(BarSpace))
         }
@@ -353,8 +369,14 @@ fun RemoteScreen(
     if (DlnaServerUi.pageOpen) DlnaServerPage(mediaLibrary) { DlnaServerUi.pageOpen = false }
     // Tam ekran IR kumanda sayfaları (TV seçimi penceresinden açılır)
     IrPageHost()
-    // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini)
-    if (tab == Tab.TOOLS) ToolPageHost()
+    // Tam ekran araç sayfaları (Uygulama yöneticisi, TV dosya gezgini); Kumanda'daki kutulardan da açılır
+    if (tab == Tab.TOOLS || tab == Tab.REMOTE) ToolPageHost()
+    LaunchedEffect(adbReady) {
+        if (!adbReady && tab == Tab.REMOTE) {
+            ToolPages.page = null
+            if (remoteTool == ToolId.APK_INSTALL || remoteTool == ToolId.SEND_FILES) remoteTool = null
+        }
+    }
     // Paylaş menüsünden "TV'ye gönder" ile gelen dosyalar
     ShareSend.job?.let { job ->
         ShareSendSheet(job, ui.state,
@@ -424,6 +446,10 @@ fun RemoteScreen(
                     Sheet.EDIT_APPS -> EditAppsSheet(ui.apps) { appRowTick++ }
                     Sheet.MORE -> MoreKeysSheet(
                         onKey = { sheet = Sheet.NONE; onKey(it) },
+                        onSource = {
+                            if (ui.method == ConnMethod.ADB) { sheet = Sheet.NONE; onKey(Keys.INPUT) }
+                            else android.widget.Toast.makeText(context, "Kaynak tuşu yalnızca ADB bağlantısında çalışır", android.widget.Toast.LENGTH_SHORT).show()
+                        },
                         onSystemKeys = { sheet = Sheet.NONE; remoteTool = ToolId.SYSTEM_KEYS },
                         onTvSettings = {
                             sheet = Sheet.NONE
@@ -437,9 +463,12 @@ fun RemoteScreen(
     }
 
     remoteTool?.let { id ->
-        val adbReady = ui.method == ConnMethod.ADB && ui.state == ConnState.CONNECTED
-        if (id == ToolId.SYSTEM_KEYS) ToolSheet(id, "Sistem kısayolları", Icons.Outlined.Keyboard, adbReady) { remoteTool = null }
-        else ToolSheet(id, "Medya tuşları", Icons.Outlined.QueueMusic, adbReady) { remoteTool = null }
+        when (id) {
+            ToolId.SYSTEM_KEYS -> ToolSheet(id, "Sistem kısayolları", Icons.Outlined.Keyboard, adbReady) { remoteTool = null }
+            ToolId.APK_INSTALL -> ToolSheet(id, "APK yükle", Icons.Outlined.InstallMobile, adbReady) { remoteTool = null }
+            ToolId.SEND_FILES -> ToolSheet(id, "Dosya gönder", Icons.Outlined.UploadFile, adbReady) { remoteTool = null }
+            else -> ToolSheet(id, "Medya tuşları", Icons.Outlined.QueueMusic, adbReady) { remoteTool = null }
+        }
     }
 
     if (ui.pairing) PairingDialog(ui.pairingError, onPairCode, onPairCancel)

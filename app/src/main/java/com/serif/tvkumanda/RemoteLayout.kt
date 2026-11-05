@@ -63,9 +63,9 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun TopBarV2(
     ui: UiState, navy: Boolean, onSettings: () -> Unit, onPicker: () -> Unit, onPower: () -> Unit, showPower: Boolean = true,
-    controlSwipe: Boolean? = null, onControl: (Boolean) -> Unit = {}, onDisconnect: () -> Unit = {}
+    controlMode: Int? = null, onControl: (Int) -> Unit = {}, onDisconnect: () -> Unit = {}
 ) {
-    if (navy) { GlassTopBar(ui, onSettings, onPicker, onPower, showPower, controlSwipe, onControl, onDisconnect); return }
+    if (navy) { GlassTopBar(ui, onSettings, onPicker, onPower, showPower, controlMode, onControl, onDisconnect); return }
     val btn = if (navy) Navy.Btn else Pal.Btn
     val border = if (navy) Navy.Border else Color.White.copy(alpha = 0.06f)
     Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {

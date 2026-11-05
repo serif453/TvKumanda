@@ -115,3 +115,17 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
 - **Alt sıra:** yuvarlak Geri (←) · geniş kapsül Ana Sayfa (dolu ev) · yuvarlak koyu Mikrofon (dinlerken yine kırmızı, halkalı).
 - Fare modunda 6 yan tuş solar, yüzey yan tuşların alanını kaplar; alt sıra yerinde kalır. Klavye artık sol sütunda olduğu
   için fare modunda görünmez. Ses çubuğuna dokunulmadı.
+
+## Mor tasarım düzeni (5 Kasım 2026, v0.164'ten sonra; Serif'in kendi tasarım görseli + onayladığı önizleme)
+- `PurpleRemote` (`GlassRemote.kt`) `GlassPadCard`'ın yerini aldı. Yukarıdan aşağı: Klavye (mor, ışıklı) · Medya Tuşları ·
+  Numaralar · Daha fazla → yön dairesi → Geri · Ana Sayfa · Sesli Arama (mor; dinlerken kırmızı, "Dinliyor…") →
+  Uyg. Yöneticisi · APK Yükle · Dosya Gönder (yukarı oklu dosya, `UploadFile`) · TV Dosya Gezgini (renk geçişli simgeler) →
+  ses çubuğu (değişmedi). Yan sütunlar ve eski alt sıra kalktı.
+- Yön dairesi ve kaydırma yüzeyi v0.164'teki gibi (Serif: tasarım ve işlev aynı kalsın, boyut değişebilir); daire kalan
+  boşluğa göre (genişliğin en çok %74'ü, 120–300 dp). Küçük ekranda (<560 dp) kutular alçalır.
+- ⌄ menüsü: Kaydırma kontrolü · **Fare kontrolü** · D-pad kontrolü (`controlMode` 0/1/2). Fare yalnızca ADB, oturumluk
+  (hatırlanmaz); fare yüzeyi dairenin alanını tam genişlikte kaplar. Fare tuşu kalktı.
+- Kaynak tuşu "Daha fazla" penceresine taşındı (Kaynak · Bilgi · Rehber / Fn tuşları · TV ayarları).
+- Araç kutuları Kumanda'dan açılır: Uygulama yöneticisi ve TV dosya gezgini tam ekran (`ToolPageHost` artık Kumanda'da da),
+  APK yükle ve Dosya gönder alttan pencere (`ToolSheet`). ADB değilse "Bu araç ADB bağlantısı gerektirir".
+- TV'de çalanın küçük simgesi (`NowPlayingChip`) dairenin alanının sağ alt köşesinde; eski mor şerit (`glassSwoosh`) satırı kalktı.
