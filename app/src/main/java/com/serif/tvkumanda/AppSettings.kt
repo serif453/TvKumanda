@@ -103,6 +103,13 @@ object AppSettings {
     /** Cast'te son cihaz: NONE hatırlama, TOP listede başta göster (varsayılan), AUTO Cast'e girince kendiliğinden bağlan. */
     var castRemember by mutableStateOf("TOP")
         private set
+    /**
+     * Huawei uyumluluk modu: bazı cihazlarda (Huawei/Honor, EMUI/HarmonyOS) mDNS taraması Chromecast'leri bulamıyor.
+     * Açıkken kumandanın bağlı olduğu TV, 8009 portu açıksa cast listesine kendiliğinden eklenir.
+     * Varsayılan: Huawei/Honor cihazlarda açık, diğerlerinde kapalı.
+     */
+    var castCompat by mutableStateOf(false)
+        private set
     /** Arka plan teması (varsayılan Mor, eski görünüm). */
     var theme by mutableStateOf(AppTheme.MOR)
         private set
@@ -130,6 +137,7 @@ object AppSettings {
         lastTab = p.getString("son_sekme", "REMOTE") ?: "REMOTE"
         hiddenTabs = p.getStringSet("gizli_sekmeler", emptySet())?.toSet().orEmpty()
         castRemember = p.getString("cast_hatirla", "TOP") ?: "TOP"
+        castCompat = p.getBoolean("cast_uyumluluk", isHuaweiDevice())
         castUrls = p.getString("cast_url_gecmis", "").orEmpty().split('\n').filter { it.isNotBlank() }
         theme = runCatching { AppTheme.valueOf(p.getString("tema", null) ?: "MOR") }.getOrDefault(AppTheme.MOR)
         swipeControl = p.getBoolean("kaydirma_kontrol", false)
@@ -142,6 +150,8 @@ object AppSettings {
     fun setKeepScreen(c: Context, v: String) { keepScreen = v; prefs(c).edit().putString("ekran_kararma", v).apply() }
     fun setHapticLevel(c: Context, v: String) { hapticLevel = v; prefs(c).edit().putString("titresim_guc", v).apply(); tap(c) }
     fun setAutoConnect(c: Context, v: Boolean) { autoConnect = v; prefs(c).edit().putBoolean("oto_baglan", v).apply() }
+    fun setCastCompat(c: Context, v: Boolean) { castCompat = v; prefs(c).edit().putBoolean("cast_uyumluluk", v).apply() }
+    fun isHuaweiDevice(): Boolean = Build.MANUFACTURER.lowercase().let { it.contains("huawei") || it.contains("honor") }
     fun setCastRemember(c: Context, v: String) { castRemember = v; prefs(c).edit().putString("cast_hatirla", v).apply() }
     fun addCastUrl(c: Context, url: String) = saveCastUrls(c, CastUrl.remember(castUrls, url))
     fun removeCastUrl(c: Context, url: String) = saveCastUrls(c, castUrls - url)
@@ -359,6 +369,12 @@ fun SettingsPage(ui: UiState, onOpenTvs: () -> Unit, onClose: () -> Unit) {
                         },
                         color = Pal.Sub, fontSize = 12.sp
                     )
+                }
+                SettingsRow(
+                    Icons.Outlined.Tv, "Huawei uyumluluk modu",
+                    "Tarama Chromecast bulamazsa kumandanın bağlı olduğu TV listeye eklenir"
+                ) {
+                    SettingsSwitch(AppSettings.castCompat) { AppSettings.setCastCompat(context, it) }
                 }
             }
             Spacer(Modifier.height(24.dp))

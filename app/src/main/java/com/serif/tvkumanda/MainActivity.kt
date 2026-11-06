@@ -1303,16 +1303,50 @@ class MainActivity : ComponentActivity() {
     /** Chromecast yayınının gideceği adres ("" = cihaz seçili değil). Kumanda bağlantısından bağımsız. */
     private fun ccTargetIp(): String = ccUi.selected?.ip ?: ""
 
+    /** Huawei uyumluluk modunda listeye eklenen, kumandanın bağlı olduğu TV (8009 açıksa). */
+    private var linkedCastTv: FoundTv? = null
+
+    /** mDNS sonuçlarına bağlı TV'yi ekler (aynı IP zaten bulunduysa tekrar eklemez). */
+    private fun withLinkedTv(found: List<FoundTv>): List<FoundTv> {
+        val l = linkedCastTv ?: return found
+        return if (found.any { it.ip == l.ip }) found else found + l
+    }
+
+    /**
+     * Huawei uyumluluk modu: mDNS'e güvenmeden, kumandanın bağlı olduğu TV'nin Cast portu (8009) denenir.
+     * Eski sürümlerdeki "bağlı TV'nin Chromecast'i" davranışının karşılığı.
+     */
+    private fun probeLinkedTv() {
+        linkedCastTv = null
+        if (!AppSettings.castCompat || state != ConnState.CONNECTED || currentIp.isBlank()) return
+        val ip = currentIp
+        val name = (savedTvs.firstOrNull { it.ip == ip }?.display ?: tvName).ifBlank { "Bağlı TV" }
+        scope.launch {
+            val open = withContext(Dispatchers.IO) {
+                runCatching {
+                    TvSocket.create(ip).use { it.connect(java.net.InetSocketAddress(ip, CastClient.PORT), 1500) }
+                    true
+                }.getOrDefault(false)
+            }
+            if (!open) { DiagLog.log("Uyumluluk modu: bağlı TV'de Cast portu kapalı"); return@launch }
+            linkedCastTv = FoundTv(name, ip)
+            ccUi = ccUi.copy(devices = withLinkedTv(ccUi.devices))
+            maybeAutoPick()
+        }
+    }
+
     /** Ağdaki Chromecast'li cihazları mDNS ile arar (yalnızca "Ara"ya dokununca); seçim kendiliğinden yapılmaz. */
     private fun searchCc(force: Boolean) {
         if (!force && ccDiscovery != null) return
         val d = ccDiscovery ?: TvDiscovery(this, TvDiscovery.CAST_SERVICE_TYPE).also { ccDiscovery = it }
         d.stop()
         ccUi = ccUi.copy(searching = true, devices = emptyList())
+        probeLinkedTv()
         d.start { found ->
             // Seçili cihazın adresi değiştiyse güncellenir; başka bir seçim yapılmaz
-            val keep = ccUi.selected?.let { s -> found.firstOrNull { it.name == s.name } ?: s }
-            ccUi = ccUi.copy(devices = found, selected = keep)
+            val all = withLinkedTv(found)
+            val keep = ccUi.selected?.let { s -> all.firstOrNull { it.name == s.name } ?: s }
+            ccUi = ccUi.copy(devices = all, selected = keep)
             maybeAutoPick()
         }
         ccSearchJob?.cancel()
