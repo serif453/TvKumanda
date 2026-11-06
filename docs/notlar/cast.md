@@ -92,3 +92,11 @@ Chromecast, DLNA ve telefonu DLNA sunucusu yapma üzerinde çalışırken okunur
 - **Sonraki adım (onaylandı, gerçek cihaz denemesini bekliyor):** H.264 + AC-3/MP2 için sesi AAC'ye çevirme. Önce temel HLS yolunun Philips'te çalıştığı görülmeli. Telefonda çözücü yoksa yapılamaz.
 - Denenecek: Default Media Receiver'ın telefondaki `http` adresinden HLS çekmesi (HTTPS alıcı sayfasından karışık içerik engeli olmadığı), MP3 sesli TS, ileri sarma, altyazı. ffmpeg ile çözme denendi; gerçek Chromecast denenmedi.
 - URL'den oynatmada ve DLNA'da eski davranış sürer.
+
+## Huawei uyumluluk modu (7 Kasım 2026, Serif'in isteği)
+- Sorun: tek cast düğmesine geçince (2 Kasım) Chromecast hedefi yalnızca mDNS'ten (`_googlecast._tcp`) geliyor. Eskiden hedef
+  bulunamazsa bağlı TV'nin IP'si kullanılıyordu (`useTv`), o yüzden Huawei tablette çalışıyordu. Huawei'de NsdManager taraması
+  sessizce başarısız olabiliyor → liste boş. Cast SDK / GMS kullanılmadığı için sorun GMS değil.
+- Çözüm: `AppSettings.castCompat` ("cast_uyumluluk"; Huawei/Honor'da varsayılan açık). Açıkken `searchCc` → `probeLinkedTv()`:
+  kumanda bağlıysa TV'nin 8009 portu denenir, açıksa `linkedCastTv` listeye eklenir (`withLinkedTv`, aynı IP iki kez yok).
+- `TvDiscovery.onStartDiscoveryFailed` artık teşhis kaydına yazıyor (taramanın hata kodu görünsün).

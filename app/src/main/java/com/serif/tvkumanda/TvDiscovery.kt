@@ -31,7 +31,10 @@ class TvDiscovery(context: Context, private val serviceType: String = SERVICE_TY
         val l = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {}
             override fun onDiscoveryStopped(serviceType: String) {}
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                // Bazı cihazlarda (ör. Huawei) mDNS taraması sessizce başarısız oluyor; teşhis kaydında görünsün
+                DiagLog.log("mDNS taraması başlamadı: $serviceType (hata $errorCode)")
+            }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onServiceFound(info: NsdServiceInfo) {
                 main.post { enqueue(info) }

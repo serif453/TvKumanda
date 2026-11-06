@@ -57,6 +57,7 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
 ### Cast
 - Telefondaki fotoğraf, video ve müzikleri TV'ye gönderme (Chromecast veya DLNA)
 - Tek cast düğmesi: basınca o an ağdaki Chromecast ve DLNA cihazları tek listede aranır, dokununca bağlanılır (kumanda bağlantısı gerekmez)
+- Huawei uyumluluk modu (Ayarlar → Cast): ağ taraması Chromecast'i bulamayan telefonlarda (Huawei/Honor) kumandanın bağlı olduğu TV cast listesine kendiliğinden eklenir; bu cihazlarda varsayılan açık
 - Fotoğraflar telefonda galeri gibi açılır (kaydırma, yakınlaştırma, altta küçük resim şeridi). Bir cihaza bağlıyken baktığın foto TV'de de açılır ve telefonda kaydırdıkça TV takip eder; üstteki "Takip" ile bu kapatılabilir. Aşağı çekince kapanır
 - Müzikler telefonda da çalınabilir: bağlı değilken şarkıya dokununca telefonda çalar ve altta küçük kart çıkar; karta dokununca ya da yukarı sürükleyince tam ekran oynatıcı açılır (10 sn ileri/geri, telefonun ses düzeyi), aşağı çekince yine karta küçülür. Çalarken üstten bir cihaza bağlanınca şarkı kaldığı saniyeden TV'de devam eder. Yalnızca uygulama açıkken çalar
 - Bağlanmadan albümlerde gezinme; bağlı değilken bir öğeye dokununca cihaz listesi açılır, seçince o öğe oynar
