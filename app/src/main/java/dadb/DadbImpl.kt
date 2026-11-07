@@ -82,6 +82,8 @@ internal class DadbImpl @Throws(IllegalArgumentException::class) constructor(
         // TV Kumanda: ev ağı adreslerine Wi-Fi üzerinden gidilir (mobil veriye kaymasın)
         val socket = com.serif.tvkumanda.TvSocket.create(host)
         socket.soTimeout = socketTimeout
+        // TV Kumanda: küçük mesajlar (tuş, fare) biriktirilmeden hemen gitsin (Nagle kapalı)
+        socket.tcpNoDelay = true
         socket.connect(socketAddress, connectTimeout)
         if (keepAlive) {
             socket.keepAlive = true

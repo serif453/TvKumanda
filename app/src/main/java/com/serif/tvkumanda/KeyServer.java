@@ -198,16 +198,21 @@ public final class KeyServer {
         Thread.sleep(150); // cihazın kaydolması için kısa bekleme
     }
 
+    // Fare raporu için tek tampon: her harekette 4 KB'lık yeni tampon açılmasın (TV'de çöp toplama takılması olmasın).
+    // Raporun ardındaki baytlar hep sıfır kalır; yalnızca ilk 10 bayt yazılır.
+    private static final byte[] mouseBuf = new byte[4 + 2 + 4096];
+    private static final ByteBuffer mouseHead = ByteBuffer.wrap(mouseBuf).order(ByteOrder.LITTLE_ENDIAN);
+
     private static void mouseReport(int buttons, int dx, int dy, int wheel) throws Exception {
         ensureMouse();
-        ByteBuffer b = ByteBuffer.allocate(4 + 2 + 4096).order(ByteOrder.LITTLE_ENDIAN);
-        b.putInt(UHID_INPUT2);
-        b.putShort((short) 4);
-        b.put((byte) buttons);
-        b.put((byte) dx);
-        b.put((byte) dy);
-        b.put((byte) wheel);
-        uhid.write(b.array());
+        mouseHead.clear();
+        mouseHead.putInt(UHID_INPUT2);
+        mouseHead.putShort((short) 4);
+        mouseHead.put((byte) buttons);
+        mouseHead.put((byte) dx);
+        mouseHead.put((byte) dy);
+        mouseHead.put((byte) wheel);
+        uhid.write(mouseBuf);
     }
 
     private static int clamp(int v) {
@@ -232,7 +237,12 @@ public final class KeyServer {
     }
 
     private static void mouseWheel(int n) throws Exception {
-        mouseReport(mouseButtons, 0, 0, clamp(n));
+        // Telefon birikmiş tekerlek adımlarını tek komutta yollayabilir: 127'den büyükse parçalanır
+        while (n != 0) {
+            int s = clamp(n);
+            mouseReport(mouseButtons, 0, 0, s);
+            n -= s;
+        }
     }
 
     // ---------------- Sanal oyun kolu (/dev/uhid) ----------------

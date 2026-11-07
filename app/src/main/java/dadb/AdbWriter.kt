@@ -83,7 +83,7 @@ internal class AdbWriter(sink: Sink) : AutoCloseable {
                     writeIntLe(0)
                 } else {
                     writeIntLe(length)
-                    writeIntLe(payloadChecksum(payload))
+                    writeIntLe(payloadChecksum(payload, offset, length))
                 }
                 writeIntLe(command xor -0x1)
                 if (payload != null) {
@@ -100,10 +100,12 @@ internal class AdbWriter(sink: Sink) : AutoCloseable {
 
     companion object {
 
-        private fun payloadChecksum(payload: ByteArray): Int {
+        // TV Kumanda düzeltmesi: özgün kod, gönderilen parça yerine tüm tamponu (1 MB'a kadar) topluyordu.
+        // Her küçük mesajda (ör. fare "m 3 1") bir milyon baytlık boşa döngü; sağlama da yanlış çıkıyordu.
+        private fun payloadChecksum(payload: ByteArray, offset: Int, length: Int): Int {
             var checksum = 0
-            for (byte in payload) {
-                checksum += byte.toUByte().toInt()
+            for (i in offset until offset + length) {
+                checksum += payload[i].toInt() and 0xFF
             }
             return checksum
         }

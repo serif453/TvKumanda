@@ -808,7 +808,8 @@ class MainActivity : ComponentActivity() {
     private fun mouse(line: String) {
         if (state != ConnState.CONNECTED) return
         val link = remote
-        scope.launch(io) { runCatching { link.mouse(line) } }
+        // Tuş sırasına (io) girmez: TvRemote.mouse beklemeden kendi fare sırasına koyar (MouseQueue)
+        runCatching { link.mouse(line) }
     }
 
     private fun sendText(value: String) {

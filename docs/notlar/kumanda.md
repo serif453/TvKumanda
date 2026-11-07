@@ -165,6 +165,17 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Hesap `AirMotion.kt` (saf, `AirMotionTest`): sağa-sola = yerçekimi yönündeki dönüş (telefon düz ya da dik tutulsa da doğru),
   yukarı-aşağı = cihaz X ekseni; 0.025 rad/sn ölü bölge, yumuşatma, hafif hızlanma, 1300 px/rad × hız ayarı.
   Philips'te denenecek: yönler, hız, titreme.
+- **Fare akıcılığı (7 Kasım 2026, Serif: "Homatics'te senkron hatası, Philips'te de ara ara takılıyor"):**
+  - Sebep: her fare mesajı ADB'de TV'nin onayını (OKAY) bekler; parmak saniyede 100+ mesaj üretir, yavaş cihazda / Wi-Fi'da
+    mesajlar telefonda kuyruk olup imleç geride kalıyor, parmak kalkınca da yürüyordu. Ayrıca fare tuşlarla aynı sıradan (`io`)
+    ve `TvRemote` kilidinden geçiyordu: ses okuma gibi yavaş kabuk komutu sürerken imleç takılıyordu.
+  - `MouseQueue.kt` (saf, `MouseQueueTest`): gönderilmemiş son hareketle yeni hareket birleşir ("m"/"w"), tık/d/u/M sırası
+    değişmez. `TvRemote.mouse` beklemez; ayrı "fare" iş parçacığı sırayla `sendFast` yapar, `io`'ya ve kilide girmez.
+    Tuş sunucusu yeniden başlarsa ve fare son 5 dk içinde kullanıldıysa "M" yeniden gider.
+  - dadb: sağlama (checksum) tüm 1 MB tampon yerine yalnızca gönderilen parçadan hesaplanıyor (her küçük mesajda boşa
+    1 milyon baytlık döngü vardı); soket `tcpNoDelay` (küçük mesajlar beklemeden gider).
+  - `KeyServer`: fare raporu için tek tampon (her harekette 4 KB ayırma yok), büyük tekerlek değeri 127'lik parçalara bölünür.
+  - Gerçek cihazda denenecek: Homatics (Wi-Fi) ve Philips'te imleç takibi.
   Dar alan (v0.170'te yazı kesiliyordu, Serif): yüzey <260 dp ise Tıkla 46 dp, boşluklar azalır; hareket alanı <130 dp ise
   simge + "Basılı tut, telefonu oynat" tek satır, "Kısa dokunma = tıkla" gizli.
 

@@ -124,10 +124,41 @@ class TvRemote(private val context: Context) : RemoteLink {
         d.pull(dst, remotePath)
     }
 
-    /** Fare komutu (yalnızca hızlı modda çalışır). */
-    @Synchronized
+    /**
+     * Fare komutu (yalnızca hızlı modda çalışır). Beklemez: komut [MouseQueue]'ya girer, ayrı bir iş parçacığı
+     * sırayla gönderir. Eskiden tuşlarla aynı sıradan ve aynı kilitten geçiyordu; ses okuma gibi yavaş bir kabuk
+     * komutu sürerken imleç takılıyordu (Serif: "Philips'te de ara ara takılıyor"). Hareketlerin birleştirilmesi
+     * için `MouseQueue.kt`.
+     */
     override fun mouse(line: String) {
-        sendFast(line)
+        if (fast == null) return
+        lastMouseAt = System.currentTimeMillis()
+        mouseQueue.offer(line)
+        startMouseSender()
+    }
+
+    private val mouseQueue = MouseQueue()
+    @Volatile private var lastMouseAt = 0L
+
+    @Volatile private var mouseSender: Thread? = null
+
+    /** Fare göndericisi: ilk fare komutuyla başlar, uygulama kapanana kadar bekler (boştayken iş yapmaz). */
+    private fun startMouseSender() {
+        if (mouseSender != null) return
+        synchronized(mouseQueue) {
+            if (mouseSender != null) return
+            mouseSender = Thread({
+                while (true) {
+                    val line = try { mouseQueue.take() } catch (e: InterruptedException) { break }
+                    if (!sendFast(line)) mouseQueue.clear()
+                }
+            }, "fare").apply { isDaemon = true; start() }
+        }
+    }
+
+    /** Tuş sunucusu yeniden başladıysa ve fare kullanılıyorsa sanal fare hemen yeniden kurulur (ilk hareket kaybolmasın). */
+    private fun rearmMouse() {
+        if (fast != null && System.currentTimeMillis() - lastMouseAt < 5 * 60_000L) mouseQueue.offer("M")
     }
 
     @Synchronized
@@ -455,7 +486,9 @@ class TvRemote(private val context: Context) : RemoteLink {
         if (fast !== stale) return
         runCatching { stale.close() }
         fast = null
+        mouseQueue.clear()
         dadb?.let { startFastMode(it, exists = true) }
+        rearmMouse()
     }
 
     /**
@@ -475,12 +508,15 @@ class TvRemote(private val context: Context) : RemoteLink {
         runCatching { dadb?.close() }
         val d = Dadb.create(host, port, keyPair, connectTimeout = CONNECT_TIMEOUT)
         dadb = d
+        mouseQueue.clear()
         startFastMode(d)
+        rearmMouse()
     }
 
     @Synchronized
     override fun close() {
         volumeMethod = null
+        mouseQueue.clear()
         runCatching { fast?.close() }
         fast = null
         runCatching { dadb?.close() }
