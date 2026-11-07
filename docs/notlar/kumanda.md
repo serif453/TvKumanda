@@ -167,3 +167,17 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   Philips'te denenecek: yönler, hız, titreme.
   Dar alan (v0.170'te yazı kesiliyordu, Serif): yüzey <260 dp ise Tıkla 46 dp, boşluklar azalır; hareket alanı <130 dp ise
   simge + "Basılı tut, telefonu oynat" tek satır, "Kısa dokunma = tıkla" gizli.
+
+## Kısayollar (7 Kasım 2026, Serif'in isteği)
+
+- Kısayol = adım listesi (`Step`: Key, Launch, Text, Wait, Wake, Volume, Sleep, Channel). Kayıt telefonda, `SharedPreferences("kisayollar")`
+  içinde JSON (`ShortcutCodec`); bilinmeyen/bozuk adım atlanır, uygulama çökmez. Favori kanallar ayrı anahtarda.
+- Motor (`ShortcutRunner`) saf koddur; TV'ye `ShortcutHost` üzerinden konuşur, `MainActivity.runShortcut` bunu mevcut bağlantıyla
+  (`remote`) uygular. Adımlar `Dispatchers.IO`'da sırayla çalışır (tek iş parçacıklı `io` bekleme adımlarıyla tıkanmasın diye
+  kullanılmadı). İlk hatada durur, hangi adım olduğu söylenir. Aynı anda tek kısayol çalışır.
+- Uyandırma: kayıtlı TV'nin MAC'i gerekir (ADB bağlantısında öğrenilir). Bağlı değilken yalnızca "Uyandır" ile başlayan kısayol çalışır.
+- Ses: ADB'de doğrudan ayar, olmazsa (ve Standart'ta) fark kadar ses tuşu. Uyku: ADB'de TV'deki nöbetçi (`TvWatcher`), Standart'ta
+  telefon alarmı (`PhoneTimers.scheduleSleep`); Araçlar'daki Uyku zamanlayıcısıyla aynı yer.
+- İlk açılışta hazır şablonlar bir kez eklenir (`sablon_eklendi`), hepsi silinse de geri gelmez.
+- Philips'te denenecek: Wake → bekle → uygulama açma sırası, kanal numarası girişi (rakamlar arası 120 ms yeterli mi), Standart'ta ses.
+- Sonraya: ana ekrana kısayol, widget / hızlı ayar kutusu, zamanlı çalıştırma.

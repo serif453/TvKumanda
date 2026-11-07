@@ -61,7 +61,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
     performans, ekran kaydı (`docs/notlar/araclar.md`). **`id`'si olmayan kutucuk henüz hazır değildir.**
   - Canlı yayın: ekran yansıtma + telefonu TV hoparlörü yapma (`docs/notlar/canli-yayin.md`).
   - IR kumanda: telefonun kızılötesi vericisi, Flipper-IRDB + SmartIR + çevrimiçi irdb (`docs/notlar/ir.md`).
-  - Kısayollar: `ShortcutsScreen.kt` — şimdilik yalnızca görünüm.
+  - Kısayollar: `ShortcutsScreen.kt` (ekran, düzenleyiciler) + `Shortcuts.kt` (adım modeli, JSON kaydı, şablonlar, adım motoru; `ShortcutsTest`); TV ile konuşan kısım `MainActivity.runShortcut` (`docs/notlar/kumanda.md` → Kısayollar).
   - Ayarlar: sol üstteki ⚙️ → tam sayfa `SettingsPage`, değerler `AppSettings` (`AppSettings.kt`; `docs/notlar/kumanda.md`).
 - **Testler** `app/src/test`: saf kod test edilir (protokoller, DLNA, altyazı, ağ, canlı yayın, ekran kaydı, sistem bilgisi,
   performans, IR).
@@ -84,7 +84,7 @@ Tek modül (`app`), Jetpack Compose, paket `com.serif.tvkumanda`. Ayrıntılar p
 - (Önceki) **Yol haritası (30 Ekim 2026):** ~2 gün daha özellik → optimizasyon ve genel kontrol (Serif yaptıracak; sağlamlık:
   çökme kalkanı, anlaşılır hata mesajları, tüm araçların tek tek denenmesi) → cila. MKV/TS dönüştürme 1.0 sonrasına.
 - Gerçek TV'de denenecekler: ekran kaydı, ekran yansıtma, hoparlör (hangi gönderme yolu Philips'te işliyor?).
-- Kısayollar sekmesinin çalışır hâli.
+- Kısayollar: ilk sürüm hazır (7 Kasım 2026); sırada ana ekrana kısayol, widget / hızlı ayar kutusu, zamanlı çalıştırma.
 - Cast: TS temel yolu eklendi (`docs/notlar/cast.md`); sırada ses çevirme, sonra MKV (Windows'taki Airflow benzeri).
 - İleride: uygulamanın adı "TV Everything" gibi bir şey olabilir.
 

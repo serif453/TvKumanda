@@ -189,7 +189,8 @@ fun RemoteScreen(
     onDlnaSearch: () -> Unit = {},
     cc: CcUi = CcUi(),
     onCcPick: (FoundTv?) -> Unit = {},
-    onCcSearch: () -> Unit = {}
+    onCcSearch: () -> Unit = {},
+    onRunShortcut: (List<Step>, (String?) -> Unit) -> Unit = { _, done -> done("Kısayol çalıştırılamıyor") }
 ) {
     var sheet by remember { mutableStateOf(Sheet.NONE) }
     var tab by remember { mutableStateOf(AppSettings.initialTab()) }
@@ -326,7 +327,7 @@ fun RemoteScreen(
         } else if (tab == Tab.TOOLS) {
             ToolsScreen(ui.method, ui.state == ConnState.CONNECTED, Modifier.weight(1f))
         } else if (tab == Tab.SHORTCUTS) {
-            ShortcutsScreen(Modifier.weight(1f))
+            ShortcutsScreen(ui.apps, ui.state == ConnState.CONNECTED, onRunShortcut, Modifier.weight(1f))
         } else {
         Spacer(Modifier.height(14.dp))
         RemoteAppsRow(ui.apps, ui.state, ui.method, appRowTick, onLaunch) { sheet = Sheet.EDIT_APPS }

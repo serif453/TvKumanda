@@ -80,6 +80,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Android'in org.json'u birim testlerinde yalnızca iskelet; gerçek sürüm kısayol kaydı testleri için
+    testImplementation("org.json:json:20231013")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 
     // ADB istemcisi (Wi-Fi üzerinden TV'ye bağlanır)
     // dadb 1.2.10 kaynağı projenin içinde (app/src/main/java/dadb, Apache 2.0): akış denetimi eklendi

@@ -107,8 +107,17 @@ Sol üstteki ⚙️ düğmesiyle açılan tam sayfa:
   slayt, fotoğraf, müzik ve podcast için uygundur, oyun ya da video izlerken ses senkronu için değil. Telefon sesini
   yakalamak Android 10 ve üstünü ister; bazı uygulamalar (ör. Spotify) sesinin yakalanmasına izin vermez
 
+### Kısayollar
+- Sık yaptığın işleri tek dokunuşa indir: bir kısayol, sırayla çalışan adımlardan oluşur (tuş basma, uygulama açma,
+  yazı yazma, bekleme, TV'yi uyandırma, ses seviyesi, uyku zamanlayıcısı, kanala geçme)
+- Dokununca çalışır, basılı tutunca düzenlenir (ad, simge, adımların sırası); "Şimdi dene" ile kaydetmeden denenir
+- Favori kanallar: numaraya dokununca rakam tuşları ve OK gönderilir
+- İlk açılışta birkaç hazır şablon gelir; "Şablonlar" menüsünden istediğin zaman eklenir
+- Uygulama açma adımı için uygulama listesi gerekir (ADB bağlantısında gelir); uyandırma adımı için TV'nin MAC adresi
+  bilinmeli (ADB ile bir kez bağlanınca öğrenilir)
+
 ### Henüz hazır olmayanlar
-Uygulamada görünen ama henüz çalışmayan bölümler: Kısayollar sekmesi.
+Şu an uygulamada görünen ama çalışmayan bölüm yok.
 
 ## Kurulum
 

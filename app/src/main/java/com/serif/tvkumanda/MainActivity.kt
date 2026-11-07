@@ -306,6 +306,7 @@ class MainActivity : ComponentActivity() {
                     onLiveText = ::onLiveText,
                     onTypingSubmit = ::submitTyping,
                     onTvSearch = { run { this.key(RemoteMsg.KEYCODE_SEARCH) } },
+                    onRunShortcut = ::runShortcut,
                     cast = cast,
                     onCastPick = ::pickForCast,
                     onCastItem = { item, list, albumId, startAt ->
@@ -754,6 +755,53 @@ class MainActivity : ComponentActivity() {
                 DiagLog.log("Ses ayarlanamadı: ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             }
             refreshVolume(500)
+        }
+    }
+
+    // ---------- Kısayollar ----------
+
+    private var shortcutJob: Job? = null
+
+    /** TV işleri bu sınıftaki mevcut bağlantıyla yapılır; adımlar arka planda sırayla çalışır, bitince [done] ana iş parçacığında çağrılır. */
+    private fun runShortcut(steps: List<Step>, done: (String?) -> Unit) {
+        if (shortcutJob?.isActive == true) { done("Başka bir kısayol çalışıyor"); return }
+        val link = remote
+        val ip = currentIp
+        val adbMethod = method == ConnMethod.ADB
+        val host = object : ShortcutHost {
+            override fun key(code: Int) { link.key(code) }
+            override fun launch(pkg: String, activity: String, name: String) { link.launch(TvApp(pkg, activity, name)) }
+            override fun text(value: String) { link.text(value) }
+            override fun wake() {
+                val tv = savedTvs.firstOrNull { it.ip == ip }
+                val mac = tv?.mac.orEmpty()
+                if (ip.isBlank() || mac.isBlank()) error("TV'nin MAC adresi bilinmiyor (ADB ile bir kez bağlanınca öğrenilir)")
+                WakeOnLan.send(mac, ip)
+            }
+            override fun setVolume(level: Int) {
+                val direct = adbMethod && runCatching { adb.setVolume(level) }.getOrDefault(false)
+                if (direct) return
+                val range = link.volume() ?: error("TV'nin ses seviyesi okunamadı")
+                val goal = level.coerceIn(0, range.second)
+                val steps = goal - range.first
+                val code = if (steps > 0) Keys.VOL_UP else Keys.VOL_DOWN
+                repeat(kotlin.math.abs(steps)) { link.key(code); Thread.sleep(if (adbMethod) 40 else 70) }
+            }
+            override fun sleepAfter(minutes: Int) {
+                val at = System.currentTimeMillis() + minutes * 60_000L
+                if (adbMethod) TvWatcher.update { it.copy(sleepAt = at, fade = true) }
+                else PhoneTimers.scheduleSleep(this@MainActivity, ip, at)
+            }
+        }
+        shortcutJob = scope.launch(Dispatchers.IO) {
+            val result = ShortcutRunner.run(steps, host)
+            withContext(Dispatchers.Main) {
+                done(when (result) {
+                    RunResult.Done -> null
+                    is RunResult.Failed -> "${result.index + 1}. adım (${result.step.label}): ${result.reason}"
+                })
+                if (state == ConnState.CONNECTED) refreshVolume()
+            }
         }
     }
 
