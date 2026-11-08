@@ -184,7 +184,8 @@ fun GlassTopBar(
             val pPressed by pInter.collectIsPressedAsState()
             val shape = RoundedCornerShape(18.dp)
             Box(
-                Modifier.size(52.dp).graphicsLayer { scaleX = pScale; scaleY = pScale }
+                // Bağlı değilken soluk (8 Kasım 2026); dokunma aynen çalışır
+                Modifier.size(52.dp).graphicsLayer { scaleX = pScale; scaleY = pScale; alpha = if (on) 1f else 0.45f }
                     .glow(Glass.Red.copy(alpha = 0.6f), 10.dp, shape)
                     .clip(shape)
                     .background(Brush.verticalGradient(if (pPressed) listOf(Color(0xFF8A2C40), Color(0xFF55192C)) else listOf(Color(0xFF6E2234), Color(0xFF431625))))

@@ -766,20 +766,23 @@ fun IrSection(onOpen: (String) -> Unit) {
     val available = remember { IrSender.available(context) }
     if (!available) return
     LaunchedEffect(Unit) { IrUi.load(context) }
-    Spacer(Modifier.height(18.dp))
-    Text("IR KUMANDALAR", color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(8.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (r in IrUi.saved) IrSavedCard(r) { onOpen(r.id) }
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(GlassSheet.AccentSoft).clickable { onOpen("") }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Add, null, tint = Glass.Lavender, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("IR kumanda ekle", color = Glass.Lavender, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    // TV panelinin "Başka yollar" bölümünde: önce kayıtlı IR kumandalar, sonra "IR kumanda ekle" satırı (8 Kasım 2026)
+    if (IrUi.saved.isNotEmpty()) {
+        Spacer(Modifier.height(4.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            for (r in IrUi.saved) IrSavedCard(r) { onOpen(r.id) }
         }
+        Spacer(Modifier.height(4.dp))
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { onOpen("") }
+            .padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Outlined.SettingsRemote, null, tint = Glass.Sub, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text("IR kumanda ekle", color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.KeyboardArrowRight, null, tint = Glass.Sub, modifier = Modifier.size(20.dp))
     }
 }
 

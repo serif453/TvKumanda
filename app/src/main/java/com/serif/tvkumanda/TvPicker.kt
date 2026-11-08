@@ -194,13 +194,7 @@ private fun PanelBody(
                 }
             }
             if (expanded) {
-                // Hiç kayıtlı TV yokken başlık: ne yapılacağı belli olsun
-                if (ui.savedTvs.isEmpty()) {
-                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                        Text("TV ekle", color = Glass.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("TV ve telefon aynı Wi-Fi ağında olmalı.", color = Glass.Sub, fontSize = 13.sp)
-                    }
-                }
+                // Başlık yok: panel doğrudan "Ağda bulunanlar" ile başlar (8 Kasım 2026, Serif'in isteği)
                 TvManageSections(initialIp, ui, onConnect, onMethod, onClose)
             }
         }

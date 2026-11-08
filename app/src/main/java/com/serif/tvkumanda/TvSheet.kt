@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Refresh
@@ -37,8 +38,8 @@ import kotlinx.coroutines.delay
 
 /**
  * TV panelinin büyük hâlindeki "yönet" bölümleri (Serif'in isteği, 1 Kasım 2026: alttan ayrı pencere yerine
- * panel aşağı ve yanlara doğru büyür): IR kumanda ekle, ağda bulunanlar (TV'ye bağlı değilken açılınca aranır),
- * IP ile ekleme, bağlantı durumu ve yardım. Kayıtlı TV'ler panelin üstündeki satırlarda ([TvPickerPanel]).
+ * panel aşağı ve yanlara doğru büyür). Sade düzen (8 Kasım 2026, Serif'in onayı): önce ağda bulunanlar (tek "Bağlan"),
+ * sonra "Başka yollar" (IP ile ekle, kapalı başlar; IR kumandalar), bağlantı durumu ve yardım. Kayıtlı TV'ler panelin üstündeki satırlarda ([TvPickerPanel]).
  */
 @Composable
 fun TvManageSections(
@@ -67,54 +68,69 @@ fun TvManageSections(
     }
     DisposableEffect(Unit) { onDispose { discovery.stop() } }
     var help by remember { mutableStateOf(false) }
-    var manual by remember { mutableStateOf(ui.savedTvs.isEmpty() && initialIp.isBlank()) }
+    // IP formu kapalı başlar; kayıtlı TV yokken arama bitip hiç TV bulunamazsa kendiliğinden açılır (8 Kasım 2026, Serif'in onayı)
+    var manual by remember { mutableStateOf(false) }
+    val newOnes = found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }
+    LaunchedEffect(scanned, scanning, newOnes.isEmpty()) {
+        if (scanned && !scanning && newOnes.isEmpty() && ui.savedTvs.isEmpty()) manual = true
+    }
 
     Column(Modifier.padding(horizontal = 10.dp)) {
-        // ---- IR kumandalar (telefonda IR verici varsa) ----
-        IrSection { id -> onClose(); IrUi.page = id }
-
-        // ---- Ağda bulunan TV'ler ----
-        SectionLabel("AĞDA BULUNANLAR")
-        val newOnes = found.filter { f -> ui.savedTvs.none { it.ip == f.ip } }
+        // ---- Ağda bulunan TV'ler: başlık + sayı, sağda yenile (arama sürerken dönen halka) ----
+        Spacer(Modifier.height(if (ui.savedTvs.isEmpty()) 6.dp else 12.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (newOnes.isEmpty()) "AĞDA BULUNANLAR" else "AĞDA BULUNANLAR · ${newOnes.size}",
+                color = Glass.Sub, fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(GlassSheet.Card)
+                    .clickable(enabled = !scanning) { scanTick++ },
+                contentAlignment = Alignment.Center
+            ) {
+                if (scanning) CircularProgressIndicator(Modifier.size(16.dp), color = Glass.Lavender, strokeWidth = 2.dp)
+                else Icon(Icons.Outlined.Refresh, "Tekrar ara", tint = Glass.Lavender, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             for (f in newOnes) FoundCard(f, ui.state != ConnState.CONNECTING) { m -> onMethod(m); onConnect(f.ip) }
         }
-        Spacer(Modifier.height(if (newOnes.isEmpty()) 0.dp else 8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (scanning) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = Glass.Sub, strokeWidth = 2.dp)
-                Spacer(Modifier.width(10.dp))
-                Text("Aranıyor…", color = Glass.Sub, fontSize = 13.sp)
-            } else {
-                // "Tekrar ara" solda (Serif'in isteği), sonuç yazısı sağında
-                Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassSheet.Card).clickable { scanTick++ }.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Outlined.Refresh, null, tint = Glass.Lavender, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Tekrar ara", color = Glass.Lavender, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                }
-                if (scanned) {
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        if (newOnes.isEmpty()) "Yeni TV bulunamadı" else "${newOnes.size} yeni TV bulundu",
-                        color = Glass.Sub, fontSize = 13.sp
-                    )
+        if (newOnes.isEmpty()) {
+            val shape = RoundedCornerShape(18.dp)
+            Column(Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, shape).padding(14.dp)) {
+                when {
+                    scanning -> Text("Aranıyor…", color = Glass.Sub, fontSize = 13.sp)
+                    scanned -> {
+                        Text("Ağda yeni TV bulunamadı", color = Glass.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "TV açık mı, telefonla aynı Wi-Fi'a bağlı mı? ↻ ile yeniden ara ya da IP adresini gir.",
+                            color = Glass.Sub, fontSize = 13.sp
+                        )
+                    }
+                    else -> Text("Yeni TV aramak için ↻'ye dokun.", color = Glass.Sub, fontSize = 13.sp)
                 }
             }
         }
 
-        // ---- IP ile ekle ----
-        Spacer(Modifier.height(18.dp))
+        // ---- Başka yollar: IP ile ekle, IR kumanda ----
+        SectionLabel("BAŞKA YOLLAR")
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { manual = !manual }.padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { manual = !manual }.padding(horizontal = 4.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(Icons.Outlined.Keyboard, null, tint = Glass.Sub, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
             Text("IP adresiyle ekle", color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Icon(if (manual) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null, tint = Glass.Sub)
         }
-        if (manual) ManualAdd(initialIp, ui) { ip, m -> onMethod(m); onConnect(ip) }
+        if (manual) {
+            ManualAdd(initialIp, ui) { ip, m -> onMethod(m); onConnect(ip) }
+            Spacer(Modifier.height(6.dp))
+        }
+        IrSection { id -> onClose(); IrUi.page = id }
 
         // ---- Durum ----
         if (ui.state == ConnState.ERROR || ui.state == ConnState.CONNECTING) {
@@ -126,19 +142,14 @@ fun TvManageSections(
             }
         }
 
-        // ---- Yardım satırı ----
-        Spacer(Modifier.height(14.dp))
+        // ---- Yardım satırı (sürüm yazısı Hakkında sayfasında) ----
+        Spacer(Modifier.height(10.dp))
         Text(
             "ADB ve Standart nedir? TV'de ADB nasıl açılır?",
             color = Glass.Lavender, fontSize = 13.sp, fontWeight = FontWeight.Medium,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { help = true }.padding(vertical = 6.dp)
         )
-        val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
-        if (version != null) {
-            Spacer(Modifier.height(8.dp))
-            Text("TV Kumanda · Sürüm $version", color = Glass.Sub, fontSize = 12.sp)
-        }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
     }
     if (help) HelpDialog { help = false }
 }
@@ -177,41 +188,31 @@ private fun SectionLabel(text: String) {
     Spacer(Modifier.height(8.dp))
 }
 
-@Composable
-private fun MethodChip(label: String, active: Boolean, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        modifier.height(40.dp).clip(shape)
-            .then(if (active) Modifier.background(GlassSheet.Ring) else Modifier.background(GlassSheet.Inset).border(1.dp, GlassSheet.Border, shape))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            if (active) "$label · bağlı" else "$label ile bağlan",
-            color = if (active) Color.White else Glass.Text, fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
-        )
-    }
-}
-
+/** Ağda bulunan TV: tek ana düğme "Bağlan" (Standart, varsayılan); ADB adın altında küçük bir bağlantı. */
 @Composable
 private fun FoundCard(f: FoundTv, enabled: Boolean, onConnect: (ConnMethod) -> Unit) {
     val shape = RoundedCornerShape(18.dp)
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, shape).padding(14.dp)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, shape).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Tv, null, tint = Glass.Lavender, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(f.name.removePrefix("TPV "), color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(f.ip, color = Glass.Sub, fontSize = 12.sp)
-            }
+        Icon(AppIcons.Tv, null, tint = Glass.Text, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(f.name.removePrefix("TPV "), color = Glass.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(f.ip, color = Glass.Sub, fontSize = 12.sp)
+            Text(
+                "ADB ile bağlan ›", color = Glass.Lavender, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(6.dp))
+                    .clickable(enabled = enabled) { onConnect(ConnMethod.ADB) }.padding(vertical = 4.dp)
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MethodChip("ADB", false, Modifier.weight(1f), enabled) { onConnect(ConnMethod.ADB) }
-            MethodChip("Standart", false, Modifier.weight(1f), enabled) { onConnect(ConnMethod.STANDARD) }
-        }
+        Spacer(Modifier.width(10.dp))
+        Box(
+            Modifier.height(40.dp).clip(RoundedCornerShape(14.dp)).background(GlassSheet.Ring)
+                .clickable(enabled = enabled) { onConnect(ConnMethod.STANDARD) }.padding(horizontal = 18.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("Bağlan", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 
@@ -222,7 +223,7 @@ private fun ManualAdd(initialIp: String, ui: UiState, onConnect: (String, ConnMe
     Column(Modifier.clip(RoundedCornerShape(18.dp)).background(GlassSheet.Card).border(1.dp, GlassSheet.Border, RoundedCornerShape(18.dp)).padding(14.dp)) {
         OutlinedTextField(
             value = ip, onValueChange = { ip = it }, singleLine = true,
-            placeholder = { Text("192.168.1.50", color = Glass.Sub) },
+            placeholder = { Text("örn. 192.168.1.50", color = Glass.Sub.copy(alpha = 0.6f)) },
             shape = RoundedCornerShape(14.dp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { if (ip.isNotBlank()) onConnect(ip.trim(), m) }),
@@ -234,7 +235,7 @@ private fun ManualAdd(initialIp: String, ui: UiState, onConnect: (String, ConnMe
         )
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(12.dp)).background(GlassSheet.Inset).padding(3.dp)) {
-            for ((mm, label) in listOf(ConnMethod.ADB to "ADB", ConnMethod.STANDARD to "Standart")) {
+            for ((mm, label) in listOf(ConnMethod.STANDARD to "Standart", ConnMethod.ADB to "ADB")) {
                 val sel = mm == m
                 Box(
                     Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp))

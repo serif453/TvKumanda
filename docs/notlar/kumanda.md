@@ -34,6 +34,11 @@ Kumanda sekmesi, cam tasarım, ses çubuğu ve TV seçimi üzerinde çalışırk
   12 dp üstüne kadar) ve yanlara (16 dp) büyütür: TV satırlarına ⋮ (adlandır, bağlantıyı kes, unut), altında IR kumandalar,
   ağda bulunanlar, IP ile ekleme, durum, yardım. Satır "Daralt" olur; geri tuşu önce küçültür. Kayıtlı TV yokken, ilk açılışta,
   bağlantı hatasında ve Ayarlar'daki "TV'ler" satırından panel doğrudan büyük açılır. Büyükken bağlanınca panel kapanır.
+  **Sade düzen (8 Kasım 2026, Serif'in onayı; önizlemeyle seçildi):** "TV ekle" başlığı ve Wi-Fi yazısı kaldırıldı, panel
+  doğrudan "AĞDA BULUNANLAR · n" + ↻ ile başlar. Bulunan TV kartında tek ana düğme "Bağlan" (Standart), ADB adın altında
+  küçük "ADB ile bağlan ›". Altında "BAŞKA YOLLAR": IP adresiyle ekle (kapalı başlar; kayıtlı TV yokken arama boş biterse
+  kendiliğinden açılır, örnek "örn. 192.168.1.50" soluk, seçicide Standart önce) ve IR kumandalar + "IR kumanda ekle" satırı.
+  Bulunamayınca Wi-Fi ipucu kartı çıkar. Sürüm yazısı panelden kalktı. Bağlı değilken güç düğmesi soluk (dokunma aynen çalışır).
 - Fare: TV'deki sanal fare (`KeyServer.ensureMouse`, /dev/uhid) fare modu açılınca "M" komutuyla önceden kurulur; eskiden ilk harekette kuruluyordu ve TV tanıyana kadar 1-2 sn hareket kayboluyordu (Serif: "fare moduna ilk geçince geç bağlanıyor").
 - **Geniş yüzey (1 Kasım 2026, Serif'in seçimi "B"):** Kaydırma ya da Fare modunda üstteki 8 yan tuş (Kaynak, Bilgi, Kaydırma, fn ·
   123, Rehber, Fare, Medya) ~250 ms'de solar, yüzey kartın iki kenarına kadar genişler (yükseklik = 4 yan tuşun alanı); kartın
