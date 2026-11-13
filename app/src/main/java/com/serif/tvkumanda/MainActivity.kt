@@ -183,6 +183,13 @@ class MainActivity : ComponentActivity() {
             switchMethod(ConnMethod.ADB)
             if (ip.isNotBlank()) connect(ip)
         }
+        ShareSend.start = { startShareSend() }
+        ShareSend.openApp = { pkg ->
+            scope.launch {
+                val r = withContext(io) { runCatching { TvFiles.open(TvPackage(pkg, pkg, false, false, "", "", 0)) } }
+                r.exceptionOrNull()?.let { toast(errorText(it)) }
+            }
+        }
         TvTools.currentIp = { currentIp }
         TvTools.savedTvs = { savedTvs }
         TvTools.isPaired = { ip -> atv.isPaired(ip) }
@@ -1195,7 +1202,7 @@ class MainActivity : ComponentActivity() {
         if (viaSend && uris.isNotEmpty()) {
             intent.action = null
             if (ShareSend.job?.busy == true) { toast("Önceki gönderim sürüyor; bitince tekrar paylaş"); return }
-            ShareSend.job = SendJob(uris)
+            ShareSend.job = SendJob(uris, apk = uris.all { ShareSend.isApk(this, it) })
             startShareSend()
             return
         }
@@ -1309,6 +1316,7 @@ class MainActivity : ComponentActivity() {
         if (method != ConnMethod.ADB) { job.phase = SendPhase.NEED_ADB; return }
         job.phase = SendPhase.SENDING
         job.progress = 0f
+        if (job.install) { startShareInstall(job); return }
         DiagLog.log("Paylaşımdan TV'ye gönderim: ${job.uris.size} dosya")
         scope.launch {
             val r = withContext(Dispatchers.IO) {
@@ -1321,6 +1329,51 @@ class MainActivity : ComponentActivity() {
                 else -> errorText(r.exceptionOrNull()!!)
             }
             job.phase = if (r.isSuccess) SendPhase.DONE else SendPhase.FAILED
+        }
+    }
+
+    /** Paylaşılan APK'ları sırayla TV'ye kurar (Araçlar › APK yükle ile aynı yol). */
+    private fun startShareInstall(job: SendJob) {
+        DiagLog.log("Paylaşımdan TV'ye kurulum: ${job.uris.size} APK")
+        scope.launch {
+            val n = job.uris.size
+            var ok = 0
+            var lastPkg: String? = null
+            var error: Throwable? = null
+            for ((i, u) in job.uris.withIndex()) {
+                if (job.cancel.cancelled) break
+                val name = withContext(Dispatchers.IO) { runCatching { TvFiles.displayName(applicationContext, u) }.getOrDefault("dosya") }
+                val prefix = if (n > 1) "(${i + 1}/$n) $name · " else "$name · "
+                val r = withContext(Dispatchers.IO) {
+                    runCatching {
+                        TvFiles.installApk(applicationContext, u, { s -> job.stage = prefix + s },
+                            { v -> job.progress = if (v < 0f) -1f else (i + v) / n }, job.cancel)
+                    }
+                }
+                r.onSuccess { pkg -> ok++; if (pkg != null) lastPkg = pkg }
+                r.onFailure {
+                    DiagLog.log("Kurulum hatası ($name): ${it.javaClass.simpleName}: ${it.message.orEmpty()}")
+                    error = it
+                    if (!job.cancel.cancelled) job.message = (if (n > 1) "$name: " else "") + (it.message ?: errorText(it))
+                }
+                if (error != null) break
+            }
+            // Tek uygulama kurulduysa "TV'de aç" çıkar
+            job.installedPkg = if (n == 1) lastPkg else null
+            when {
+                error == null && !job.cancel.cancelled -> {
+                    job.message = if (n > 1) "$n uygulama TV'ye kuruldu" else "Kuruldu: ${TvFiles.displayName(applicationContext, job.uris[0])}"
+                    job.phase = SendPhase.DONE
+                }
+                job.cancel.cancelled -> {
+                    job.message = if (ok > 0) "Durduruldu ($ok/$n kuruldu)" else "Durduruldu"
+                    job.phase = SendPhase.FAILED
+                }
+                else -> {
+                    if (ok > 0) job.message += " ($ok/$n kuruldu)"
+                    job.phase = SendPhase.FAILED
+                }
+            }
         }
     }
 

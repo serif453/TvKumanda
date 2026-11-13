@@ -29,12 +29,28 @@ object ShareSend {
     var job by mutableStateOf<SendJob?>(null)
     /** Standart bağlantıdayken "ADB ile bağlan": bağlantı türünü değiştirip aynı TV'ye yeniden bağlanır (MainActivity kurar). */
     var useAdb: () -> Unit = {}
+    /** APK için seçim yapılınca işi başlatır (MainActivity kurar). */
+    var start: () -> Unit = {}
+    /** Kurulan uygulamayı TV'de açar (MainActivity kurar). */
+    var openApp: (String) -> Unit = {}
+
+    /** Dosya adı ya da türü APK paketi mi (.apk, parçalı .apks / .xapk / .apkm). */
+    fun isApk(c: android.content.Context, u: Uri): Boolean {
+        if (c.contentResolver.getType(u) == "application/vnd.android.package-archive") return true
+        val n = runCatching { TvFiles.displayName(c, u) }.getOrDefault("").lowercase()
+        return n.endsWith(".apk") || n.endsWith(".apks") || n.endsWith(".xapk") || n.endsWith(".apkm")
+    }
 }
 
-enum class SendPhase { WAITING, NEED_ADB, SENDING, DONE, FAILED }
+enum class SendPhase { CHOOSE, WAITING, NEED_ADB, SENDING, DONE, FAILED }
 
-class SendJob(val uris: List<Uri>) {
-    var phase by mutableStateOf(SendPhase.WAITING)
+/** [apk]: paylaşılan dosyaların hepsi APK ise önce "TV'ye kur / Download'a gönder" seçimi sorulur. */
+class SendJob(val uris: List<Uri>, val apk: Boolean = false) {
+    var phase by mutableStateOf(if (apk) SendPhase.CHOOSE else SendPhase.WAITING)
+    /** true: TV'ye kurulur, false: Download klasörüne gönderilir. */
+    var install by mutableStateOf(false)
+    /** Kurulumdan sonra "TV'de aç" için paket adı. */
+    var installedPkg by mutableStateOf<String?>(null)
     var stage by mutableStateOf("")
     var progress by mutableFloatStateOf(0f)
     var message by mutableStateOf("")
@@ -59,20 +75,39 @@ fun ShareSendSheet(job: SendJob, connState: ConnState, onShowInBrowser: () -> Un
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("TV'ye gönder", color = Pal.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("${job.uris.size} dosya · TV'nin Download klasörüne", color = Pal.Sub, fontSize = 13.sp)
+                    Text(if (job.install) "TV'ye kur" else "TV'ye gönder", color = Pal.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(when {
+                        job.phase == SendPhase.CHOOSE -> if (job.uris.size > 1) "${job.uris.size} APK" else "APK dosyası"
+                        job.install -> if (job.uris.size > 1) "${job.uris.size} APK · TV'ye kurulacak" else "APK · TV'ye kurulacak"
+                        else -> "${job.uris.size} dosya · TV'nin Download klasörüne"
+                    }, color = Pal.Sub, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(18.dp))
             when (job.phase) {
+                SendPhase.CHOOSE -> {
+                    Text(if (job.uris.size > 1) "Bunlar uygulama paketi. TV'ye kurabilir ya da sadece Download klasörüne gönderebilirsin."
+                        else "Bu bir uygulama paketi. TV'ye kurabilir ya da sadece Download klasörüne gönderebilirsin.",
+                        color = Pal.Text, fontSize = 14.sp)
+                    Spacer(Modifier.height(14.dp))
+                    MainButton(if (job.uris.size > 1) "Hepsini TV'ye kur" else "TV'ye kur") {
+                        job.install = true; job.phase = SendPhase.WAITING; ShareSend.start()
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    SecondaryButton("Download'a gönder", Modifier.fillMaxWidth()) {
+                        job.install = false; job.phase = SendPhase.WAITING; ShareSend.start()
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    SecondaryButton("Vazgeç", Modifier.fillMaxWidth(), onClick = ::close)
+                }
                 SendPhase.WAITING -> {
                     if (connState == ConnState.CONNECTING) Loading("TV'ye bağlanılıyor…")
-                    else Text("Önce TV'ye bağlan; bağlanınca gönderim kendiliğinden başlar.", color = Pal.Sub, fontSize = 14.sp)
+                    else Text(if (job.install) "Önce TV'ye bağlan; bağlanınca kurulum kendiliğinden başlar." else "Önce TV'ye bağlan; bağlanınca gönderim kendiliğinden başlar.", color = Pal.Sub, fontSize = 14.sp)
                     Spacer(Modifier.height(14.dp))
                     SecondaryButton("Vazgeç", Modifier.fillMaxWidth(), onClick = ::close)
                 }
                 SendPhase.NEED_ADB -> {
-                    Text("Dosya göndermek için ADB bağlantısı gerekir. Standart bağlantı (Google'ın kumanda yolu) dosya taşıyamaz.",
+                    Text("${if (job.install) "Uygulama kurmak" else "Dosya göndermek"} için ADB bağlantısı gerekir. Standart bağlantı (Google'ın kumanda yolu) dosya taşıyamaz.",
                         color = Pal.Text, fontSize = 14.sp)
                     Spacer(Modifier.height(14.dp))
                     MainButton("ADB ile bağlan") { ShareSend.useAdb() }
@@ -90,7 +125,9 @@ fun ShareSendSheet(job: SendJob, connState: ConnState, onShowInBrowser: () -> Un
                 SendPhase.DONE -> {
                     ResultLine(ToolResult(true, job.message))
                     Spacer(Modifier.height(14.dp))
-                    MainButton("TV dosya gezgininde göster", onClick = onShowInBrowser)
+                    if (job.install) {
+                        job.installedPkg?.let { pkg -> MainButton("TV'de aç") { ShareSend.openApp(pkg); ShareSend.job = null } }
+                    } else MainButton("TV dosya gezgininde göster", onClick = onShowInBrowser)
                     Spacer(Modifier.height(10.dp))
                     SecondaryButton("Kapat", Modifier.fillMaxWidth(), onClick = ::close)
                 }
